@@ -1,0 +1,28 @@
+# Minimal: notebook runtime plus the core scientific Python stack.
+
+# Project tools
+jupyterlab==4.2.5
+jupyterlab-nitro-ai-judge==0.1.11
+nitro-ai-judge-cli==0.2.0
+
+# Notebook basics
+ipykernel==6.29.5
+ipywidgets==8.1.8
+notebook==7.2.2
+jupyter-server-proxy==4.5.0
+
+# Core arrays, tables, and plotting
+numpy==2.3.5
+pandas==2.3.3
+scipy==1.17.1
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# Basic ML
+scikit-learn==1.7.2
+
+# Developer ergonomics
+tqdm==4.66.5
+rich==15.0.0
+python-dotenv==1.2.2
+requests==2.33.1

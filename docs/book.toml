@@ -1,0 +1,14 @@
+[book]
+authors = ["mihneateodorstoica"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Labkit"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/mihneateodorstoica/labkit"
+edit-url-template = "https://github.com/mihneateodorstoica/labkit/edit/main/docs/{path}"

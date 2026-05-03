@@ -1,0 +1,11 @@
+# Project-level runtime utilities.
+#
+# The large data-science notebook stacks live under image/requirements-*.txt.
+# Keep this file lightweight so local project tooling stays quick to install.
+
+python-dotenv
+pyyaml
+requests
+rich
+typer
+uv

@@ -1,0 +1,30 @@
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - image/**
+          - Dockerfile
+          - "**/Dockerfile"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - requirements*.txt
+          - image/requirements*.txt
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - "*.md"
+
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/workflows/codeql.yml
+          - .github/workflows/codacy-security-scan.yml
+          - .github/workflows/dependency-review.yml

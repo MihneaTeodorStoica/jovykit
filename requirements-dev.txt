@@ -1,0 +1,30 @@
+-r requirements.txt
+
+# Test tooling
+pytest
+pytest-cov
+pytest-mock
+
+# Formatting and linting
+black
+isort
+ruff
+
+# Type checking
+mypy
+types-PyYAML
+types-requests
+
+# Dependency and security checks
+pip-audit
+safety
+detect-secrets
+
+# Build and packaging helpers
+build
+twine
+wheel
+
+# Developer ergonomics
+ipython
+pre-commit

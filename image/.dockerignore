@@ -1,0 +1,36 @@
+# Ignore everything by default, then include only files needed by Dockerfile.
+*
+
+!Dockerfile
+!requirements.txt
+!requirements-minimal.txt
+!requirements-base.txt
+!requirements-extended.txt
+!requirements-full.txt
+
+# Common local/generated noise if the context grows later.
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+.venv/
+venv/
+env/
+
+.git/
+.gitignore
+
+.DS_Store
+Thumbs.db
+
+*.log
+*.tmp
+*.swp
+
+dist/
+build/
+*.egg-info/
