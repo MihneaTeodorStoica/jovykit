@@ -18,14 +18,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-codeql-languages:
+    name: Detect CodeQL languages
+    runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.languages.outputs.value }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build language matrix
+        id: languages
+        shell: bash
+        run: |
+          languages='["actions"'
+          if find . -path ./.git -prune -o -name '*.py' -print -quit | grep -q .; then
+            languages="$languages,\"python\""
+          fi
+          languages="$languages]"
+          echo "value=$languages" >> "$GITHUB_OUTPUT"
+
   codeql:
     name: CodeQL (${{ matrix.language }})
+    needs: detect-codeql-languages
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        language: [python, actions]
+        language: ${{ fromJson(needs.detect-codeql-languages.outputs.languages) }}
 
     steps:
       - name: Checkout repository
