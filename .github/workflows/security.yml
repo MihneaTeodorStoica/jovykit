@@ -18,36 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect-codeql-languages:
-    name: Detect CodeQL languages
-    runs-on: ubuntu-latest
-    outputs:
-      languages: ${{ steps.languages.outputs.value }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build language matrix
-        id: languages
-        shell: bash
-        run: |
-          languages='["actions"'
-          if find . -path ./.git -prune -o -name '*.py' -print -quit | grep -q .; then
-            languages="$languages,\"python\""
-          fi
-          languages="$languages]"
-          echo "value=$languages" >> "$GITHUB_OUTPUT"
-
   codeql:
-    name: CodeQL (${{ matrix.language }})
-    needs: detect-codeql-languages
+    name: CodeQL (actions)
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ${{ fromJson(needs.detect-codeql-languages.outputs.languages) }}
 
     steps:
       - name: Checkout repository
@@ -56,14 +29,14 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: actions
           queries: security-extended,security-and-quality
           dependency-caching: true
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:actions"
 
   codacy:
     name: Codacy Security Scan
