@@ -44,9 +44,49 @@ docker build --target extended -t labkit-extended ./image
 docker build --target full -t labkit-full ./image
 ```
 
+## CLI Preview
+
+LabKit also includes an early CLI for project-local container environments. The
+mental model is:
+
+```text
+.lab is to LabKit what .venv is to Python.
+```
+
+Create an environment, add project packages, and run Jupyter:
+
+```bash
+lab init .lab --image base --gpus auto
+lab add pandas scikit-learn plotly
+lab run
+```
+
+The CLI writes a reproducible overlay build recipe under `.lab/`:
+
+```text
+.lab/
+  lab.toml
+  requirements.txt
+  Containerfile
+  compose.yaml
+  state.json
+```
+
+Useful MVP commands:
+
+```bash
+lab build
+lab start
+lab stop
+lab shell
+lab logs
+lab destroy
+```
+
 ## Repository Layout
 
 ```text
+labkit/              Python CLI package
 image/               Dockerfile and layered image dependency manifests
 docs/                mdBook documentation
 .github/workflows/   CI, security, docs, and image publishing automation

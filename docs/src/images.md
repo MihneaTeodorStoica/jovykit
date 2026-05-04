@@ -3,13 +3,12 @@
 Images are published to GitHub Container Registry as:
 
 ```text
-ghcr.io/mihneateodorstoica/labkit:TYPE-YYYY-MM-DD
-ghcr.io/mihneateodorstoica/labkit:TYPE
+ghcr.io/mihneateodorstoica/labkit-TYPE:latest
+ghcr.io/mihneateodorstoica/labkit-TYPE:nightly
+ghcr.io/mihneateodorstoica/labkit-TYPE:lts
 ```
 
 `TYPE` is one of `minimal`, `base`, `extended`, or `full`.
-
-The dated tag is immutable for a build date. The floating `TYPE` tag points at the latest published image for that variation.
 
 All image variations include client-side SSH tooling:
 
