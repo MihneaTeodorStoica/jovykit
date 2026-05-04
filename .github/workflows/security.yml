@@ -81,6 +81,24 @@ jobs:
           gh-code-scanning-compat: true
           max-allowed-issues: 2147483647
 
+      - name: Assign unique SARIF categories
+        shell: bash
+        run: |
+          jq '
+            .runs |= (to_entries | map(
+              .key as $run_index
+              |
+              .value
+              | .automationDetails.id = (
+                  "codacy/"
+                  + ((.tool.driver.name // "tool") | ascii_downcase | gsub("[^a-z0-9._-]+"; "-"))
+                  + "/run-"
+                  + ($run_index | tostring)
+                )
+            ))
+          ' results.sarif > results.categorized.sarif
+          mv results.categorized.sarif results.sarif
+
       - name: Upload SARIF results
         uses: github/codeql-action/upload-sarif@v4
         with:
