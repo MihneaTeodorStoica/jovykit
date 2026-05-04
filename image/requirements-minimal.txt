@@ -12,14 +12,14 @@ notebook==7.5.6
 jupyter-server-proxy==4.5.0
 
 # Core arrays, tables, and plotting
-numpy==2.4.4
-pandas==3.0.2
+numpy==2.3.5
+pandas==2.3.3
 scipy==1.17.1
 matplotlib==3.10.9
 seaborn==0.13.2
 
 # Basic ML
-scikit-learn==1.8.0
+scikit-learn==1.7.2
 
 # Developer ergonomics
 tqdm==4.67.3
