@@ -24,9 +24,9 @@ jobs:
       - name: Welcome first-time contributors
         uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d # v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          issue-message: Thanks for opening your first issue here. A maintainer will take a look soon.
-          pr-message: Thanks for opening your first pull request here. The CI checks will help us review it cleanly.
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: Thanks for opening your first issue here. A maintainer will take a look soon.
+          pr_message: Thanks for opening your first pull request here. The CI checks will help us review it cleanly.
 
   labeler:
     name: Pull request labeler
