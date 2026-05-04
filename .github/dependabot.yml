@@ -1,0 +1,75 @@
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/image"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:15"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:30"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      root-python:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/image"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:45"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "python"
+      - "docker"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      image-python:
+        patterns:
+          - "*"

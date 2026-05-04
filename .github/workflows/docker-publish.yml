@@ -3,22 +3,33 @@ name: Publish Docker Images
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+  schedule:
+    - cron: "0 0 * * *"
+    - cron: "0 0 * * 0"
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to publish
+        type: choice
+        options:
+          - latest
+          - nightly
+          - lts
+        default: latest
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  group: docker-${{ github.ref }}
+  group: docker-${{ github.ref }}-${{ github.event_name }}-${{ github.event.schedule || inputs.tag || 'default' }}
   cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: mihneateodorstoica/labkit
+  IMAGE_NAMESPACE: mihneateodorstoica
 
 jobs:
   build:
@@ -41,6 +52,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Select image tag
+        id: image-tag
+        shell: bash
+        run: |
+          tag=""
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            tag="latest"
+          elif [[ "${{ github.event_name }}" == "schedule" && "${{ github.event.schedule }}" == "0 0 * * *" ]]; then
+            tag="nightly"
+          elif [[ "${{ github.event_name }}" == "schedule" && "${{ github.event.schedule }}" == "0 0 * * 0" ]]; then
+            tag="lts"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="pr-${{ github.event.pull_request.number }}"
+          fi
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Set build date
         id: date
@@ -66,8 +95,7 @@ jobs:
           target: ${{ matrix.target }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.type }}-${{ steps.date.outputs.value }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.type }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/labkit-${{ matrix.type }}:${{ steps.image-tag.outputs.value }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
