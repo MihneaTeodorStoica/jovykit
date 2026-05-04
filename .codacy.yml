@@ -1,0 +1,4 @@
+---
+exclude_paths:
+  - "requirements.txt"
+  - "image/requirements.txt"
