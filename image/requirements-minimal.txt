@@ -1,7 +1,7 @@
 # Minimal: notebook runtime plus the core scientific Python stack.
 
 # Project tools
-jupyterlab==4.2.5
+jupyterlab==4.5.7
 jupyterlab-nitro-ai-judge==0.1.11
 nitro-ai-judge-cli==0.2.0
 
