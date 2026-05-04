@@ -22,11 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Welcome first-time contributors
-        uses: actions/first-interaction@v3
+        uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d # v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          issue-message: Thanks for opening your first issue here. A maintainer will take a look soon.
-          pr-message: Thanks for opening your first pull request here. The CI checks will help us review it cleanly.
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: Thanks for opening your first issue here. A maintainer will take a look soon.
+          pr_message: Thanks for opening your first pull request here. The CI checks will help us review it cleanly.
 
   labeler:
     name: Pull request labeler
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Apply labels
-        uses: actions/labeler@v6
+        uses: actions/labeler@634933edcd8ababfe52f92936142cc22ac488b1b # v6
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create prompt
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require("fs");
@@ -65,7 +65,7 @@ jobs:
 
       - name: Generate summary
         id: summary
-        uses: actions/ai-inference@v2
+        uses: actions/ai-inference@e09e65981758de8b2fdab13c2bfb7c7d5493b0b6 # v2
         with:
           model: openai/gpt-4o
           max-tokens: 500
@@ -73,7 +73,7 @@ jobs:
           prompt-file: issue-summary.prompt.md
 
       - name: Comment with summary
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           RESPONSE_FILE: ${{ steps.summary.outputs.response-file }}
         with:
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Mark stale items
-        uses: actions/stale@v10
+        uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f # v10
         with:
           days-before-stale: 60
           days-before-close: 14
