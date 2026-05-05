@@ -92,7 +92,7 @@ pre {
 .hero {
   min-height: calc(100vh - 74px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
   align-items: center;
   gap: clamp(24px, 5vw, 72px);
   padding: clamp(54px, 8vw, 96px) clamp(20px, 6vw, 88px) clamp(24px, 5vw, 58px);
@@ -166,13 +166,14 @@ pre {
   position: relative;
   display: grid;
   place-items: center;
+  min-width: 0;
   min-height: 540px;
 }
 
 .hero-art::before {
   content: "";
   position: absolute;
-  width: min(88vw, 620px);
+  width: min(100%, 620px);
   aspect-ratio: 1;
   border: 2px dashed rgba(47, 49, 51, 0.32);
   border-radius: 50%;
@@ -181,7 +182,7 @@ pre {
 
 .hero-art img {
   position: relative;
-  width: min(78vw, 560px);
+  width: min(100%, 560px);
   aspect-ratio: 1;
   object-fit: contain;
   filter: drop-shadow(0 32px 46px rgba(37, 37, 37, 0.18));
@@ -424,10 +425,16 @@ pre {
 
   .hero {
     min-height: auto;
+    overflow: visible;
   }
 
   .hero-art {
     min-height: 360px;
+  }
+
+  .hero-art::before,
+  .hero-art img {
+    width: min(82vw, 460px);
   }
 
   .intro-grid,
