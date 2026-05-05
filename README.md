@@ -128,19 +128,15 @@ settings from a guided terminal UI.
 ```text
 jovykit/              Python CLI package
 image/               Dockerfile and layered image dependency manifests
-docs/                mdBook documentation
-.github/workflows/   CI, security, docs, and image publishing automation
+wiki/                GitHub Wiki page source
+.github/workflows/   CI, security, wiki, and image publishing automation
 ```
 
 ## Documentation
 
-The mdBook source lives in `docs/src`.
-
-To build the documentation locally:
-
-```bash
-mdbook build docs
-```
+The project documentation lives in the
+[GitHub Wiki](https://github.com/MihneaTeodorStoica/jovykit/wiki). Source pages
+are kept in `wiki/` and published by the Wiki workflow.
 
 ## Testing
 

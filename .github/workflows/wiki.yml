@@ -1,0 +1,52 @@
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - wiki/**
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish GitHub Wiki
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo || {
+            echo "::error::The GitHub Wiki git repository is not available yet. Create the first wiki page once, then rerun this workflow."
+            exit 1
+          }
+
+      - name: Sync wiki pages
+        run: |
+          rsync -av --delete --exclude .git wiki/ wiki-repo/
+          cd wiki-repo
+          if git diff --quiet --exit-code && [ -z "$(git status --short)" ]; then
+            echo "Wiki is already up to date."
+            exit 0
+          fi
+          git add -A
+          git commit -m "Update wiki documentation"
+          git push

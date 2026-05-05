@@ -42,11 +42,10 @@ Build an image target:
 docker build --target minimal -t jovykit-minimal ./image
 ```
 
-Build documentation:
+Preview documentation changes:
 
-```bash
-mdbook build docs
-```
+Edit the Markdown pages in `wiki/` and review them with GitHub Wiki rendering
+before merging.
 
 ## Image Layering Guidelines
 
