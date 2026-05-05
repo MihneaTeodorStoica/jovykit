@@ -65,7 +65,7 @@ security:
   - changed-files:
       - any-glob-to-any-file:
           - .github/dependabot.yml
-          - .github/workflows/create-version-tag.yml
+          - .github/workflows/ci-images-release.yml
           - SECURITY.md
 
 tests:
