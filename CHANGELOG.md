@@ -7,6 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Switched generated Jupyter password hashes to Argon2 for security scanning.
 - Bumped package version to 2.0.2.
 - Added a default Jupyter password and print it from `jovy init` and `jovy up`.
 - Bumped package version to 2.0.1.

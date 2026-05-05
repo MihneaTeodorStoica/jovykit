@@ -5,6 +5,7 @@ description = "Layered Jupyter container images and project-local JovyKit enviro
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "argon2-cffi",
     "pyyaml",
     "rich",
     "typer",

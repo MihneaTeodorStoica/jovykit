@@ -77,15 +77,15 @@ def render_compose(config: JovyConfig) -> str:
         service["restart"] = config.restart_policy
     if config.runtime_user:
         service["user"] = config.runtime_user
-    command = config.jupyter_command or "start-notebook.py"
-    command_args = ["--ServerApp.token=''"]
+    command = shlex.split(config.jupyter_command or "start-notebook.py")
+    command_args = ["--ServerApp.token="]
     if config.jupyter_password:
         command_args.append(
-            f"--PasswordIdentityProvider.hashed_password={shlex.quote(hash_jupyter_password(config.jupyter_password))}"
+            f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(config.jupyter_password)}"
         )
     else:
-        command_args.append("--PasswordIdentityProvider.hashed_password=''")
-    service["command"] = f"{command} {' '.join(command_args)}"
+        command_args.append("--PasswordIdentityProvider.hashed_password=")
+    service["command"] = [*command, *command_args]
     if config.watch_enabled:
         watch_rules: list[dict[str, Any]] = []
         if config.watch_workspace_mode == "sync":

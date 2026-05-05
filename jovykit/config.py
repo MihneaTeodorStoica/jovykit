@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -10,6 +9,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from argon2 import PasswordHasher
 
 from jovykit.images import resolve_image
 
@@ -105,9 +106,12 @@ def _jupyter_token(value: Any) -> str:
 
 def hash_jupyter_password(password: str) -> str:
     """Return a Jupyter-compatible password hash."""
-    salt = "jovykit"
-    digest = hashlib.sha1((password + salt).encode("utf-8")).hexdigest()
-    return f"sha1:{salt}:{digest}"
+    password_hasher = PasswordHasher(
+        memory_cost=10240,
+        time_cost=10,
+        parallelism=8,
+    )
+    return f"argon2:{password_hasher.hash(password, salt=b'jovykit-jupyter')}"
 
 
 def load_config(env_dir: Path) -> JovyConfig:
@@ -210,7 +214,7 @@ def initial_config_text(
     gpus: str,
     port: int,
     token: str = "",
-    password: str = DEFAULT_JUPYTER_PASSWORD,
+    password: str | None = None,
     log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
@@ -218,6 +222,7 @@ def initial_config_text(
 ) -> str:
     """Render the initial jovy.toml content."""
     base_image = resolve_image(image)
+    resolved_password = DEFAULT_JUPYTER_PASSWORD if password is None else password
     resolved_image_name = image_name or f"jovykit-{slugify_name(project_name)}"
     return f"""[project]
 name = "{project_name}"
@@ -248,7 +253,7 @@ restart = "unless-stopped"
 [jupyter]
 lab = true
 token = "{token}"
-password = "{password}"
+password = "{resolved_password}"
 log_level = "{log_level}"
 
 [mounts]

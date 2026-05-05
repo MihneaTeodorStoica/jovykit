@@ -74,10 +74,11 @@ def test_generated_environment_files(tmp_path: Path) -> None:
         "JUPYTER_TOKEN": "",
     }
     assert config.jupyter_password == DEFAULT_JUPYTER_PASSWORD
-    assert service["command"] == (
-        "start-notebook.py --ServerApp.token='' "
-        f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD)}"
-    )
+    assert service["command"] == [
+        "start-notebook.py",
+        "--ServerApp.token=",
+        f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD)}",
+    ]
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "requirements.txt"},
         {"action": "rebuild", "path": "Containerfile"},
@@ -112,7 +113,10 @@ def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> N
     service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
     assert config.project_root == notebooks_dir
     assert service["environment"]["JUPYTER_TOKEN"] == "secret-token"
-    assert "PasswordIdentityProvider.hashed_password" in service["command"]
+    assert any(
+        arg.startswith("--PasswordIdentityProvider.hashed_password=")
+        for arg in service["command"]
+    )
     assert service["volumes"][0] == f"../notebooks:{config.work_mount}"
     assert all(
         watch_rule.get("path") != "../notebooks"
@@ -158,7 +162,7 @@ def test_empty_jupyter_password_disables_password_auth(tmp_path: Path) -> None:
 
     service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
     assert config.jupyter_password == ""
-    assert "--PasswordIdentityProvider.hashed_password=''" in service["command"]
+    assert "--PasswordIdentityProvider.hashed_password=" in service["command"]
 
 
 def test_legacy_environment_config_is_migrated(tmp_path: Path) -> None:
@@ -237,7 +241,7 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
     assert service["environment"]["EXTRA_FLAG"] == "yes"
     assert service["restart"] == "always"
     assert service["user"] == "1000:1000"
-    assert service["command"].startswith("start-notebook.py")
+    assert service["command"][0] == "start-notebook.py"
     assert f"../work:{config.work_mount}" not in service["volumes"]
     assert "./data:/data" in service["volumes"]
     assert service["develop"]["watch"][0]["action"] == "sync"
