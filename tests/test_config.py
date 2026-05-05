@@ -33,7 +33,10 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     write_generated_files(config)
 
     assert config.base_image == "ghcr.io/mihneateodorstoica/labkit-minimal:latest"
-    assert "FROM ghcr.io/mihneateodorstoica/labkit-minimal:latest" in (env_dir / "Containerfile").read_text()
+    assert (
+        "FROM ghcr.io/mihneateodorstoica/labkit-minimal:latest"
+        in (env_dir / "Containerfile").read_text()
+    )
     compose = (env_dir / "compose.yaml").read_text()
     assert '"127.0.0.1:9999:8888"' in compose
     assert "driver: nvidia" not in compose

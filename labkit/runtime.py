@@ -21,19 +21,25 @@ def require_docker() -> None:
         raise DockerError("Docker was not found on PATH.")
 
 
-def run_command(args: list[str], *, cwd: Path, attached: bool = False, check: bool = True) -> None:
+def run_command(
+    args: list[str], *, cwd: Path, attached: bool = False, check: bool = True
+) -> None:
     """Run a Docker command and raise a useful error on failure."""
     require_docker()
     if attached:
         result = subprocess.run(args, cwd=cwd, check=False)
     else:
-        result = subprocess.run(args, cwd=cwd, check=False, capture_output=True, text=True)
+        result = subprocess.run(
+            args, cwd=cwd, check=False, capture_output=True, text=True
+        )
         if result.stdout:
             print(result.stdout, end="")
         if result.stderr:
             print(result.stderr, end="")
     if check and result.returncode != 0:
-        raise DockerError(f"Command failed with exit code {result.returncode}: {' '.join(args)}")
+        raise DockerError(
+            f"Command failed with exit code {result.returncode}: {' '.join(args)}"
+        )
 
 
 def build_signature(config: LabConfig) -> str:
@@ -80,7 +86,11 @@ def build(config: LabConfig, *, no_cache: bool = False) -> None:
 
 def compose(config: LabConfig, *args: str, attached: bool = False) -> None:
     """Run docker compose for this environment."""
-    run_command(["docker", "compose", "-f", "compose.yaml", *args], cwd=config.env_dir, attached=attached)
+    run_command(
+        ["docker", "compose", "-f", "compose.yaml", *args],
+        cwd=config.env_dir,
+        attached=attached,
+    )
 
 
 def destroy(config: LabConfig, *, remove_image: bool = True) -> None:
