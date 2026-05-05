@@ -7,6 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Fixed `jovy start` so detached startup does not pass Docker Compose watch.
 - Added `jovy --version`, Jupyter init flags, and additional log filtering
   flags.
 - Fixed generated Compose files so Jupyter token settings, custom workdirs, and

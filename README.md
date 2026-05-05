@@ -81,6 +81,7 @@ jovy status --json
 jovy build --pull
 jovy sync --no-build
 jovy start --no-build
+jovy run --watch
 jovy logs --tail 100 --since 10m --timestamps --no-follow
 jovy shell -c "python --version"
 jovy exec python --version
@@ -92,6 +93,7 @@ Most commands accept `--env PATH` when you want to operate on a JovyKit
 environment outside the current project tree. `jovy init` also supports
 customizing the generated project name, overlay image name/tag, Jupyter port,
 GPU mode, Jupyter token/log level, and mounted work directory.
+Docker Compose watch runs with `jovy run`; `jovy start` stays detached.
 
 ## Repository Layout
 

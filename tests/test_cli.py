@@ -85,7 +85,7 @@ def test_run_uses_compose_watch_by_default(
     assert calls == [("up", "--watch")]
 
 
-def test_start_can_disable_compose_watch(
+def test_start_does_not_combine_detach_with_compose_watch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -97,7 +97,7 @@ def test_start_can_disable_compose_watch(
 
     monkeypatch.setattr(cli, "compose", fake_compose)
 
-    run_cli(monkeypatch, ["start", "--no-build", "--no-watch"])
+    run_cli(monkeypatch, ["start", "--no-build"])
 
     assert calls == [("up", "-d")]
 

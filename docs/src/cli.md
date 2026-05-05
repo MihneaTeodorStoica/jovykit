@@ -44,12 +44,15 @@ jovy build --no-cache --pull
 jovy sync
 jovy sync --no-build
 jovy run
+jovy run --watch
 jovy start
 ```
 
 `jovy run` starts Jupyter in the foreground. `jovy start` starts it in the
 background. Both regenerate files and build the overlay image when the build
 inputs are stale. Use `--no-build` to skip the stale-build check.
+Docker Compose watch is available through `jovy run`; detached `jovy start`
+does not enable watch because Compose does not support combining both modes.
 
 ## Operate on a running environment
 
