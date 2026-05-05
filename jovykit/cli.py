@@ -107,21 +107,36 @@ def init(
 
 @app.command()
 def add(
-    packages: list[str] = typer.Argument(
-        ..., help="Packages to add to .jovy/requirements.txt."
+    packages: list[str] | None = typer.Argument(
+        None, help="Packages to add to jovy.toml."
+    ),
+    requirement_files: list[Path] | None = typer.Option(
+        None,
+        "-r",
+        "--requirement",
+        help="Import packages from a requirements file. May be repeated.",
     ),
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
     ),
 ) -> None:
     """Add packages to the project environment manifest."""
-    command_ops.add(packages, env=env, emit=console.print)
+    package_list = packages or []
+    requirement_list = requirement_files or []
+    if not package_list and not requirement_list:
+        raise typer.BadParameter("Pass packages or at least one -r/--requirement file.")
+    command_ops.add(
+        package_list,
+        requirement_files=requirement_list,
+        env=env,
+        emit=console.print,
+    )
 
 
 @app.command()
 def remove(
     packages: list[str] = typer.Argument(
-        ..., help="Packages to remove from .jovy/requirements.txt."
+        ..., help="Packages to remove from jovy.toml."
     ),
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
@@ -137,11 +152,15 @@ def install(
         None, "--env", help="JovyKit environment directory."
     ),
     no_build: bool = typer.Option(False, "--no-build", help="Only regenerate files."),
+    upgrade: bool = typer.Option(
+        False, "--upgrade", help="Refresh pinned package versions in the lockfile."
+    ),
 ) -> None:
     """Regenerate files and build the overlay image when stale."""
     command_ops.install(
         command_ops.load_env(env, emit=console.print),
         no_build=no_build,
+        upgrade=upgrade,
         emit=console.print,
     )
 

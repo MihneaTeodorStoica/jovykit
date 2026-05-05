@@ -42,6 +42,8 @@ class JovyConfig:
     image_pull: bool
     image_build_args: dict[str, str]
     apt_packages: list[str]
+    python_packages: list[str]
+    python_constraints: list[str]
     pip_args: list[str]
     uv_link_mode: str
     port: int
@@ -158,6 +160,8 @@ def load_config(env_dir: Path) -> JovyConfig:
             image_pull=bool(image.get("pull", False)),
             image_build_args=_str_dict(image.get("build_args", {})),
             apt_packages=_str_list(image.get("apt", {}).get("packages", [])),
+            python_packages=_str_list(python.get("packages", [])),
+            python_constraints=_str_list(python.get("constraints", [])),
             pip_args=_str_list(python.get("pip_args", [])),
             uv_link_mode=str(python.get("uv_link_mode", "copy")),
             port=int(runtime.get("port", 8888)),
@@ -195,7 +199,7 @@ def load_config(env_dir: Path) -> JovyConfig:
                 )
             ),
             watch_rebuild=_str_list(
-                watch.get("rebuild", ["requirements.txt", "Containerfile"])
+                watch.get("rebuild", ["jovy.lock", "Containerfile"])
             ),
             watch_restart=_str_list(watch.get("restart", ["jovy.toml"])),
             watch_poll_interval=float(watch.get("poll_interval_seconds", 1.0)),
@@ -263,11 +267,13 @@ work = "/home/jovyan/work"
 enabled = true
 workspace_mode = "bind"
 ignore = [".jovy/", ".git/", ".venv/", "__pycache__/", ".mypy_cache/", ".pytest_cache/", ".ruff_cache/"]
-rebuild = ["requirements.txt", "Containerfile"]
+rebuild = ["jovy.lock", "Containerfile"]
 restart = ["jovy.toml"]
 poll_interval_seconds = 1.0
 
 [python]
+packages = []
+constraints = []
 pip_args = []
 uv_link_mode = "copy"
 """

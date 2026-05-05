@@ -2,7 +2,8 @@
 
 JovyKit manages project-local Jupyter container environments. A root
 `jovy.toml` file belongs to one project, while `.jovy/` contains generated
-Docker files, dependency manifests, watcher logs, and local build state.
+Docker files, the `jovy.lock` dependency lockfile, watcher logs, and local build
+state.
 Project files live in `work/` by default and are mounted into the container.
 
 Run `jovy` without a subcommand to open the full-screen terminal dashboard. The
@@ -36,19 +37,23 @@ Useful initialization options:
 
 ```bash
 jovy add pandas scikit-learn plotly
+jovy add -r requirements.txt
 jovy remove plotly
 ```
 
-Packages are appended to `.jovy/requirements.txt` only when they are not already
-present. Removing packages deletes exact manifest entries. Package changes mark
-the overlay image stale; run `jovy install`, `jovy run`, or `jovy up` to apply
-them.
+Packages are stored as direct specs in `[python].packages` in `jovy.toml` only
+when they are not already present. `jovy add -r` imports existing requirements
+files recursively, preserving `-c/--constraint` files as `[python].constraints`.
+Removing packages deletes exact direct entries. Package changes mark the overlay
+image stale; run `jovy install`, `jovy run`, or `jovy up` to resolve
+`.jovy/jovy.lock` and apply them.
 
 ## Install and run
 
 ```bash
 jovy install
 jovy install --no-build
+jovy install --upgrade
 jovy build
 jovy build --no-cache --pull
 jovy run
@@ -57,14 +62,16 @@ jovy up
 jovy restart
 ```
 
-`jovy install` regenerates environment files and builds the overlay image when
-the build inputs are stale. `jovy build` only builds the image and does not
-start anything. `jovy run` installs if stale and starts Jupyter in the
-foreground; `jovy up` installs if stale and starts it in the background. Use
-`--no-build` to skip the stale-build check. Docker Compose watch is available
-through `jovy run`. Detached `jovy up` and `jovy restart` also launch a
-lightweight config watcher that restarts the container when `jovy.toml` changes.
-Use `jovy down` to stop the detached environment.
+`jovy install` regenerates environment files, compiles `.jovy/jovy.lock` with
+uv, and builds the overlay image when the build inputs are stale. Use
+`--upgrade` to refresh pinned package versions and `--no-build` to skip the
+stale-build check after lock generation. `jovy build` only builds the image and
+does not start anything. `jovy run` installs if stale and starts Jupyter in the
+foreground; `jovy up` installs if stale and starts it in the background. Docker
+Compose watch is available through `jovy run`. Detached `jovy up` and
+`jovy restart` also launch a lightweight config watcher that restarts the
+container when `jovy.toml` changes. Use `jovy down` to stop the detached
+environment.
 
 ## Customize with TOML
 
@@ -106,8 +113,9 @@ jovy destroy --keep-image
 jovy destroy --remove-dir
 ```
 
-`jovy clean` removes generated files and local build state while preserving the
-package manifest. `jovy destroy` stops the environment, removes Docker Compose
+`jovy clean` removes generated files and local build state while preserving
+`jovy.lock` and the package manifest in `jovy.toml`. `jovy destroy` stops the
+environment, removes Docker Compose
 resources, and removes the project overlay image. `--keep-image` preserves the
 image. `--remove-dir` also deletes the JovyKit environment directory.
 

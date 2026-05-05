@@ -167,20 +167,84 @@ def test_run_command_uses_streaming_callback(
     assert lines == ["streamed"]
 
 
-def test_build_signature_tracks_config_and_requirements(create_project: Any) -> None:
+def test_build_signature_tracks_config_and_lock(create_project: Any) -> None:
     project = create_project()
+    lock_path = project.env_dir / "jovy.lock"
+    lock_path.write_text("numpy==1.26.0\n", encoding="utf-8")
     original = runtime.build_signature(project.config)
 
-    (project.env_dir / "requirements.txt").write_text("numpy\n", encoding="utf-8")
+    lock_path.write_text("numpy==2.0.0\n", encoding="utf-8")
 
     assert runtime.build_signature(project.config) != original
     assert runtime.is_build_stale(project.config) is True
+
+
+def test_missing_lock_is_stale(create_project: Any) -> None:
+    project = create_project()
+
+    assert runtime.is_build_stale(project.config) is True
+
+
+def test_compile_requirements_lock_invokes_uv(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    input_file = project.root / "requirements.in"
+    output_file = project.env_dir / "jovy.lock"
+    constraint = project.root / "constraints.txt"
+    calls: list[tuple[list[str], Path, bool, runtime.LogCallback | None]] = []
+
+    def fake_run_command(
+        args: list[str],
+        *,
+        cwd: Path,
+        attached: bool = False,
+        check: bool = True,
+        log: runtime.LogCallback | None = None,
+        require_docker_path: bool = True,
+    ) -> None:
+        calls.append((args, cwd, require_docker_path, log))
+
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+
+    runtime.compile_requirements_lock(
+        project.config,
+        input_file=input_file,
+        output_file=output_file,
+        constraints=[constraint],
+        upgrade=True,
+        log=lambda line: None,
+    )
+
+    assert calls == [
+        (
+            [
+                "uv",
+                "pip",
+                "compile",
+                str(input_file),
+                "--output-file",
+                str(output_file),
+                "--no-progress",
+                "--no-annotate",
+                "--custom-compile-command",
+                "jovy install",
+                "--constraints",
+                str(constraint),
+                "--upgrade",
+            ],
+            project.root,
+            False,
+            calls[0][3],
+        )
+    ]
 
 
 def test_build_writes_state_after_success(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
     project = create_project()
+    (project.env_dir / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
     calls: list[list[str]] = []
     monkeypatch.setattr(
         runtime,
@@ -207,6 +271,7 @@ def test_build_streaming_writes_state_and_streams_output(
             'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
         )
     )
+    (project.env_dir / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
     calls: list[tuple[list[str], runtime.LogCallback]] = []
 
     def fake_run_command(

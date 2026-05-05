@@ -200,13 +200,15 @@ class JovyKitDashboard(App[None]):
         if name == "init":
             commands.init_environment(emit=emit)
         elif name == "add":
-            commands.add(args, emit=emit)
+            packages, requirement_files = _add_args(args)
+            commands.add(packages, requirement_files=requirement_files, emit=emit)
         elif name == "remove":
             commands.remove(args, emit=emit)
         elif name == "install":
             commands.install(
                 commands.load_env(emit=emit),
                 no_build="--no-build" in args,
+                upgrade="--upgrade" in args,
                 emit=emit,
                 stream=True,
             )
@@ -360,6 +362,25 @@ def _option_int(args: list[str], name: str) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _add_args(args: list[str]) -> tuple[list[str], list[Path]]:
+    packages: list[str] = []
+    requirement_files: list[Path] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in {"-r", "--requirement"} and index + 1 < len(args):
+            requirement_files.append(Path(args[index + 1]))
+            index += 2
+            continue
+        if arg.startswith("--requirement="):
+            requirement_files.append(Path(arg.split("=", 1)[1]))
+            index += 1
+            continue
+        packages.append(arg)
+        index += 1
+    return packages, requirement_files
 
 
 def _snapshot_suffix(previous: str, current: str) -> str:

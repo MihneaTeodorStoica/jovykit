@@ -82,7 +82,7 @@ def status_from_config(config: JovyConfig) -> EnvironmentStatus:
         gpu=_gpu_label(config.gpus),
         port=f"127.0.0.1:{config.port}",
         url=_url(config),
-        package_count=_package_count(config.env_dir / "requirements.txt"),
+        package_count=len(config.python_packages),
         volume=f"{config.project_name.lower().replace(' ', '-')}-jovykit-home",
         last_error=last_error,
     )
@@ -177,17 +177,6 @@ def _url(config: JovyConfig) -> str:
     if config.jupyter_token:
         return f"{url}?token={config.jupyter_token}"
     return url
-
-
-def _package_count(path: Path) -> int:
-    if not path.exists():
-        return 0
-    count = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            count += 1
-    return count
 
 
 def _string_or_none(value: object) -> str | None:

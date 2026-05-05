@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,12 @@ from jovykit.config import (
     read_state,
     write_state,
 )
-from jovykit.deps import add_packages, remove_packages
+from jovykit.deps import (
+    add_packages,
+    import_legacy_requirements,
+    import_requirements,
+    remove_packages,
+)
 from jovykit.generate import ensure_empty_or_jovy_env, write_generated_files
 from jovykit.paths import (
     DEFAULT_ENV_DIR,
@@ -28,6 +34,7 @@ from jovykit.paths import (
 from jovykit.runtime import (
     build as build_image,
     build_streaming,
+    compile_requirements_lock,
     compose,
     destroy as destroy_environment,
     is_build_stale,
@@ -94,15 +101,87 @@ def ensure_built(
             build_image(config)
 
 
+def migrate_legacy_requirements(
+    config: JovyConfig,
+    *,
+    emit: Emitter = noop_emit,
+) -> JovyConfig:
+    """Import legacy .jovy/requirements.txt packages into jovy.toml."""
+    requirements_path = config.env_dir / "requirements.txt"
+    if not requirements_path.exists():
+        return config
+    update = import_legacy_requirements(config.config_path, requirements_path)
+    if update.added:
+        emit(f"Imported legacy packages: {', '.join(update.added)}")
+    requirements_path.unlink()
+    clear_build_state(config.env_dir)
+    return load_config(config.env_dir)
+
+
+def compile_lock(
+    config: JovyConfig,
+    *,
+    upgrade: bool = False,
+    emit: Emitter = noop_emit,
+    stream: bool = False,
+) -> None:
+    """Compile the project dependency lockfile with uv."""
+    config.env_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = config.env_dir / "jovy.lock"
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=config.project_dir,
+        prefix=".jovy-",
+        suffix=".requirements.in",
+        delete=False,
+    ) as handle:
+        input_path = Path(handle.name)
+        handle.write("# Direct project packages managed by JovyKit.\n")
+        for package in config.python_packages:
+            handle.write(f"{package}\n")
+    constraints = [
+        path if path.is_absolute() else config.project_dir / path
+        for path in (Path(value) for value in config.python_constraints)
+    ]
+    try:
+        emit("Compiling JovyKit dependency lockfile...")
+        compile_requirements_lock(
+            config,
+            input_file=input_path,
+            output_file=lock_path,
+            constraints=constraints,
+            upgrade=upgrade,
+            log=emit if stream else None,
+        )
+    finally:
+        input_path.unlink(missing_ok=True)
+
+
+def prepare_environment(
+    config: JovyConfig,
+    *,
+    upgrade: bool = False,
+    emit: Emitter = noop_emit,
+    stream: bool = False,
+) -> JovyConfig:
+    """Migrate, regenerate, and lock generated environment files."""
+    config = migrate_legacy_requirements(config, emit=emit)
+    write_generated_files(config)
+    compile_lock(config, upgrade=upgrade, emit=emit, stream=stream)
+    return load_config(config.env_dir)
+
+
 def install(
     config: JovyConfig,
     *,
     no_build: bool = False,
+    upgrade: bool = False,
     emit: Emitter = noop_emit,
     stream: bool = False,
 ) -> None:
     """Regenerate files and build the overlay image when stale."""
-    write_generated_files(config)
+    config = prepare_environment(config, upgrade=upgrade, emit=emit, stream=stream)
     ensure_built(config, no_build=no_build, emit=emit, stream=stream)
 
 
@@ -171,15 +250,27 @@ def init_environment(
 def add(
     packages: list[str],
     *,
+    requirement_files: list[Path] | None = None,
     env: Path | None = None,
     emit: Emitter = noop_emit,
 ) -> None:
     """Add packages to the project environment manifest."""
     config = load_env(env, emit=emit)
-    added = add_packages(config.env_dir / "requirements.txt", packages)
+    config = migrate_legacy_requirements(config, emit=emit)
+    imported = import_requirements(
+        requirement_files or [], project_dir=config.project_dir
+    )
+    update = add_packages(
+        config.config_path,
+        [*packages, *imported.packages],
+        constraints=imported.constraints,
+    )
     clear_build_state(config.env_dir)
-    if added:
-        emit(f"Added: {', '.join(added)}")
+    if update.added or update.constraints_added:
+        if update.added:
+            emit(f"Added: {', '.join(update.added)}")
+        if update.constraints_added:
+            emit(f"Added constraints: {', '.join(update.constraints_added)}")
         emit("Run jovy install, jovy run, or jovy up to apply changes.")
     else:
         emit("No new packages added.")
@@ -193,10 +284,11 @@ def remove(
 ) -> None:
     """Remove packages from the project environment manifest."""
     config = load_env(env, emit=emit)
-    removed = remove_packages(config.env_dir / "requirements.txt", packages)
+    config = migrate_legacy_requirements(config, emit=emit)
+    update = remove_packages(config.config_path, packages)
     clear_build_state(config.env_dir)
-    if removed:
-        emit(f"Removed: {', '.join(removed)}")
+    if update.removed:
+        emit(f"Removed: {', '.join(update.removed)}")
         emit("Run jovy install, jovy run, or jovy up to apply changes.")
     else:
         emit("No matching packages removed.")
@@ -212,6 +304,7 @@ def build(
 ) -> None:
     """Build the project overlay image."""
     config = load_env(env, emit=emit)
+    config = prepare_environment(config, emit=emit, stream=stream)
     if stream:
         build_streaming(config, log=emit, no_cache=no_cache, pull=pull)
     else:
@@ -404,7 +497,7 @@ def clean(*, env: Path | None = None, emit: Emitter = noop_emit) -> None:
         "compose.yaml",
         ".gitignore",
         "state.json",
-        "requirements.lock",
+        "requirements.txt",
         "watcher.pid",
         "watcher.log",
     ):

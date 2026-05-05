@@ -7,6 +7,11 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 3.0.0.
+- Replaced project environment `requirements.txt` manifests with
+  `[python].packages` in `jovy.toml` plus a generated `.jovy/jovy.lock`.
+- Added recursive `jovy add -r/--requirement` imports and
+  `jovy install --upgrade` lock refreshes.
 - Bumped package version to 2.1.1.
 - Fixed dashboard command completion so Textual app-thread status updates no
   longer call `call_from_thread`.

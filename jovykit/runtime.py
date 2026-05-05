@@ -6,8 +6,8 @@ import hashlib
 import shutil
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from jovykit.config import JovyConfig, JovyKitError, read_state, write_state
@@ -97,16 +97,65 @@ def run_command(
 def build_signature(config: JovyConfig) -> str:
     """Hash the inputs that affect the overlay image."""
     hasher = hashlib.sha256()
-    for path in (config.config_path, config.env_dir / "requirements.txt"):
+    for path in (config.config_path, config.env_dir / "jovy.lock"):
         hasher.update(path.name.encode("utf-8"))
-        hasher.update(path.read_bytes())
+        if path.exists():
+            hasher.update(path.read_bytes())
+        else:
+            hasher.update(b"<missing>")
+    for constraint in config.python_constraints:
+        path = Path(constraint)
+        if not path.is_absolute():
+            path = config.project_dir / path
+        hasher.update(f"constraint:{constraint}".encode("utf-8"))
+        if path.exists():
+            hasher.update(path.read_bytes())
+        else:
+            hasher.update(b"<missing>")
     return hasher.hexdigest()
 
 
 def is_build_stale(config: JovyConfig) -> bool:
     """Return whether the overlay image should be rebuilt."""
+    if not (config.env_dir / "jovy.lock").exists():
+        return True
     state = read_state(config.env_dir)
     return state.get("build_signature") != build_signature(config)
+
+
+def compile_requirements_lock(
+    config: JovyConfig,
+    *,
+    input_file: Path,
+    output_file: Path,
+    constraints: list[Path],
+    upgrade: bool = False,
+    log: LogCallback | None = None,
+) -> None:
+    """Compile direct requirements to a pinned lockfile with uv."""
+    args = [
+        "uv",
+        "pip",
+        "compile",
+        str(input_file),
+        "--output-file",
+        str(output_file),
+        "--no-progress",
+        "--no-annotate",
+        "--custom-compile-command",
+        "jovy install",
+    ]
+    for constraint in constraints:
+        args.extend(["--constraints", str(constraint)])
+    if upgrade:
+        args.append("--upgrade")
+    run_command(
+        args,
+        cwd=config.project_dir,
+        attached=log is None,
+        log=log,
+        require_docker_path=False,
+    )
 
 
 def build(config: JovyConfig, *, no_cache: bool = False, pull: bool = False) -> None:

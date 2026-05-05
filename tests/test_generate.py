@@ -18,26 +18,10 @@ def test_write_generated_files_creates_expected_readable_files(
 
     assert (project.env_dir / "Containerfile").exists()
     assert (project.env_dir / "compose.yaml").exists()
-    assert (project.env_dir / "requirements.txt").read_text(encoding="utf-8") == (
-        "# Project packages managed by JovyKit.\n"
-    )
+    assert not (project.env_dir / "requirements.txt").exists()
     assert (project.env_dir / ".gitignore").read_text(encoding="utf-8") == (
-        "state.json\nrequirements.lock\n"
+        "state.json\nwatcher.pid\nwatcher.log\n.generated/\n"
     )
-
-
-def test_write_generated_files_preserves_existing_requirements(
-    create_project: Any,
-) -> None:
-    project = create_project(generate=False)
-    project.env_dir.mkdir(exist_ok=True)
-    (project.env_dir / "requirements.txt").write_text("numpy\n", encoding="utf-8")
-
-    write_generated_files(project.config)
-
-    assert (project.env_dir / "requirements.txt").read_text(
-        encoding="utf-8"
-    ) == "numpy\n"
 
 
 def test_ensure_empty_or_jovy_env_allows_missing_directory(tmp_path: Path) -> None:

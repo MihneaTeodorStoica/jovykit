@@ -9,5 +9,6 @@ pyyaml
 requests
 rich
 textual
+tomlkit
 typer
 uv

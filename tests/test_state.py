@@ -42,7 +42,12 @@ def test_status_stopped_from_empty_compose_ps(
 def test_status_running_healthy_from_compose_json(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
-    project = create_project(token="dev-token")
+    project = create_project(
+        token="dev-token",
+        config_transform=lambda text: text.replace(
+            "packages = []", 'packages = ["numpy", "pandas"]'
+        ),
+    )
     output = json.dumps(
         [
             {
@@ -54,10 +59,6 @@ def test_status_running_healthy_from_compose_json(
     )
     monkeypatch.setattr("jovykit.state.compose_ps", lambda config: output)
     monkeypatch.setattr("jovykit.state.is_build_stale", lambda config: False)
-    (project.env_dir / "requirements.txt").write_text(
-        "# Project packages managed by JovyKit.\nnumpy\npandas\n",
-        encoding="utf-8",
-    )
 
     status = status_from_config(project.config)
 
@@ -123,11 +124,16 @@ def test_status_normalizers_cover_dashboard_states() -> None:
     assert state._string_or_none("  ") is None
 
 
-def test_status_counts_missing_requirements_as_zero(create_project: Any) -> None:
-    project = create_project()
-    (project.env_dir / "requirements.txt").unlink()
+def test_status_counts_config_packages(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project(
+        config_transform=lambda text: text.replace("packages = []", 'packages = ["x"]')
+    )
+    monkeypatch.setattr("jovykit.state.compose_ps", lambda config: "")
+    monkeypatch.setattr("jovykit.state.is_build_stale", lambda config: False)
 
-    assert state._package_count(project.env_dir / "requirements.txt") == 0
+    assert status_from_config(project.config).package_count == 1
 
 
 def test_status_error_includes_compact_last_error(

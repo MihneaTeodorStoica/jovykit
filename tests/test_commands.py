@@ -72,6 +72,13 @@ def test_build_uses_streaming_backend(
     monkeypatch.chdir(project.root)
     monkeypatch.setattr(
         commands,
+        "compile_requirements_lock",
+        lambda *args, **kwargs: kwargs["output_file"].write_text(
+            "locked\n", encoding="utf-8"
+        ),
+    )
+    monkeypatch.setattr(
+        commands,
         "build_streaming",
         lambda config, *, log, no_cache=False, pull=False: calls.append(
             (no_cache, pull)

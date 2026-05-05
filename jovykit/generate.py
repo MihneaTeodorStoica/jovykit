@@ -11,12 +11,6 @@ from jovykit.templates import render_compose, render_containerfile
 def write_generated_files(config: JovyConfig) -> None:
     """Write generated files that are intentionally readable."""
     config.env_dir.mkdir(parents=True, exist_ok=True)
-    requirements_path = config.env_dir / "requirements.txt"
-    if not requirements_path.exists():
-        requirements_path.write_text(
-            "# Project packages managed by JovyKit.\n",
-            encoding="utf-8",
-        )
     (config.env_dir / "Containerfile").write_text(
         render_containerfile(config),
         encoding="utf-8",
@@ -26,7 +20,7 @@ def write_generated_files(config: JovyConfig) -> None:
         encoding="utf-8",
     )
     (config.env_dir / ".gitignore").write_text(
-        "state.json\nrequirements.lock\n",
+        "state.json\nwatcher.pid\nwatcher.log\n.generated/\n",
         encoding="utf-8",
     )
 

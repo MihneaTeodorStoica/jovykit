@@ -16,5 +16,5 @@ The image definitions live in `image/` and are split into four Docker targets:
 - `full`
 
 The CLI creates a `.jovy/` directory in a project, generates readable Docker
-files, tracks project packages in `requirements.txt`, and runs Jupyter through
-Docker Compose.
+files, tracks direct project packages in `jovy.toml`, compiles `.jovy/jovy.lock`
+with uv, and runs Jupyter through Docker Compose.

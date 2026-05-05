@@ -80,7 +80,7 @@ def test_generated_environment_files(tmp_path: Path) -> None:
         f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD).replace('$', '$$')}",
     ]
     assert service["develop"]["watch"] == [
-        {"action": "rebuild", "path": "requirements.txt"},
+        {"action": "rebuild", "path": "jovy.lock"},
         {"action": "rebuild", "path": "Containerfile"},
         {
             "action": "sync+restart",
@@ -224,11 +224,11 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
     config_text = config_text.replace(
         "packages = []",
         'packages = ["curl"]',
+        1,
     )
-    config_text = config_text.replace(
-        "pip_args = []",
-        'pip_args = ["--upgrade"]',
-    )
+    config_text = config_text.replace("packages = []", 'packages = ["numpy"]', 1)
+    config_text = config_text.replace("constraints = []", 'constraints = ["pins.txt"]')
+    config_text = config_text.replace("pip_args = []", 'pip_args = ["--upgrade"]')
     (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
 
     config = load_config(env_dir)
@@ -251,6 +251,8 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
     containerfile = (env_dir / "Containerfile").read_text(encoding="utf-8")
     assert "apt-get install -y --no-install-recommends curl" in containerfile
     assert "uv pip install --upgrade --system" in containerfile
+    assert config.python_packages == ["numpy"]
+    assert config.python_constraints == ["pins.txt"]
 
 
 def test_load_config_reports_missing_config(tmp_path: Path) -> None:

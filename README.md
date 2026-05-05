@@ -75,7 +75,7 @@ root `jovy.toml` plus a reproducible overlay build recipe under `.jovy/`:
 jovy.toml
 work/
 .jovy/
-  requirements.txt
+  jovy.lock
   Containerfile
   compose.yaml
   state.json
@@ -89,7 +89,9 @@ jovy
 jovy status
 jovy status --json
 jovy remove plotly
+jovy add -r requirements.txt
 jovy install
+jovy install --upgrade
 jovy up --no-build
 jovy down --timeout 10
 jovy restart
@@ -113,9 +115,12 @@ a lightweight watcher that restarts the container when `jovy.toml` changes.
 Use `jovy up` for background startup, `jovy down` to stop the environment, and
 `jovy run` when you want attached foreground Jupyter logs.
 
-`jovy.toml` can also customize runtime environment variables, extra volumes,
-restart policy, Jupyter command/logging, Compose Watch behavior, image build
-arguments, build target/platform, apt packages, and uv/pip install options.
+`jovy.toml` stores direct project packages under `[python].packages`. JovyKit
+compiles them with uv into `.jovy/jovy.lock`, and Docker installs from that
+lockfile. `jovy.toml` can also customize runtime environment variables, extra
+volumes, restart policy, Jupyter command/logging, Compose Watch behavior, image
+build arguments, build target/platform, apt packages, and uv/pip install
+options.
 
 ## Repository Layout
 

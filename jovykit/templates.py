@@ -31,10 +31,10 @@ def render_containerfile(config: JovyConfig) -> str:
 
 USER root
 {apt_block}\
-COPY requirements.txt /tmp/jovykit/requirements.txt
+COPY jovy.lock /tmp/jovykit/jovy.lock
 RUN --mount=type=cache,target=/root/.cache/uv \\
     UV_SYSTEM_PYTHON=1 UV_LINK_MODE={uv_link_mode} \\
-    uv pip install {pip_args_prefix}--system -r /tmp/jovykit/requirements.txt && \\
+    uv pip install {pip_args_prefix}--system -r /tmp/jovykit/jovy.lock && \\
     fix-permissions "${{CONDA_DIR}}" && \\
     fix-permissions "/home/${{NB_USER}}"
 

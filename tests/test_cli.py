@@ -11,6 +11,10 @@ from jovykit import commands as command_ops
 from jovykit.config import read_state, write_state
 
 
+def fake_compile_lock(*args: Any, **kwargs: Any) -> None:
+    kwargs["output_file"].write_text("locked\n", encoding="utf-8")
+
+
 def test_run_without_environment_prints_clean_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
 ) -> None:
@@ -123,7 +127,7 @@ def test_init_prints_default_password(
     assert "Password: jovykit" in result.output
 
 
-def test_add_updates_requirements_and_clears_build_signature(
+def test_add_updates_toml_packages_and_clears_build_signature(
     monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
 ) -> None:
     project = create_project()
@@ -132,31 +136,54 @@ def test_add_updates_requirements_and_clears_build_signature(
 
     run_cli(["add", "numpy", "pandas", "numpy"])
 
-    assert (
-        (project.env_dir / "requirements.txt")
-        .read_text(encoding="utf-8")
-        .endswith("numpy\npandas\n")
+    assert 'packages = ["numpy", "pandas"]' in (project.root / "jovy.toml").read_text(
+        encoding="utf-8"
     )
     assert read_state(project.env_dir) == {"other": "kept"}
 
 
-def test_remove_updates_requirements_and_clears_build_signature(
+def test_add_imports_requirements_file_recursively(
     monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
 ) -> None:
     project = create_project()
     monkeypatch.chdir(project.root)
-    (project.env_dir / "requirements.txt").write_text(
-        "# Project packages managed by JovyKit.\nnumpy\npandas\n",
-        encoding="utf-8",
+    (project.root / "nested.txt").write_text("pandas\n", encoding="utf-8")
+    (project.root / "constraints.txt").write_text("numpy<2\n", encoding="utf-8")
+    (project.root / "requirements.txt").write_text(
+        "numpy\n-r nested.txt\n-c constraints.txt\n", encoding="utf-8"
     )
+
+    run_cli(["add", "-r", "requirements.txt"])
+
+    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
+    assert 'packages = ["numpy", "pandas"]' in config_text
+    assert 'constraints = ["constraints.txt"]' in config_text
+
+
+def test_add_requires_packages_or_requirement_file(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    monkeypatch.chdir(project.root)
+
+    run_cli(["add"], expected_code=2)
+
+
+def test_remove_updates_toml_packages_and_clears_build_signature(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project(
+        config_transform=lambda text: text.replace(
+            "packages = []", 'packages = ["numpy", "pandas"]'
+        )
+    )
+    monkeypatch.chdir(project.root)
     write_state(project.env_dir, {"build_signature": "old", "other": "kept"})
 
     run_cli(["remove", "numpy"])
 
-    assert (
-        (project.env_dir / "requirements.txt")
-        .read_text(encoding="utf-8")
-        .endswith("pandas\n")
+    assert 'packages = ["pandas"]' in (project.root / "jovy.toml").read_text(
+        encoding="utf-8"
     )
     assert read_state(project.env_dir) == {"other": "kept"}
 
@@ -167,6 +194,7 @@ def test_install_no_build_warns_without_building(
     project = create_project()
     monkeypatch.chdir(project.root)
     monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "build_streaming",
@@ -185,6 +213,7 @@ def test_install_regenerates_and_builds_when_stale(
     monkeypatch.chdir(project.root)
     built: list[str] = []
     monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "build_image",
@@ -194,6 +223,43 @@ def test_install_regenerates_and_builds_when_stale(
     run_cli(["install"])
 
     assert built == [project.config.image_ref]
+
+
+def test_install_upgrade_refreshes_lock(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    monkeypatch.chdir(project.root)
+    calls: list[bool] = []
+    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
+
+    def compile_lock(*args: Any, **kwargs: Any) -> None:
+        calls.append(kwargs["upgrade"])
+        fake_compile_lock(*args, **kwargs)
+
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", compile_lock)
+
+    run_cli(["install", "--upgrade"])
+
+    assert calls == [True]
+
+
+def test_install_migrates_legacy_requirements_file(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    monkeypatch.chdir(project.root)
+    (project.env_dir / "requirements.txt").write_text(
+        "numpy\npandas\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
+
+    run_cli(["install", "--no-build"])
+
+    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
+    assert 'packages = ["numpy", "pandas"]' in config_text
+    assert not (project.env_dir / "requirements.txt").exists()
 
 
 @pytest.mark.parametrize("command", ["sync", "start", "stop"])
@@ -215,6 +281,7 @@ def test_build_forwards_build_options(
     project = create_project()
     monkeypatch.chdir(project.root)
     calls: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "build_image",
@@ -242,6 +309,7 @@ def test_run_uses_compose_watch_by_default(
     started: list[Path] = []
     stopped: list[Path] = []
 
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "compose",
@@ -269,6 +337,7 @@ def test_run_no_watch_skips_watcher(
     calls: list[tuple[str, ...]] = []
     started: list[Path] = []
 
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "compose",
@@ -292,6 +361,7 @@ def test_up_does_not_combine_detach_with_compose_watch(
     calls: list[tuple[str, ...]] = []
     started: list[Path] = []
 
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "compose",
@@ -340,6 +410,7 @@ def test_restart_stops_installs_and_starts_detached(
     started: list[Path] = []
     stopped: list[Path] = []
 
+    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,
         "compose",
@@ -434,15 +505,15 @@ def test_clean_removes_generated_artifacts_but_keeps_manifest(
 ) -> None:
     project = create_project()
     monkeypatch.chdir(project.root)
-    (project.env_dir / "requirements.lock").write_text("locked\n", encoding="utf-8")
+    (project.env_dir / "jovy.lock").write_text("locked\n", encoding="utf-8")
 
     run_cli(["clean"])
 
     assert not (project.env_dir / "Containerfile").exists()
     assert not (project.env_dir / "compose.yaml").exists()
     assert not (project.env_dir / "state.json").exists()
-    assert not (project.env_dir / "requirements.lock").exists()
-    assert (project.env_dir / "requirements.txt").exists()
+    assert (project.env_dir / "jovy.lock").exists()
+    assert not (project.env_dir / "requirements.txt").exists()
 
 
 def test_status_outputs_json(

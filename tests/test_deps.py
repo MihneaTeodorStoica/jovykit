@@ -1,77 +1,107 @@
+from __future__ import annotations
+
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-from hypothesis import given
-from hypothesis import strategies as st
+import pytest
 
-from jovykit.deps import add_packages, remove_packages
+from jovykit.config import JovyKitError, initial_config_text
+from jovykit.deps import add_packages, import_requirements, remove_packages
 
 
-def test_add_packages_appends_only_new_entries(tmp_path: Path) -> None:
-    requirements = tmp_path / "requirements.txt"
-    requirements.write_text("# existing\nnumpy\n", encoding="utf-8")
+def write_config(path: Path) -> Path:
+    config_path = path / "jovy.toml"
+    config_path.write_text(
+        initial_config_text(
+            project_name="Example",
+            env_name=".jovy",
+            image="minimal",
+            gpus="none",
+            port=8888,
+        ),
+        encoding="utf-8",
+    )
+    return config_path
 
-    added = add_packages(requirements, ["numpy", "polars", " requests "])
 
-    assert added == ["polars", "requests"]
-    assert requirements.read_text(encoding="utf-8").splitlines() == [
-        "# existing",
+def test_add_packages_updates_toml_and_deduplicates(tmp_path: Path) -> None:
+    config_path = write_config(tmp_path)
+
+    update = add_packages(config_path, ["numpy", " pandas ", "numpy"])
+
+    assert update.added == ["numpy", "pandas"]
+    assert 'packages = ["numpy", "pandas"]' in config_path.read_text(encoding="utf-8")
+
+
+def test_remove_packages_updates_toml_exactly(tmp_path: Path) -> None:
+    config_path = write_config(tmp_path)
+    add_packages(config_path, ["numpy", "pandas", "requests"])
+
+    update = remove_packages(config_path, ["pandas", "missing"])
+
+    assert update.removed == ["pandas"]
+    assert 'packages = ["numpy", "requests"]' in config_path.read_text(encoding="utf-8")
+
+
+def test_import_requirements_recurses_and_preserves_constraints(tmp_path: Path) -> None:
+    nested = tmp_path / "nested.txt"
+    constraints = tmp_path / "constraints.txt"
+    root = tmp_path / "requirements.txt"
+    package_dir = tmp_path / "localpkg"
+    package_dir.mkdir()
+    nested.write_text(
+        "\n".join(
+            [
+                "pandas",
+                "./localpkg",
+                "-e ./localpkg",
+                "# ignored",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    constraints.write_text("numpy==1.26.0\n", encoding="utf-8")
+    root.write_text(
+        "\n".join(
+            [
+                "numpy",
+                "-r nested.txt",
+                "--requirement nested.txt",
+                "-c constraints.txt",
+                "git+https://example.test/repo.git#egg=demo",
+                "numpy  # duplicate",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    imported = import_requirements([root], project_dir=tmp_path)
+
+    assert imported.packages == [
         "numpy",
-        "polars",
-        "requests",
+        "pandas",
+        "localpkg",
+        "-e localpkg",
+        "git+https://example.test/repo.git#egg=demo",
     ]
+    assert imported.constraints == ["constraints.txt"]
 
 
-def test_add_packages_creates_manifest_when_missing(tmp_path: Path) -> None:
-    requirements = tmp_path / "nested" / "requirements.txt"
+def test_import_requirements_detects_cycles(tmp_path: Path) -> None:
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("-r second.txt\nnumpy\n", encoding="utf-8")
+    second.write_text("-r first.txt\npandas\n", encoding="utf-8")
 
-    added = add_packages(requirements, ["", " scipy ", "scipy"])
+    imported = import_requirements([first], project_dir=tmp_path)
 
-    assert added == ["scipy"]
-    assert requirements.read_text(encoding="utf-8").splitlines() == [
-        "# Project packages managed by JovyKit.",
-        "scipy",
-    ]
+    assert imported.packages == ["pandas", "numpy"]
 
 
-def test_remove_packages_removes_exact_manifest_entries(tmp_path: Path) -> None:
+def test_import_requirements_rejects_unsupported_options(tmp_path: Path) -> None:
     requirements = tmp_path / "requirements.txt"
-    requirements.write_text("# existing\nnumpy\npandas\nrequests\n", encoding="utf-8")
+    requirements.write_text(
+        "--index-url https://example.test/simple\n", encoding="utf-8"
+    )
 
-    removed = remove_packages(requirements, ["pandas", "missing"])
-
-    assert removed == ["pandas"]
-    assert requirements.read_text(encoding="utf-8").splitlines() == [
-        "# existing",
-        "numpy",
-        "requests",
-    ]
-
-
-package_text = st.text(
-    alphabet=st.sampled_from(
-        list(
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-<>=!~[] ,"
-        )
-    ),
-    min_size=0,
-    max_size=20,
-)
-
-
-@given(st.lists(package_text, max_size=20))
-def test_add_packages_is_idempotent(packages: list[str]) -> None:
-    with TemporaryDirectory() as temp_dir:
-        requirements = Path(temp_dir) / "requirements.txt"
-
-        first_added = add_packages(requirements, packages)
-        second_added = add_packages(requirements, packages)
-
-    expected_added = []
-    for package in packages:
-        normalized = package.strip()
-        if normalized and normalized not in expected_added:
-            expected_added.append(normalized)
-
-    assert second_added == []
-    assert first_added == expected_added
+    with pytest.raises(JovyKitError, match="Unsupported requirement option"):
+        import_requirements([requirements], project_dir=tmp_path)
