@@ -7,5 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Fixed generated Compose files so Jupyter token settings, custom workdirs, and
+  Docker Compose watch configuration are honored.
 - Added community health documentation.
 - Added layered Jupyter notebook image definitions.

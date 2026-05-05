@@ -181,13 +181,21 @@ def run(
         None, "--env", help="JovyKit environment directory."
     ),
     no_build: bool = typer.Option(False, "--no-build", help="Skip stale build check."),
+    watch: bool = typer.Option(
+        True,
+        "--watch/--no-watch",
+        help="Use Docker Compose watch while Jupyter runs.",
+    ),
 ) -> None:
     """Build if needed and start Jupyter in the foreground."""
     config = _load_env(env)
     write_generated_files(config)
     _ensure_built(config, no_build=no_build)
     console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
-    compose(config, "up", attached=True)
+    args = ["up"]
+    if watch:
+        args.append("--watch")
+    compose(config, *args, attached=True)
 
 
 @app.command()
@@ -196,12 +204,20 @@ def start(
         None, "--env", help="JovyKit environment directory."
     ),
     no_build: bool = typer.Option(False, "--no-build", help="Skip stale build check."),
+    watch: bool = typer.Option(
+        True,
+        "--watch/--no-watch",
+        help="Use Docker Compose watch after starting Jupyter.",
+    ),
 ) -> None:
     """Build if needed and start Jupyter in the background."""
     config = _load_env(env)
     write_generated_files(config)
     _ensure_built(config, no_build=no_build)
-    compose(config, "up", "-d", attached=True)
+    args = ["up", "-d"]
+    if watch:
+        args.append("--watch")
+    compose(config, *args, attached=True)
     console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
 
 

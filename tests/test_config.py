@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import yaml
+
 from jovykit.config import initial_config_text, load_config, slugify_name
 from jovykit.generate import write_generated_files
 from jovykit.images import resolve_image
@@ -38,5 +40,56 @@ def test_generated_environment_files(tmp_path: Path) -> None:
         in (env_dir / "Containerfile").read_text()
     )
     compose = (env_dir / "compose.yaml").read_text()
-    assert '"127.0.0.1:9999:8888"' in compose
-    assert "driver: nvidia" not in compose
+    data = yaml.safe_load(compose)
+    service = data["services"]["jovy"]
+    assert service["ports"] == ["127.0.0.1:9999:8888"]
+    assert service["volumes"][0] == f"..:{config.work_mount}"
+    assert service["environment"] == {
+        "JUPYTER_ENABLE_LAB": "yes",
+        "JUPYTER_LOG_LEVEL": "ERROR",
+    }
+    assert service["develop"]["watch"][0] == {
+        "action": "sync",
+        "path": "..",
+        "target": config.work_mount,
+        "initial_sync": True,
+        "ignore": [
+            ".jovy/",
+            ".git/",
+            ".venv/",
+            "__pycache__/",
+            ".mypy_cache/",
+            ".pytest_cache/",
+            ".ruff_cache/",
+        ],
+    }
+    assert service["develop"]["watch"][1:] == [
+        {"action": "rebuild", "path": "requirements.txt"},
+        {"action": "rebuild", "path": "Containerfile"},
+    ]
+    assert "deploy" not in service
+
+
+def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> None:
+    env_dir = tmp_path / ".jovy"
+    notebooks_dir = tmp_path / "notebooks"
+    env_dir.mkdir()
+    notebooks_dir.mkdir()
+    config_text = initial_config_text(
+        project_name="My Project",
+        env_name=".jovy",
+        image="minimal",
+        gpus="none",
+        port=9999,
+        workdir="../notebooks",
+    ).replace('token = "auto"', 'token = "secret-token"')
+    (env_dir / "jovy.toml").write_text(config_text, encoding="utf-8")
+
+    config = load_config(env_dir)
+    write_generated_files(config)
+
+    service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
+    assert config.project_root == notebooks_dir
+    assert service["environment"]["JUPYTER_TOKEN"] == "secret-token"
+    assert service["volumes"][0] == f"../notebooks:{config.work_mount}"
+    assert service["develop"]["watch"][0]["path"] == "../notebooks"

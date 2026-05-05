@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -32,12 +33,19 @@ class JovyConfig:
     image_tag: str
     port: int
     gpus: str
+    jupyter_token: str
+    jupyter_log_level: str
     work_mount: str
 
     @property
     def image_ref(self) -> str:
         """Return the project overlay image reference."""
         return f"{self.image_name}:{self.image_tag}"
+
+    @property
+    def compose_workdir(self) -> str:
+        """Return the host workdir path relative to the Compose project."""
+        return os.path.relpath(self.project_root, self.env_dir)
 
 
 def slugify_name(value: str) -> str:
@@ -60,6 +68,7 @@ def load_config(env_dir: Path) -> JovyConfig:
     project = raw.get("project", {})
     image = raw.get("image", {})
     runtime = raw.get("runtime", {})
+    jupyter = raw.get("jupyter", {})
     mounts = raw.get("mounts", {})
 
     project_root = (env_dir / str(project.get("workdir", ".."))).resolve()
@@ -73,6 +82,8 @@ def load_config(env_dir: Path) -> JovyConfig:
             image_tag=str(image.get("tag", "local")),
             port=int(runtime.get("port", 8888)),
             gpus=str(runtime.get("gpus", "auto")),
+            jupyter_token=str(jupyter.get("token", "auto")),
+            jupyter_log_level=str(jupyter.get("log_level", "ERROR")),
             work_mount=str(mounts.get("work", "/home/jovyan/work")),
         )
     except KeyError as exc:
