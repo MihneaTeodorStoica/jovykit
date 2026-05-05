@@ -58,6 +58,7 @@ Create an environment, add project packages, and run Jupyter:
 ```bash
 jovy init .jovy --image base --gpus auto
 jovy add pandas scikit-learn plotly
+jovy install
 jovy run
 ```
 
@@ -80,14 +81,17 @@ Useful commands:
 jovy --version
 jovy status
 jovy status --json
+jovy remove plotly
+jovy install
+jovy up --no-build
+jovy down --timeout 10
+jovy restart
 jovy build --pull
-jovy sync --no-build
-jovy start --no-build
 jovy run --watch
 jovy logs --tail 100 --since 10m --timestamps --no-follow
 jovy shell -c "python --version"
 jovy exec python --version
-jovy stop --timeout 10
+jovy clean
 jovy destroy --keep-image
 ```
 
@@ -95,9 +99,8 @@ Most commands accept `--env PATH` when you want to operate on a JovyKit
 environment outside the current project tree. `jovy init` also supports
 customizing the generated project name, overlay image name/tag, Jupyter port,
 GPU mode, Jupyter token/log level, and mounted work directory.
-Docker Compose watch runs with `jovy run`; `jovy start` stays detached and
-starts a lightweight watcher that restarts the container when `jovy.toml`
-changes.
+Docker Compose watch runs with `jovy run`; `jovy up` stays detached and starts
+a lightweight watcher that restarts the container when `jovy.toml` changes.
 
 `jovy.toml` can also customize runtime environment variables, extra volumes,
 restart policy, Jupyter command/logging, Compose Watch behavior, image build

@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 from hypothesis import given
 from hypothesis import strategies as st
 
-from jovykit.deps import add_packages
+from jovykit.deps import add_packages, remove_packages
 
 
 def test_add_packages_appends_only_new_entries(tmp_path: Path) -> None:
@@ -31,6 +31,20 @@ def test_add_packages_creates_manifest_when_missing(tmp_path: Path) -> None:
     assert requirements.read_text(encoding="utf-8").splitlines() == [
         "# Project packages managed by JovyKit.",
         "scipy",
+    ]
+
+
+def test_remove_packages_removes_exact_manifest_entries(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("# existing\nnumpy\npandas\nrequests\n", encoding="utf-8")
+
+    removed = remove_packages(requirements, ["pandas", "missing"])
+
+    assert removed == ["pandas"]
+    assert requirements.read_text(encoding="utf-8").splitlines() == [
+        "# existing",
+        "numpy",
+        "requests",
     ]
 
 

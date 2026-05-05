@@ -28,3 +28,23 @@ def add_packages(requirements_path: Path, packages: list[str]) -> list[str]:
 
     requirements_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return added
+
+
+def remove_packages(requirements_path: Path, packages: list[str]) -> list[str]:
+    """Remove exact package entries from the manifest."""
+    if not requirements_path.exists():
+        return []
+
+    targets = {package.strip() for package in packages if package.strip()}
+    lines = requirements_path.read_text(encoding="utf-8").splitlines()
+    kept: list[str] = []
+    removed: list[str] = []
+    for line in lines:
+        entry = line.strip()
+        if entry and not entry.startswith("#") and entry in targets:
+            removed.append(entry)
+            continue
+        kept.append(line)
+
+    requirements_path.write_text("\n".join(kept).rstrip() + "\n", encoding="utf-8")
+    return removed

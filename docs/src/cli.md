@@ -30,31 +30,34 @@ Useful initialization options:
 
 ```bash
 jovy add pandas scikit-learn plotly
-jovy add polars --sync
+jovy remove plotly
 ```
 
 Packages are appended to `.jovy/requirements.txt` only when they are not already
-present. Adding packages marks the overlay image stale; `--sync` regenerates the
-environment files and rebuilds immediately.
+present. Removing packages deletes exact manifest entries. Package changes mark
+the overlay image stale; run `jovy install`, `jovy run`, or `jovy up` to apply
+them.
 
-## Build and run
+## Install and run
 
 ```bash
+jovy install
+jovy install --no-build
 jovy build
 jovy build --no-cache --pull
-jovy sync
-jovy sync --no-build
 jovy run
 jovy run --watch
-jovy start
+jovy up
+jovy restart
 ```
 
-`jovy run` starts Jupyter in the foreground. `jovy start` starts it in the
-background. Both regenerate files and build the overlay image when the build
-inputs are stale. Use `--no-build` to skip the stale-build check.
-Docker Compose watch is available through `jovy run`. Detached `jovy start`
-also launches a lightweight config watcher that restarts the container when
-`jovy.toml` changes.
+`jovy install` regenerates environment files and builds the overlay image when
+the build inputs are stale. `jovy build` only builds the image and does not
+start anything. `jovy run` installs if stale and starts Jupyter in the
+foreground; `jovy up` installs if stale and starts it in the background. Use
+`--no-build` to skip the stale-build check. Docker Compose watch is available
+through `jovy run`. Detached `jovy up` and `jovy restart` also launch a
+lightweight config watcher that restarts the container when `jovy.toml` changes.
 
 ## Customize with TOML
 
@@ -74,7 +77,7 @@ jovy logs --no-follow
 jovy shell
 jovy shell -c "python --version"
 jovy exec python --version
-jovy stop --timeout 10
+jovy down --timeout 10
 ```
 
 Most commands discover the nearest `jovy.toml` by walking upward from the
@@ -84,14 +87,16 @@ directory to operate on a specific environment.
 ## Clean up
 
 ```bash
+jovy clean
 jovy destroy
 jovy destroy --keep-image
 jovy destroy --remove-dir
 ```
 
-`jovy destroy` removes Docker Compose resources and the project overlay image.
-`--keep-image` preserves the image. `--remove-dir` also deletes the JovyKit
-environment directory.
+`jovy clean` removes generated files and local build state while preserving the
+package manifest. `jovy destroy` stops the environment, removes Docker Compose
+resources, and removes the project overlay image. `--keep-image` preserves the
+image. `--remove-dir` also deletes the JovyKit environment directory.
 
 ## Error handling
 

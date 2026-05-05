@@ -17,7 +17,7 @@ from jovykit.config import (
     read_state,
     write_state,
 )
-from jovykit.deps import add_packages
+from jovykit.deps import add_packages, remove_packages
 from jovykit.generate import ensure_empty_or_jovy_env, write_generated_files
 from jovykit.paths import (
     DEFAULT_ENV_DIR,
@@ -77,6 +77,17 @@ def _ensure_built(config, *, no_build: bool = False) -> None:
     if is_build_stale(config):
         console.print("[bold]Building JovyKit overlay image...[/bold]")
         build_image(config)
+
+
+def _install(config, *, no_build: bool = False) -> None:
+    write_generated_files(config)
+    _ensure_built(config, no_build=no_build)
+
+
+def _clear_build_state(env_dir: Path) -> None:
+    state = read_state(env_dir)
+    state.pop("build_signature", None)
+    write_state(env_dir, state)
 
 
 @app.command()
@@ -167,28 +178,51 @@ def add(
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
     ),
-    sync_after: bool = typer.Option(
-        False, "--sync", help="Regenerate files and build after adding packages."
-    ),
 ) -> None:
     """Add packages to the project environment manifest."""
     config = _load_env(env)
     added = add_packages(config.env_dir / "requirements.txt", packages)
-    state = read_state(config.env_dir)
-    state.pop("build_signature", None)
-    write_state(config.env_dir, state)
+    _clear_build_state(config.env_dir)
     if added:
         console.print(f"Added: {', '.join(added)}")
-        if sync_after:
-            console.print("Regenerating files and rebuilding the overlay...")
-            write_generated_files(config)
-            _ensure_built(config)
-        else:
-            console.print(
-                "Run [bold]jovy sync[/bold] or [bold]jovy run[/bold] to rebuild the overlay."
-            )
+        console.print(
+            "Run [bold]jovy install[/bold], [bold]jovy run[/bold], or [bold]jovy up[/bold] to apply changes."
+        )
     else:
         console.print("No new packages added.")
+
+
+@app.command()
+def remove(
+    packages: list[str] = typer.Argument(
+        ..., help="Packages to remove from .jovy/requirements.txt."
+    ),
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Remove packages from the project environment manifest."""
+    config = _load_env(env)
+    removed = remove_packages(config.env_dir / "requirements.txt", packages)
+    _clear_build_state(config.env_dir)
+    if removed:
+        console.print(f"Removed: {', '.join(removed)}")
+        console.print(
+            "Run [bold]jovy install[/bold], [bold]jovy run[/bold], or [bold]jovy up[/bold] to apply changes."
+        )
+    else:
+        console.print("No matching packages removed.")
+
+
+@app.command()
+def install(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+    no_build: bool = typer.Option(False, "--no-build", help="Only regenerate files."),
+) -> None:
+    """Regenerate files and build the overlay image when stale."""
+    _install(_load_env(env), no_build=no_build)
 
 
 @app.command()
@@ -207,19 +241,6 @@ def build(
 
 
 @app.command()
-def sync(
-    env: Path | None = typer.Option(
-        None, "--env", help="JovyKit environment directory."
-    ),
-    no_build: bool = typer.Option(False, "--no-build", help="Only regenerate files."),
-) -> None:
-    """Regenerate files and build the overlay image when stale."""
-    config = _load_env(env)
-    write_generated_files(config)
-    _ensure_built(config, no_build=no_build)
-
-
-@app.command()
 def run(
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
@@ -233,8 +254,7 @@ def run(
 ) -> None:
     """Build if needed and start Jupyter in the foreground."""
     config = _load_env(env)
-    write_generated_files(config)
-    _ensure_built(config, no_build=no_build)
+    _install(config, no_build=no_build)
     console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
     args = ["up"]
     should_watch = watch and config.watch_enabled
@@ -249,7 +269,7 @@ def run(
 
 
 @app.command()
-def start(
+def up(
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
     ),
@@ -257,8 +277,7 @@ def start(
 ) -> None:
     """Build if needed and start Jupyter in the background."""
     config = _load_env(env)
-    write_generated_files(config)
-    _ensure_built(config, no_build=no_build)
+    _install(config, no_build=no_build)
     compose(config, "up", "-d", attached=True)
     if config.watch_enabled:
         start_watcher(config.env_dir)
@@ -266,7 +285,7 @@ def start(
 
 
 @app.command()
-def stop(
+def down(
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
     ),
@@ -281,6 +300,30 @@ def stop(
     config = _load_env(env)
     stop_watcher(config.env_dir)
     compose(config, *args, attached=True)
+
+
+@app.command()
+def restart(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+    no_build: bool = typer.Option(False, "--no-build", help="Skip stale build check."),
+    timeout: int | None = typer.Option(
+        None, "--timeout", help="Seconds to wait before killing containers."
+    ),
+) -> None:
+    """Build if needed and restart Jupyter in the background."""
+    config = _load_env(env)
+    _install(config, no_build=no_build)
+    stop_watcher(config.env_dir)
+    args = ["stop"]
+    if timeout is not None:
+        args.extend(["--timeout", str(timeout)])
+    compose(config, *args, attached=True)
+    compose(config, "up", "-d", attached=True)
+    if config.watch_enabled:
+        start_watcher(config.env_dir)
+    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
 
 
 @app.command()
@@ -360,6 +403,36 @@ def destroy(
     if remove_dir:
         shutil.rmtree(config.env_dir)
         console.print(f"Removed {config.env_dir}")
+
+
+@app.command()
+def clean(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Remove generated files and local build state."""
+    config = _load_env(env)
+    removed: list[Path] = []
+    for name in (
+        "Containerfile",
+        "compose.yaml",
+        ".gitignore",
+        "state.json",
+        "requirements.lock",
+        "watcher.pid",
+        "watcher.log",
+    ):
+        path = config.env_dir / name
+        if path.exists():
+            path.unlink()
+            removed.append(path)
+    if removed:
+        console.print("Removed generated artifacts:")
+        for path in removed:
+            console.print(f"- {_display_path(path)}")
+    else:
+        console.print("No generated artifacts to remove.")
 
 
 @app.command()
