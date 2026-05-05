@@ -13,7 +13,11 @@ def add_packages(requirements_path: Path, packages: list[str]) -> list[str]:
     else:
         lines = ["# Project packages managed by LabKit."]
 
-    existing = {line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")}
+    existing = {
+        line.strip()
+        for line in lines
+        if line.strip() and not line.lstrip().startswith("#")
+    }
     added: list[str] = []
     for package in packages:
         normalized = package.strip()

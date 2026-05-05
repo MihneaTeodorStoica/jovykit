@@ -33,8 +33,12 @@ def _ensure_built(config) -> None:
 
 @app.command()
 def init(
-    path: Path = typer.Argument(Path(DEFAULT_ENV_DIR), help="Environment directory to create."),
-    image: str = typer.Option("base", "--image", help="Image level or full image reference."),
+    path: Path = typer.Argument(
+        Path(DEFAULT_ENV_DIR), help="Environment directory to create."
+    ),
+    image: str = typer.Option(
+        "base", "--image", help="Image level or full image reference."
+    ),
     gpus: str = typer.Option("auto", "--gpus", help="GPU mode: auto, none, or all."),
     port: int = typer.Option(8888, "--port", help="Local Jupyter port."),
 ) -> None:
@@ -59,7 +63,9 @@ def init(
     write_generated_files(config)
     write_state(env_dir, {})
 
-    console.print(f"LabKit environment: [bold]{env_dir.relative_to(Path.cwd()) if env_dir.is_relative_to(Path.cwd()) else env_dir}[/bold]")
+    console.print(
+        f"LabKit environment: [bold]{env_dir.relative_to(Path.cwd()) if env_dir.is_relative_to(Path.cwd()) else env_dir}[/bold]"
+    )
     console.print(f"Base image: {config.base_image}")
     console.print(f"Project image: {config.image_ref}")
     console.print(f"GPU: {config.gpus}")
@@ -67,7 +73,11 @@ def init(
 
 
 @app.command()
-def add(packages: list[str] = typer.Argument(..., help="Packages to add to .lab/requirements.txt.")) -> None:
+def add(
+    packages: list[str] = typer.Argument(
+        ..., help="Packages to add to .lab/requirements.txt."
+    )
+) -> None:
     """Add packages to the project environment manifest."""
     config = _load_env()
     added = add_packages(config.env_dir / "requirements.txt", packages)
@@ -76,13 +86,17 @@ def add(packages: list[str] = typer.Argument(..., help="Packages to add to .lab/
     write_state(config.env_dir, state)
     if added:
         console.print(f"Added: {', '.join(added)}")
-        console.print("Run [bold]lab sync[/bold] or [bold]lab run[/bold] to rebuild the overlay.")
+        console.print(
+            "Run [bold]lab sync[/bold] or [bold]lab run[/bold] to rebuild the overlay."
+        )
     else:
         console.print("No new packages added.")
 
 
 @app.command()
-def build(no_cache: bool = typer.Option(False, "--no-cache", help="Build without cache.")) -> None:
+def build(
+    no_cache: bool = typer.Option(False, "--no-cache", help="Build without cache.")
+) -> None:
     """Build the project overlay image."""
     config = _load_env()
     build_image(config, no_cache=no_cache)
@@ -134,16 +148,24 @@ def shell() -> None:
     compose(_load_env(), "exec", "lab", "bash", attached=True)
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def exec(ctx: typer.Context) -> None:
     """Run a command inside the running LabKit container."""
     if not ctx.args:
-        raise typer.BadParameter("Pass a command to run, for example: lab exec python --version")
+        raise typer.BadParameter(
+            "Pass a command to run, for example: lab exec python --version"
+        )
     compose(_load_env(), "exec", "lab", *ctx.args, attached=True)
 
 
 @app.command()
-def destroy(remove_dir: bool = typer.Option(False, "--remove-dir", help="Also delete the environment directory.")) -> None:
+def destroy(
+    remove_dir: bool = typer.Option(
+        False, "--remove-dir", help="Also delete the environment directory."
+    )
+) -> None:
     """Remove the container, volume, and project overlay image."""
     config = _load_env()
     destroy_environment(config)
