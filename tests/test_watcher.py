@@ -138,6 +138,23 @@ def test_stop_watcher_sends_sigterm_to_running_pid(
     assert not watcher.pid_path(project.env_dir).exists()
 
 
+def test_stop_watcher_removes_stopped_pid_without_signal(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    watcher.pid_path(project.env_dir).write_text("1234\n", encoding="utf-8")
+    monkeypatch.setattr(watcher, "is_process_running", lambda pid: False)
+    monkeypatch.setattr(
+        watcher.os,
+        "kill",
+        lambda pid, signal: pytest.fail("stopped watcher should not be signaled"),
+    )
+
+    watcher.stop_watcher(project.env_dir)
+
+    assert not watcher.pid_path(project.env_dir).exists()
+
+
 def test_apply_config_change_builds_when_stale(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
@@ -194,3 +211,40 @@ def test_watch_config_applies_change_and_continues_after_jovykit_error(
     assert "Watching" in output
     assert "Error: bad config" in output
     assert "Applied config change" in output
+
+
+def test_watch_config_ignores_missing_config_and_unchanged_mtime(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    project = create_project()
+    states = iter([1.0, FileNotFoundError, 1.0])
+    apply_calls: list[Path] = []
+    sleep_calls = 0
+
+    class FakeConfigPath:
+        def stat(self) -> Any:
+            value = next(states)
+            if value is FileNotFoundError:
+                raise FileNotFoundError
+            return type("Stat", (), {"st_mtime": value})()
+
+        def __str__(self) -> str:
+            return str(project.config.config_path)
+
+    config = replace(project.config, config_path=FakeConfigPath())
+    monkeypatch.setattr(watcher, "load_config", lambda env_dir: config)
+    monkeypatch.setattr(watcher, "apply_config_change", apply_calls.append)
+
+    def fake_sleep(interval: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls >= 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(watcher.time, "sleep", fake_sleep)
+
+    with pytest.raises(KeyboardInterrupt):
+        watcher.watch_config(project.env_dir, poll_interval=0.01)
+
+    assert apply_calls == []

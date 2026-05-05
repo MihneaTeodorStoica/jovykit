@@ -10,6 +10,9 @@ from jovykit.config import JovyKitError, read_state, write_state
 from jovykit.config_editor import (
     ConfigEditorApp,
     ConfigEditorValues,
+    format_list_lines,
+    format_mapping_lines,
+    parse_list_lines,
     parse_mapping_lines,
     save_config_values,
     values_from_config,
@@ -88,6 +91,21 @@ def test_save_config_values_rejects_invalid_restricted_choice(
 def test_parse_mapping_lines_requires_key_value_syntax() -> None:
     with pytest.raises(JovyKitError, match="key=value"):
         parse_mapping_lines("BROKEN", field_name="Runtime env")
+
+
+def test_line_parsers_ignore_blanks_and_preserve_values() -> None:
+    assert parse_list_lines("\n numpy \n\n pandas>=2 \n") == ["numpy", "pandas>=2"]
+    assert parse_mapping_lines(
+        "\n API_URL=https://example.invalid \n EMPTY= \n",
+        field_name="Runtime env",
+    ) == {"API_URL": "https://example.invalid", "EMPTY": ""}
+    assert format_list_lines(["numpy", "pandas"]) == "numpy\npandas"
+    assert format_mapping_lines({"A": "1", "B": "two"}) == "A=1\nB=two"
+
+
+def test_parse_mapping_lines_requires_non_empty_key() -> None:
+    with pytest.raises(JovyKitError, match="empty key"):
+        parse_mapping_lines("=missing", field_name="Runtime env")
 
 
 def test_editor_uses_guided_controls(create_project: Any) -> None:

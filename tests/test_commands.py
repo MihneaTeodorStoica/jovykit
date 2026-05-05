@@ -71,6 +71,47 @@ def test_jupyter_access_url_includes_token(create_project: Any) -> None:
     assert commands.jupyter_access_url(project.config).endswith("/lab?token=dev-token")
 
 
+def test_jupyter_access_url_omits_empty_token(create_project: Any) -> None:
+    project = create_project(token="")
+    messages: list[str] = []
+
+    assert commands.jupyter_access_url(project.config).endswith("/lab")
+
+    commands.emit_jupyter_access(project.config, messages.append)
+
+    assert messages == ["Jupyter: http://127.0.0.1:9999/lab"]
+
+
+def test_ensure_built_reports_stale_no_build(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    messages: list[str] = []
+    monkeypatch.setattr(commands, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(
+        commands,
+        "build_image",
+        lambda config: pytest.fail("--no-build should skip the build backend"),
+    )
+
+    commands.ensure_built(project.config, no_build=True, emit=messages.append)
+
+    assert messages == ["Build is stale; continuing because --no-build was used."]
+
+
+def test_is_container_running_returns_false_for_compose_errors(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+
+    def fail_ps(config: Any) -> str:
+        raise JovyKitError("compose failed")
+
+    monkeypatch.setattr(commands, "compose_ps", fail_ps)
+
+    assert commands.is_container_running(project.config) is False
+
+
 def test_build_uses_streaming_backend(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
@@ -284,3 +325,37 @@ def test_exec_streaming_disables_tty(
     )
 
     assert calls == [("exec", "-T", "jovy", "python", "--version")]
+
+
+def test_shell_streaming_requires_command(create_project: Any) -> None:
+    project = create_project()
+
+    with pytest.raises(JovyKitError, match="requires a command"):
+        commands.shell(env=project.env_dir, stream=True)
+
+
+def test_exec_requires_command(create_project: Any) -> None:
+    project = create_project()
+
+    with pytest.raises(JovyKitError, match="Pass a command"):
+        commands.exec_in_container([], env=project.env_dir)
+
+
+def test_status_emits_human_readable_lines(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    messages: list[str] = []
+    monkeypatch.setattr(commands, "is_build_stale", lambda config: False)
+
+    commands.status(env=project.env_dir, json_output=False, emit=messages.append)
+
+    assert messages == [
+        f"Environment: {project.env_dir}",
+        "Base image: ghcr.io/mihneateodorstoica/jovykit-minimal:latest",
+        "Project image: jovykit-my-project:local",
+        "Port: 9999",
+        "URL: http://127.0.0.1:9999/lab?token=jovykit",
+        "GPU: none",
+        "Build stale: no",
+    ]
