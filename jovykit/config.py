@@ -99,6 +99,8 @@ def initial_config_text(
     image: str,
     gpus: str,
     port: int,
+    token: str = "auto",
+    log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
     workdir: str = "..",
@@ -123,8 +125,8 @@ attach_mode = "stop-on-ctrl-c"
 
 [jupyter]
 lab = true
-token = "auto"
-log_level = "ERROR"
+token = "{token}"
+log_level = "{log_level}"
 
 [mounts]
 work = "/home/jovyan/work"

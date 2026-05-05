@@ -8,6 +8,7 @@ Docker files, dependency manifest, and local build state for that project.
 
 ```bash
 jovy init .jovy --image base --gpus auto --port 8888
+jovy init .jovy --token dev-token --log-level INFO
 ```
 
 Image levels are `minimal`, `base`, `extended`, and `full`. You can also pass a
@@ -18,6 +19,8 @@ Useful initialization options:
 - `--name`: project name written to `jovy.toml`
 - `--image-name`: overlay image name
 - `--tag`: overlay image tag
+- `--token`: Jupyter access token, or `auto` for Jupyter's generated token
+- `--log-level`: Jupyter server log level
 - `--workdir`: project path mounted into the container
 - `--force`: refresh an existing JovyKit environment without initializing a
   non-JovyKit directory
@@ -52,8 +55,10 @@ inputs are stale. Use `--no-build` to skip the stale-build check.
 
 ```bash
 jovy status
+jovy --version
 jovy status --json
 jovy logs --tail 100
+jovy logs --since 10m --timestamps
 jovy logs --no-follow
 jovy shell
 jovy shell -c "python --version"

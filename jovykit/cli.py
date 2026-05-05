@@ -9,6 +9,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from jovykit import __version__
 from jovykit.config import (
     JovyKitError,
     initial_config_text,
@@ -25,6 +26,25 @@ from jovykit.runtime import is_build_stale
 
 app = typer.Typer(help="Manage project-local JovyKit Jupyter container environments.")
 console = Console()
+
+
+def _version_callback(show_version: bool) -> None:
+    if show_version:
+        console.print(f"jovykit {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def callback(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the installed JovyKit version and exit.",
+    ),
+) -> None:
+    """Manage project-local JovyKit Jupyter container environments."""
 
 
 def _load_env(env: Path | None = None):
@@ -59,6 +79,16 @@ def init(
     ),
     gpus: str = typer.Option("auto", "--gpus", help="GPU mode: auto, none, or all."),
     port: int = typer.Option(8888, "--port", help="Local Jupyter port."),
+    token: str = typer.Option(
+        "auto",
+        "--token",
+        help="Jupyter access token, or auto for Jupyter's generated token.",
+    ),
+    log_level: str = typer.Option(
+        "ERROR",
+        "--log-level",
+        help="Jupyter server log level.",
+    ),
     project_name: str | None = typer.Option(
         None, "--name", help="Project name to store in jovy.toml."
     ),
@@ -97,6 +127,8 @@ def init(
             image=image,
             gpus=gpus,
             port=port,
+            token=token,
+            log_level=log_level,
             image_name=image_name,
             image_tag=image_tag,
             workdir=workdir,
@@ -244,9 +276,19 @@ def logs(
     ),
     follow: bool = typer.Option(True, "--follow/--no-follow", help="Follow logs."),
     tail: str = typer.Option("all", "--tail", help="Number of lines to show."),
+    since: str | None = typer.Option(
+        None, "--since", help="Show logs since a relative time or timestamp."
+    ),
+    timestamps: bool = typer.Option(
+        False, "--timestamps", "-t", help="Show timestamps in log output."
+    ),
 ) -> None:
     """Follow JovyKit container logs."""
     args = ["logs", "--tail", tail]
+    if since:
+        args.extend(["--since", since])
+    if timestamps:
+        args.append("--timestamps")
     if follow:
         args.append("-f")
     compose(_load_env(env), *args, attached=True)

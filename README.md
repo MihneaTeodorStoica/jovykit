@@ -75,12 +75,13 @@ The CLI writes a reproducible overlay build recipe under `.jovy/`:
 Useful commands:
 
 ```bash
+jovy --version
 jovy status
 jovy status --json
 jovy build --pull
 jovy sync --no-build
 jovy start --no-build
-jovy logs --tail 100 --no-follow
+jovy logs --tail 100 --since 10m --timestamps --no-follow
 jovy shell -c "python --version"
 jovy exec python --version
 jovy stop --timeout 10
@@ -90,7 +91,7 @@ jovy destroy --keep-image
 Most commands accept `--env PATH` when you want to operate on a JovyKit
 environment outside the current project tree. `jovy init` also supports
 customizing the generated project name, overlay image name/tag, Jupyter port,
-GPU mode, and mounted work directory.
+GPU mode, Jupyter token/log level, and mounted work directory.
 
 ## Repository Layout
 

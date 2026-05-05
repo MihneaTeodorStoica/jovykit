@@ -7,6 +7,8 @@ introduced.
 
 ## Unreleased
 
+- Added `jovy --version`, Jupyter init flags, and additional log filtering
+  flags.
 - Fixed generated Compose files so Jupyter token settings, custom workdirs, and
   Docker Compose watch configuration are honored.
 - Added community health documentation.
