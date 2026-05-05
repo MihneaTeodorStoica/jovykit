@@ -4,6 +4,8 @@
 pytest
 pytest-cov
 pytest-mock
+hypothesis
+pytest-xdist
 
 # Formatting and linting
 black

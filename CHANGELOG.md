@@ -7,6 +7,9 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 1.1.2.
+- Fixed `jovy destroy` so removing the local overlay image invalidates build
+  state before the next `jovy start`.
 - Fixed generated Compose Watch paths for root-level config files.
 - Added TOML customization for runtime, watch, and image build behavior.
 - Moved `jovy.toml` to the project root and added config-change restarts.

@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from jovykit.config import JovyKitError
+from jovykit.generate import ensure_empty_or_jovy_env, write_generated_files
+
+
+def test_write_generated_files_creates_expected_readable_files(
+    create_project: Any,
+) -> None:
+    project = create_project(generate=False)
+
+    write_generated_files(project.config)
+
+    assert (project.env_dir / "Containerfile").exists()
+    assert (project.env_dir / "compose.yaml").exists()
+    assert (project.env_dir / "requirements.txt").read_text(encoding="utf-8") == (
+        "# Project packages managed by JovyKit.\n"
+    )
+    assert (project.env_dir / ".gitignore").read_text(encoding="utf-8") == (
+        "state.json\nrequirements.lock\n"
+    )
+
+
+def test_write_generated_files_preserves_existing_requirements(
+    create_project: Any,
+) -> None:
+    project = create_project(generate=False)
+    project.env_dir.mkdir(exist_ok=True)
+    (project.env_dir / "requirements.txt").write_text("numpy\n", encoding="utf-8")
+
+    write_generated_files(project.config)
+
+    assert (project.env_dir / "requirements.txt").read_text(
+        encoding="utf-8"
+    ) == "numpy\n"
+
+
+def test_ensure_empty_or_jovy_env_allows_missing_directory(tmp_path: Path) -> None:
+    ensure_empty_or_jovy_env(tmp_path / ".jovy")
+
+
+def test_ensure_empty_or_jovy_env_rejects_existing_jovy_environment(
+    create_project: Any,
+) -> None:
+    project = create_project()
+
+    with pytest.raises(JovyKitError, match="already exists"):
+        ensure_empty_or_jovy_env(project.env_dir)
+
+
+def test_ensure_empty_or_jovy_env_rejects_non_empty_directory(tmp_path: Path) -> None:
+    env_dir = tmp_path / ".jovy"
+    env_dir.mkdir()
+    (env_dir / "file.txt").write_text("data", encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="non-empty directory"):
+        ensure_empty_or_jovy_env(env_dir)

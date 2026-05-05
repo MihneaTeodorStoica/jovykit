@@ -116,3 +116,7 @@ def destroy(config: JovyConfig, *, remove_image: bool = True) -> None:
             attached=False,
             check=False,
         )
+        state = read_state(config.env_dir)
+        for key in ("build_signature", "image", "built_at"):
+            state.pop(key, None)
+        write_state(config.env_dir, state)

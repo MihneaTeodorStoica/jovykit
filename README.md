@@ -122,6 +122,21 @@ To build the documentation locally:
 mdbook build docs
 ```
 
+## Testing
+
+Run the default deterministic test suite with coverage:
+
+```bash
+pytest --cov=jovykit --cov-report=term-missing --cov-fail-under=90
+```
+
+Docker-facing smoke tests are opt-in so routine CI and local test runs stay
+fast and deterministic:
+
+```bash
+pytest -m docker --run-docker
+```
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
