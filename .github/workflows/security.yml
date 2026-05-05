@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: security-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -61,7 +61,7 @@ jobs:
           cache: pip
 
       - name: Install Semgrep
-        run: python -m pip install semgrep
+        run: python -m pip install --disable-pip-version-check semgrep
 
       - name: Run Semgrep
         run: |
@@ -98,7 +98,7 @@ jobs:
           cache: pip
 
       - name: Install zizmor
-        run: python -m pip install zizmor
+        run: python -m pip install --disable-pip-version-check zizmor
 
       - name: Audit workflows
         run: |
