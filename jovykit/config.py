@@ -68,6 +68,13 @@ class JovyConfig:
         """Return the host workdir path relative to the Compose project."""
         return os.path.relpath(self.project_root, self.env_dir)
 
+    def compose_project_path(self, path: str) -> str:
+        """Return a project-root path relative to the Compose project."""
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.project_dir / candidate
+        return os.path.relpath(candidate.resolve(), self.env_dir)
+
 
 def slugify_name(value: str) -> str:
     """Create a Docker-image-friendly project slug."""

@@ -98,7 +98,7 @@ def render_compose(config: JovyConfig) -> str:
         watch_rules.extend(
             {
                 "action": "sync+restart",
-                "path": path,
+                "path": config.compose_project_path(path),
                 "target": f"/tmp/jovykit-watch/{path.replace('/', '-')}",
                 "initial_sync": True,
             }

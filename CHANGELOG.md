@@ -7,6 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Fixed generated Compose Watch paths for root-level config files.
 - Added TOML customization for runtime, watch, and image build behavior.
 - Moved `jovy.toml` to the project root and added config-change restarts.
 - Changed new environments to use `work/` as the mounted project directory.

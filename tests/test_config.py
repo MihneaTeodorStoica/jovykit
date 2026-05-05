@@ -53,7 +53,7 @@ def test_generated_environment_files(tmp_path: Path) -> None:
         {"action": "rebuild", "path": "Containerfile"},
         {
             "action": "sync+restart",
-            "path": "jovy.toml",
+            "path": "../jovy.toml",
             "target": "/tmp/jovykit-watch/jovy.toml",
             "initial_sync": True,
         },
@@ -170,6 +170,7 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
     assert "./data:/data" in service["volumes"]
     assert service["develop"]["watch"][0]["action"] == "sync"
     assert service["develop"]["watch"][-1]["action"] == "sync+restart"
+    assert service["develop"]["watch"][-1]["path"] == "../runtime.toml"
 
     containerfile = (env_dir / "Containerfile").read_text(encoding="utf-8")
     assert "apt-get install -y --no-install-recommends curl" in containerfile
