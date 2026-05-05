@@ -130,7 +130,7 @@ docker build --target full -t jovykit-full ./image
 policy, Jupyter command/logging, Compose Watch behavior, image build arguments,
 build target/platform, apt packages, and uv/pip install options.
 
-Use the guided editor:
+Use the arrow-key editor:
 
 ```bash
 jovy config

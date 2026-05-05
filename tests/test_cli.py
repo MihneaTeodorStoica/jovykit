@@ -227,6 +227,7 @@ def test_install_regenerates_and_builds_when_stale(
     monkeypatch.chdir(project.root)
     built: list[str] = []
     monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(command_ops, "is_container_running", lambda config: False)
     monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
     monkeypatch.setattr(
         command_ops,

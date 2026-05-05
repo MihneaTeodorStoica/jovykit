@@ -1,21 +1,26 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
-from textual.widgets import Input, Select, Switch, TextArea
 
 from jovykit.config import JovyKitError, read_state, write_state
 from jovykit.config_editor import (
-    ConfigEditorApp,
+    ConfigField,
     ConfigEditorValues,
     format_list_lines,
     format_mapping_lines,
     parse_list_lines,
     parse_mapping_lines,
+    run_config_editor,
     save_config_values,
     values_from_config,
+    _cycle_field,
+    _edit_field,
+    _parse_bool,
+    _read_key,
+    _set_scalar_value,
+    _validate_values,
 )
 
 
@@ -108,20 +113,217 @@ def test_parse_mapping_lines_requires_non_empty_key() -> None:
         parse_mapping_lines("=missing", field_name="Runtime env")
 
 
-def test_editor_uses_guided_controls(create_project: Any) -> None:
+def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
     project = create_project()
-    app = ConfigEditorApp(env=project.env_dir)
+    keys = iter(
+        [
+            *["down"] * 5,
+            "enter",
+            *["up"] * 3,
+            "enter",
+            *["down"] * 10,
+            "right",
+            *["down"] * 2,
+            "enter",
+            "down",
+            "enter",
+            "down",
+            "enter",
+            "s",
+        ]
+    )
+    inputs = iter(
+        [
+            "7777",
+            "base",
+            "numpy, pandas",
+            "API_URL=https://example.invalid",
+            "./data=/data",
+        ]
+    )
+    messages: list[str] = []
 
-    async def run() -> None:
-        async with app.run_test():
-            assert isinstance(app.query_one("#gpus"), Select)
-            assert isinstance(app.query_one("#restart_policy"), Select)
-            assert isinstance(app.query_one("#jupyter_log_level"), Select)
-            assert isinstance(app.query_one("#watch_workspace_mode"), Select)
-            assert isinstance(app.query_one("#jupyter_lab"), Switch)
-            assert isinstance(app.query_one("#watch_enabled"), Switch)
-            assert isinstance(app.query_one("#port"), Input)
-            assert isinstance(app.query_one("#python_packages"), TextArea)
-            app.exit("done")
+    result = run_config_editor(
+        env=project.env_dir,
+        input_func=lambda prompt: next(inputs),
+        key_func=lambda: next(keys),
+        output=messages.append,
+    )
 
-    asyncio.run(run())
+    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
+    assert result == "saved"
+    assert "port = 7777" in config_text
+    assert 'base = "ghcr.io/mihneateodorstoica/jovykit-base:latest"' in config_text
+    assert "enabled = false" in config_text
+    assert 'packages = ["numpy", "pandas"]' in config_text
+    assert 'API_URL = "https://example.invalid"' in config_text
+    assert '"./data" = "/data"' in config_text
+    assert any("JovyKit config" in message for message in messages)
+
+
+def test_keyboard_editor_reports_errors_and_can_cancel(create_project: Any) -> None:
+    project = create_project()
+    keys = iter([*["down"] * 6, "enter", "q"])
+    inputs = iter(["sometimes"])
+    messages: list[str] = []
+
+    result = run_config_editor(
+        env=project.env_dir,
+        input_func=lambda prompt: next(inputs),
+        key_func=lambda: next(keys),
+        output=messages.append,
+    )
+
+    assert result == "cancelled"
+    assert any("GPU mode" in message for message in messages)
+
+
+def test_keyboard_editor_cycles_choice_and_applies(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    project = create_project()
+    keys = iter([*["down"] * 6, "right", "a"])
+    messages: list[str] = []
+    installed: list[str] = []
+    monkeypatch.setattr(
+        "jovykit.config_editor.commands.install",
+        lambda config, **kwargs: installed.append(config.gpus),
+    )
+
+    result = run_config_editor(
+        env=project.env_dir,
+        key_func=lambda: next(keys),
+        output=messages.append,
+    )
+
+    assert result == "applied"
+    assert installed == ["all"]
+
+
+def test_keyboard_editor_reports_unknown_key(create_project: Any) -> None:
+    project = create_project()
+    keys = iter(["x", "q"])
+    messages: list[str] = []
+
+    result = run_config_editor(
+        env=project.env_dir,
+        key_func=lambda: next(keys),
+        output=messages.append,
+    )
+
+    assert result == "cancelled"
+    assert any("Use up/down" in message for message in messages)
+
+
+def test_inline_empty_values_clear_lists_and_mappings(create_project: Any) -> None:
+    project = create_project()
+    keys = iter([*["down"] * 14, "enter", "down", "enter", "s"])
+    inputs = iter(["-", "-"])
+
+    result = run_config_editor(
+        env=project.env_dir,
+        input_func=lambda prompt: next(inputs),
+        key_func=lambda: next(keys),
+        output=lambda message: None,
+    )
+
+    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
+    assert result == "saved"
+    assert "packages = []" in config_text
+
+
+def test_cycle_field_rejects_text_and_handles_unknown_choice(
+    create_project: Any,
+) -> None:
+    values = values_from_config(create_project().config)
+
+    with pytest.raises(JovyKitError, match="edited with Enter"):
+        _cycle_field(values, ConfigField("project_name", "Project name"), "right")
+
+    edited = ConfigEditorValues(**{**values.__dict__, "gpus": "surprise"})
+
+    assert (
+        _cycle_field(
+            edited,
+            ConfigField("gpus", "GPU mode", "choice", ("auto", "none", "all")),
+            "right",
+        ).gpus
+        == "none"
+    )
+
+
+def test_edit_field_toggles_booleans(create_project: Any) -> None:
+    values = values_from_config(create_project().config)
+
+    edited = _edit_field(
+        values,
+        ConfigField("watch_enabled", "Config watch enabled", "bool"),
+        input_func=lambda prompt: pytest.fail("boolean edit should not prompt"),
+        output=lambda message: None,
+    )
+
+    assert edited.watch_enabled is False
+
+
+def test_scalar_editor_validation_helpers(create_project: Any) -> None:
+    values = values_from_config(create_project().config)
+
+    with pytest.raises(JovyKitError, match="Unknown field"):
+        _set_scalar_value(values, "missing", "value")
+    with pytest.raises(JovyKitError, match="integer"):
+        _set_scalar_value(values, "port", "not-a-number")
+    with pytest.raises(JovyKitError, match="Boolean"):
+        _parse_bool("maybe")
+
+    assert _set_scalar_value(values, "watch_enabled", "off").watch_enabled is False
+
+
+@pytest.mark.parametrize(
+    ("updates", "message"),
+    [
+        ({"project_name": ""}, "Project name"),
+        ({"workdir": ""}, "Workdir"),
+        ({"base_image": ""}, "Base image"),
+        ({"image_name": ""}, "Image name"),
+        ({"image_tag": ""}, "Image tag"),
+        ({"port": 0}, "Port"),
+        ({"work_mount": "relative"}, "Work mount"),
+    ],
+)
+def test_validate_values_rejects_invalid_required_fields(
+    create_project: Any,
+    updates: dict[str, object],
+    message: str,
+) -> None:
+    values = values_from_config(create_project().config)
+    edited = ConfigEditorValues(**{**values.__dict__, **updates})
+
+    with pytest.raises(JovyKitError, match=message):
+        _validate_values(edited)
+
+
+def test_read_key_maps_arrow_escape_and_empty_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeStdin:
+        def __init__(self, chunks: list[str]) -> None:
+            self.chunks = chunks
+
+        def isatty(self) -> bool:
+            return False
+
+        def read(self, size: int) -> str:
+            return self.chunks.pop(0)
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[A"]))
+    assert _read_key() == "up"
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[Z"]))
+    assert _read_key() == "escape"
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\n"]))
+    assert _read_key() == "enter"
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin([""]))
+    assert _read_key() == "q"

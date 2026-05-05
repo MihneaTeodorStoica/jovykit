@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
-from dataclasses import dataclass
+import termios
+import tty
+from collections.abc import Callable
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import tomlkit
-from textual import on
-from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import (
-    Button,
-    Footer,
-    Header,
-    Input,
-    Label,
-    Select,
-    Static,
-    Switch,
-    TextArea,
-)
 
 from jovykit import commands
 from jovykit.config import JovyConfig, JovyKitError, load_config
@@ -31,7 +22,10 @@ GPU_CHOICES = ("auto", "none", "all")
 LOG_LEVEL_CHOICES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 RESTART_POLICY_CHOICES = ("no", "always", "unless-stopped", "on-failure")
 WORKSPACE_MODE_CHOICES = ("bind", "sync")
-CUSTOM_IMAGE_VALUE = "__custom__"
+
+InputFunc = Callable[[str], str]
+KeyFunc = Callable[[], str]
+OutputFunc = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -63,6 +57,46 @@ class ConfigEditResult:
 
     config: JovyConfig
     build_state_cleared: bool
+
+
+@dataclass(frozen=True)
+class ConfigField:
+    """A scalar setting edited by the keyboard config loop."""
+
+    key: str
+    label: str
+    kind: str = "text"
+    choices: tuple[str, ...] = ()
+
+
+SCALAR_FIELDS = (
+    ConfigField("project_name", "Project name"),
+    ConfigField("workdir", "Workdir"),
+    ConfigField("base_image", "Base image"),
+    ConfigField("image_name", "Image name"),
+    ConfigField("image_tag", "Image tag"),
+    ConfigField("port", "Port", "number"),
+    ConfigField("gpus", "GPU mode", "choice", GPU_CHOICES),
+    ConfigField("restart_policy", "Restart policy", "choice", RESTART_POLICY_CHOICES),
+    ConfigField("jupyter_token", "Jupyter token"),
+    ConfigField("jupyter_log_level", "Jupyter log level", "choice", LOG_LEVEL_CHOICES),
+    ConfigField("jupyter_lab", "JupyterLab enabled", "bool"),
+    ConfigField("work_mount", "Container work mount"),
+    ConfigField("watch_enabled", "Config watch enabled", "bool"),
+    ConfigField(
+        "watch_workspace_mode",
+        "Watch workspace mode",
+        "choice",
+        WORKSPACE_MODE_CHOICES,
+    ),
+)
+SCALAR_FIELD_MAP = {field.key: field for field in SCALAR_FIELDS}
+EDITOR_FIELDS = (
+    *SCALAR_FIELDS,
+    ConfigField("python_packages", "Python packages", "list"),
+    ConfigField("runtime_env", "Runtime env", "mapping"),
+    ConfigField("runtime_volumes", "Runtime volumes", "mapping"),
+)
 
 
 def values_from_config(config: JovyConfig) -> ConfigEditorValues:
@@ -157,236 +191,254 @@ def save_config_values(
     )
 
 
-def run_config_editor(*, env: Path | None = None) -> str | None:
-    """Run the interactive config editor."""
-    return ConfigEditorApp(env=env).run()
+def run_config_editor(
+    *,
+    env: Path | None = None,
+    input_func: InputFunc = input,
+    key_func: KeyFunc | None = None,
+    output: OutputFunc = print,
+) -> str | None:
+    """Run the keyboard-driven config editor."""
+    config = commands.load_env(env, emit=output)
+    values = values_from_config(config)
+    selected = 0
+    status = "Use arrow keys. Press Enter to edit, s to save, a to apply, q to quit."
+    key_reader = key_func or _read_key
+    while True:
+        _render_editor(values, selected, status, output)
+        key = key_reader()
+        try:
+            if key == "up":
+                selected = (selected - 1) % len(EDITOR_FIELDS)
+            elif key == "down":
+                selected = (selected + 1) % len(EDITOR_FIELDS)
+            elif key in {"left", "right"}:
+                values = _cycle_field(values, EDITOR_FIELDS[selected], key)
+                status = f"Updated {EDITOR_FIELDS[selected].key}."
+            elif key == "enter":
+                values = _edit_field(
+                    values,
+                    EDITOR_FIELDS[selected],
+                    input_func=input_func,
+                    output=output,
+                )
+                status = f"Updated {EDITOR_FIELDS[selected].key}."
+            elif key == "s":
+                save_config_values(config, values, apply_now=False, emit=output)
+                return "saved"
+            elif key == "a":
+                save_config_values(config, values, apply_now=True, emit=output)
+                return "applied"
+            elif key in {"q", "escape"}:
+                output("Cancelled.")
+                return "cancelled"
+            else:
+                status = "Use up/down, left/right, Enter, s, a, or q."
+        except JovyKitError as exc:
+            status = f"Error: {exc}"
 
 
-class ConfigEditorApp(App[str | None]):
-    """Textual app for editing core ``jovy.toml`` settings."""
+def _render_editor(
+    values: ConfigEditorValues,
+    selected: int,
+    status: str,
+    output: OutputFunc,
+) -> None:
+    output("\x1b[2J\x1b[H")
+    output("JovyKit config")
+    output("Up/down move | left/right cycle | Enter edit | s save | a apply | q quit")
+    output("")
+    for index, field in enumerate(EDITOR_FIELDS):
+        pointer = ">" if index == selected else " "
+        output(f"{pointer} {field.label:24} " f"{_format_field_value(values, field)}")
+    output("")
+    output(status)
 
-    CSS = """
-    Screen {
-        background: #101418;
-        color: #e8eef2;
-    }
 
-    #editor {
-        padding: 1 2;
-    }
+def _format_field_value(values: ConfigEditorValues, field: ConfigField) -> str:
+    value = getattr(values, field.key)
+    if field.kind == "list":
+        return ", ".join(value) if value else "-"
+    if field.kind == "mapping":
+        return _format_mapping(value)
+    return _format_value(value)
 
-    .section {
-        border: round #3b5666;
-        padding: 1 2;
-        margin-bottom: 1;
-    }
 
-    .field {
-        height: auto;
-        margin-bottom: 1;
-    }
+def _cycle_field(
+    values: ConfigEditorValues,
+    field: ConfigField,
+    direction: str,
+) -> ConfigEditorValues:
+    if field.kind == "bool":
+        return replace(values, **{field.key: not getattr(values, field.key)})
+    if field.kind != "choice":
+        raise JovyKitError("This field is edited with Enter.")
+    current = str(getattr(values, field.key))
+    try:
+        index = field.choices.index(current)
+    except ValueError:
+        index = 0
+    step = -1 if direction == "left" else 1
+    return replace(
+        values,
+        **{field.key: field.choices[(index + step) % len(field.choices)]},
+    )
 
-    .field Label {
-        width: 24;
-        padding-top: 1;
-    }
 
-    .field Input, .field Select {
-        width: 1fr;
-    }
+def _edit_field(
+    values: ConfigEditorValues,
+    field: ConfigField,
+    *,
+    input_func: InputFunc,
+    output: OutputFunc,
+) -> ConfigEditorValues:
+    if field.kind == "choice":
+        return _edit_choice(values, field, input_func=input_func, output=output)
+    if field.kind == "bool":
+        return replace(values, **{field.key: not getattr(values, field.key)})
+    if field.kind == "list":
+        raw = _prompt(
+            "Comma-separated packages",
+            ", ".join(getattr(values, field.key)),
+            input_func,
+            output,
+        )
+        return replace(values, **{field.key: _parse_inline_list(raw)})
+    if field.kind == "mapping":
+        raw = _prompt(
+            "Comma-separated KEY=VALUE entries",
+            _format_mapping(getattr(values, field.key)),
+            input_func,
+            output,
+        )
+        return replace(values, **{field.key: _parse_inline_mapping(raw, field.label)})
+    raw = _prompt(
+        field.label, _format_value(getattr(values, field.key)), input_func, output
+    )
+    return _set_scalar_value(values, field.key, raw)
 
-    TextArea {
-        height: 6;
-        border: tall #4f7890;
-    }
 
-    #message {
-        min-height: 2;
-        color: #f2cf65;
-        margin-bottom: 1;
-    }
+def _edit_choice(
+    values: ConfigEditorValues,
+    field: ConfigField,
+    *,
+    input_func: InputFunc,
+    output: OutputFunc,
+) -> ConfigEditorValues:
+    output("")
+    output(f"{field.label} choices: {', '.join(field.choices)}")
+    raw = _prompt(field.label, str(getattr(values, field.key)), input_func, output)
+    return _set_scalar_value(values, field.key, raw)
 
-    #actions {
-        height: auto;
-    }
 
-    Button {
-        margin-right: 1;
-    }
-    """
+def _prompt(
+    label: str,
+    current: str,
+    input_func: InputFunc,
+    output: OutputFunc,
+) -> str:
+    output("")
+    output(f"{label} [{current}]:")
+    raw = input_func("> ")
+    return current if raw == "" else raw
 
-    BINDINGS = [
-        ("ctrl+s", "save_only", "Save"),
-        ("ctrl+a", "apply_now", "Apply"),
-        ("escape", "cancel", "Cancel"),
+
+def _read_key() -> str:
+    with _raw_terminal(enabled=sys.stdin.isatty()):
+        char = sys.stdin.read(1)
+        if char == "\x1b":
+            rest = sys.stdin.read(2)
+            if rest == "[A":
+                return "up"
+            if rest == "[B":
+                return "down"
+            if rest == "[C":
+                return "right"
+            if rest == "[D":
+                return "left"
+            return "escape"
+        if char in {"\r", "\n"}:
+            return "enter"
+        return char.lower() if char else "q"
+
+
+@contextmanager
+def _raw_terminal(*, enabled: bool) -> Any:
+    if not enabled:
+        yield
+        return
+    fd = sys.stdin.fileno()
+    settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, settings)
+
+
+def _format_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _format_mapping(values: dict[str, str]) -> str:
+    if not values:
+        return "-"
+    return ", ".join(f"{key}={value}" for key, value in values.items())
+
+
+def _set_scalar_value(
+    values: ConfigEditorValues,
+    key: str,
+    raw_value: str,
+) -> ConfigEditorValues:
+    field = SCALAR_FIELD_MAP.get(key)
+    if field is None:
+        raise JovyKitError(f"Unknown field: {key}. Type list to see fields.")
+    if key == "port":
+        try:
+            value: object = int(raw_value)
+        except ValueError as exc:
+            raise JovyKitError("Port must be an integer.") from exc
+    elif key in {"jupyter_lab", "watch_enabled"}:
+        value = _parse_bool(raw_value)
+    elif key == "base_image":
+        value = IMAGE_LEVELS.get(raw_value, raw_value)
+    else:
+        value = raw_value
+    if field.choices and key not in {"jupyter_lab", "watch_enabled"}:
+        _validate_choice(field.label, str(value), field.choices)
+    return replace(values, **{key: value})
+
+
+def _parse_bool(raw_value: str) -> bool:
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "yes", "y", "true", "on"}:
+        return True
+    if normalized in {"0", "no", "n", "false", "off"}:
+        return False
+    raise JovyKitError("Boolean values must be true/false, yes/no, or on/off.")
+
+
+def _parse_inline_list(raw_value: str) -> list[str]:
+    if not raw_value.strip() or raw_value.strip() == "-":
+        return []
+    return [
+        item.strip()
+        for group in raw_value.split(",")
+        for item in group.split()
+        if item.strip()
     ]
 
-    def __init__(self, *, env: Path | None = None) -> None:
-        super().__init__()
-        self.env = env
-        self.config: JovyConfig | None = None
 
-    def compose(self) -> ComposeResult:
-        """Compose the editor layout."""
-        self.config = commands.load_env(self.env)
-        values = values_from_config(self.config)
-        image_value, custom_image = _image_select_state(values.base_image)
-        self.title = "JovyKit Config"
-        yield Header()
-        with VerticalScroll(id="editor"):
-            yield Static("", id="message")
-            with Vertical(classes="section"):
-                yield Label("Project")
-                yield _input_row("Project name", "project_name", values.project_name)
-                yield _input_row("Workdir", "workdir", values.workdir)
-            with Vertical(classes="section"):
-                yield Label("Image")
-                yield _select_row(
-                    "Base image", "base_image", _image_options(), image_value
-                )
-                yield _input_row("Custom image ref", "custom_base_image", custom_image)
-                yield _input_row("Image name", "image_name", values.image_name)
-                yield _input_row("Image tag", "image_tag", values.image_tag)
-            with Vertical(classes="section"):
-                yield Label("Runtime")
-                yield _input_row("Port", "port", str(values.port), input_type="integer")
-                yield _select_row(
-                    "GPU mode", "gpus", _choice_options(GPU_CHOICES), values.gpus
-                )
-                yield _select_row(
-                    "Restart policy",
-                    "restart_policy",
-                    _choice_options(RESTART_POLICY_CHOICES),
-                    values.restart_policy,
-                )
-            with Vertical(classes="section"):
-                yield Label("Jupyter")
-                yield _input_row("Token", "jupyter_token", values.jupyter_token)
-                yield _select_row(
-                    "Log level",
-                    "jupyter_log_level",
-                    _choice_options(LOG_LEVEL_CHOICES),
-                    values.jupyter_log_level,
-                )
-                yield _switch_row("Lab", "jupyter_lab", values.jupyter_lab)
-            with Vertical(classes="section"):
-                yield Label("Mounts and Watch")
-                yield _input_row("Work mount", "work_mount", values.work_mount)
-                yield _switch_row("Watch", "watch_enabled", values.watch_enabled)
-                yield _select_row(
-                    "Workspace mode",
-                    "watch_workspace_mode",
-                    _choice_options(WORKSPACE_MODE_CHOICES),
-                    values.watch_workspace_mode,
-                )
-            with Vertical(classes="section"):
-                yield Label("Packages")
-                yield TextArea(
-                    format_list_lines(values.python_packages),
-                    id="python_packages",
-                    show_line_numbers=True,
-                    placeholder="numpy\npandas",
-                )
-            with Vertical(classes="section"):
-                yield Label("Runtime env")
-                yield TextArea(
-                    format_mapping_lines(values.runtime_env),
-                    id="runtime_env",
-                    show_line_numbers=True,
-                    placeholder="KEY=value",
-                )
-            with Vertical(classes="section"):
-                yield Label("Runtime volumes")
-                yield TextArea(
-                    format_mapping_lines(values.runtime_volumes),
-                    id="runtime_volumes",
-                    show_line_numbers=True,
-                    placeholder="./data=/data",
-                )
-            with Horizontal(id="actions"):
-                yield Button("Save only", id="save_only", variant="primary")
-                yield Button("Apply now", id="apply_now", variant="success")
-                yield Button("Cancel", id="cancel")
-        yield Footer()
-
-    @on(Button.Pressed, "#save_only")
-    def on_save_only(self) -> None:
-        """Save without applying."""
-        self._save(apply_now=False)
-
-    @on(Button.Pressed, "#apply_now")
-    def on_apply_now(self) -> None:
-        """Save and apply immediately."""
-        self._save(apply_now=True)
-
-    @on(Button.Pressed, "#cancel")
-    def on_cancel_pressed(self) -> None:
-        """Exit without saving."""
-        self.exit("cancelled")
-
-    def action_save_only(self) -> None:
-        """Keyboard shortcut for save-only."""
-        self._save(apply_now=False)
-
-    def action_apply_now(self) -> None:
-        """Keyboard shortcut for apply-now."""
-        self._save(apply_now=True)
-
-    def action_cancel(self) -> None:
-        """Keyboard shortcut for cancel."""
-        self.exit("cancelled")
-
-    def _save(self, *, apply_now: bool) -> None:
-        if self.config is None:
-            self.config = commands.load_env(self.env)
-        try:
-            save_config_values(
-                self.config,
-                self._values_from_widgets(),
-                apply_now=apply_now,
-                emit=self._show_message,
-            )
-        except Exception as exc:
-            self._show_message(f"Error: {exc}")
-            return
-        self.exit("applied" if apply_now else "saved")
-
-    def _values_from_widgets(self) -> ConfigEditorValues:
-        base_choice = str(self.query_one("#base_image", Select).value)
-        custom_base = self.query_one("#custom_base_image", Input).value.strip()
-        base_image = custom_base if base_choice == CUSTOM_IMAGE_VALUE else base_choice
-        return ConfigEditorValues(
-            project_name=self.query_one("#project_name", Input).value.strip(),
-            workdir=self.query_one("#workdir", Input).value.strip(),
-            base_image=base_image,
-            image_name=self.query_one("#image_name", Input).value.strip(),
-            image_tag=self.query_one("#image_tag", Input).value.strip(),
-            port=int(self.query_one("#port", Input).value),
-            gpus=str(self.query_one("#gpus", Select).value),
-            restart_policy=str(self.query_one("#restart_policy", Select).value),
-            jupyter_token=self.query_one("#jupyter_token", Input).value,
-            jupyter_log_level=str(self.query_one("#jupyter_log_level", Select).value),
-            jupyter_lab=self.query_one("#jupyter_lab", Switch).value,
-            work_mount=self.query_one("#work_mount", Input).value.strip(),
-            watch_enabled=self.query_one("#watch_enabled", Switch).value,
-            watch_workspace_mode=str(
-                self.query_one("#watch_workspace_mode", Select).value
-            ),
-            python_packages=parse_list_lines(
-                self.query_one("#python_packages", TextArea).text
-            ),
-            runtime_env=parse_mapping_lines(
-                self.query_one("#runtime_env", TextArea).text,
-                field_name="Runtime env",
-            ),
-            runtime_volumes=parse_mapping_lines(
-                self.query_one("#runtime_volumes", TextArea).text,
-                field_name="Runtime volumes",
-            ),
-        )
-
-    def _show_message(self, message: str) -> None:
-        self.query_one("#message", Static).update(message)
+def _parse_inline_mapping(raw_value: str, field_name: str) -> dict[str, str]:
+    if not raw_value.strip() or raw_value.strip() == "-":
+        return {}
+    return parse_mapping_lines(
+        "\n".join(part.strip() for part in raw_value.split(",") if part.strip()),
+        field_name=field_name,
+    )
 
 
 def _validate_values(values: ConfigEditorValues) -> None:
@@ -472,22 +524,6 @@ def _table(data: Any, *path: str) -> Any:
     return current
 
 
-def _choice_options(values: tuple[str, ...]) -> list[tuple[str, str]]:
-    return [(value, value) for value in values]
-
-
-def _image_options() -> list[tuple[str, str]]:
-    options = [(level, image) for level, image in IMAGE_LEVELS.items()]
-    options.append(("Custom image ref", CUSTOM_IMAGE_VALUE))
-    return options
-
-
-def _image_select_state(base_image: str) -> tuple[str, str]:
-    if base_image in IMAGE_LEVELS.values():
-        return base_image, ""
-    return CUSTOM_IMAGE_VALUE, base_image
-
-
 def _read_project_environment(config_path: Path) -> str | None:
     try:
         data = tomlkit.parse(config_path.read_text(encoding="utf-8"))
@@ -498,36 +534,3 @@ def _read_project_environment(config_path: Path) -> str | None:
         return None
     environment = project.get("workdir")
     return str(environment) if environment is not None else None
-
-
-def _input_row(
-    label: str,
-    field_id: str,
-    value: str,
-    *,
-    input_type: Literal["integer", "number", "text"] = "text",
-) -> Horizontal:
-    return Horizontal(
-        Label(label),
-        Input(value=value, id=field_id, type=input_type),
-        classes="field",
-    )
-
-
-def _select_row(
-    label: str,
-    field_id: str,
-    options: list[tuple[str, str]],
-    value: str,
-) -> Horizontal:
-    if value not in {option_value for _, option_value in options}:
-        options = [*options, (value, value)]
-    return Horizontal(
-        Label(label),
-        Select(options, id=field_id, value=value, allow_blank=False),
-        classes="field",
-    )
-
-
-def _switch_row(label: str, field_id: str, value: bool) -> Horizontal:
-    return Horizontal(Label(label), Switch(value=value, id=field_id), classes="field")

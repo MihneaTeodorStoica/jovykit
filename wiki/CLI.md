@@ -129,9 +129,11 @@ the same service without opening an interactive shell.
 jovy config
 ```
 
-The config editor opens a terminal UI for common `jovy.toml` settings,
-including image, port, GPU mode, restart policy, Jupyter settings, packages,
-runtime environment variables, and extra volumes.
+The config editor opens a keyboard-driven terminal editor for common
+`jovy.toml` settings, including image, port, GPU mode, restart policy, Jupyter
+settings, packages, runtime environment variables, and extra volumes. Use
+up/down to move, left/right to cycle choices, Enter to edit, `s` to save, `a`
+to apply, and `q` to quit.
 
 You can also edit `jovy.toml` directly. Build-affecting changes should be
 followed by:
