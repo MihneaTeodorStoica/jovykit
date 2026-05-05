@@ -54,7 +54,7 @@ def create_project(tmp_path: Path) -> Callable[..., JovyProject]:
         image: str = "minimal",
         gpus: str = "none",
         port: int = 9999,
-        token: str = "auto",
+        token: str = "",
         log_level: str = "ERROR",
         image_name: str | None = None,
         image_tag: str = "local",

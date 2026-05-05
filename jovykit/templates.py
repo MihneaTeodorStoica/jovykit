@@ -51,10 +51,9 @@ def render_compose(config: JovyConfig) -> str:
     environment = {
         "JUPYTER_ENABLE_LAB": "yes" if config.jupyter_lab else "no",
         "JUPYTER_LOG_LEVEL": config.jupyter_log_level,
+        "JUPYTER_TOKEN": config.jupyter_token,
         **config.runtime_env,
     }
-    if config.jupyter_token and config.jupyter_token.lower() != "auto":
-        environment["JUPYTER_TOKEN"] = config.jupyter_token
 
     volumes = ["jovykit-home:/home/jovyan"]
     if config.watch_workspace_mode == "bind":

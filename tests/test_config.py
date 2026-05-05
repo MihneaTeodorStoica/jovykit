@@ -69,6 +69,7 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     assert service["environment"] == {
         "JUPYTER_ENABLE_LAB": "yes",
         "JUPYTER_LOG_LEVEL": "ERROR",
+        "JUPYTER_TOKEN": "",
     }
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "requirements.txt"},
@@ -95,7 +96,7 @@ def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> N
         gpus="none",
         port=9999,
         workdir="notebooks",
-    ).replace('token = "auto"', 'token = "secret-token"')
+    ).replace('token = ""', 'token = "secret-token"')
     (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
 
     config = load_config(env_dir)
@@ -109,6 +110,26 @@ def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> N
         watch_rule.get("path") != "../notebooks"
         for watch_rule in service["develop"]["watch"]
     )
+
+
+def test_auto_jupyter_token_is_normalized_to_empty(tmp_path: Path) -> None:
+    env_dir = tmp_path / ".jovy"
+    env_dir.mkdir()
+    config_text = initial_config_text(
+        project_name="My Project",
+        env_name=".jovy",
+        image="minimal",
+        gpus="none",
+        port=9999,
+    ).replace('token = ""', 'token = "auto"')
+    (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
+
+    config = load_config(env_dir)
+    write_generated_files(config)
+
+    service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
+    assert config.jupyter_token == ""
+    assert service["environment"]["JUPYTER_TOKEN"] == ""
 
 
 def test_legacy_environment_config_is_migrated(tmp_path: Path) -> None:

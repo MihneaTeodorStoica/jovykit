@@ -20,7 +20,7 @@ Useful initialization options:
 - `--name`: project name written to `jovy.toml`
 - `--image-name`: overlay image name
 - `--tag`: overlay image tag
-- `--token`: Jupyter access token, or `auto` for Jupyter's generated token
+- `--token`: Jupyter access token. Defaults to empty, which disables token auth.
 - `--log-level`: Jupyter server log level
 - `--workdir`: project path mounted into the container
 - `--force`: refresh an existing JovyKit environment without initializing a

@@ -101,9 +101,9 @@ def init(
     gpus: str = typer.Option("auto", "--gpus", help="GPU mode: auto, none, or all."),
     port: int = typer.Option(8888, "--port", help="Local Jupyter port."),
     token: str = typer.Option(
-        "auto",
+        "",
         "--token",
-        help="Jupyter access token, or auto for Jupyter's generated token.",
+        help="Jupyter access token. Defaults to empty, which disables token auth.",
     ),
     log_level: str = typer.Option(
         "ERROR",

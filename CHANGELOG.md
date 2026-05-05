@@ -7,6 +7,9 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 2.0.1.
+- Changed the default Jupyter token to empty and always generated
+  `JUPYTER_TOKEN`, so JovyKit no longer relies on Jupyter's generated token.
 - Bumped package version to 2.0.0 for the breaking CLI lifecycle rename.
 - Replaced `jovy sync` with `jovy install`.
 - Replaced detached `jovy start` and `jovy stop` with `jovy up` and

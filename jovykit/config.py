@@ -94,6 +94,11 @@ def _str_list(value: Any) -> list[str]:
     return [str(item) for item in value]
 
 
+def _jupyter_token(value: Any) -> str:
+    token = str(value or "")
+    return "" if token.lower() == "auto" else token
+
+
 def load_config(env_dir: Path) -> JovyConfig:
     """Load JovyKit configuration from an environment directory."""
     env_dir = env_dir.resolve()
@@ -148,7 +153,7 @@ def load_config(env_dir: Path) -> JovyConfig:
             ),
             runtime_env=_str_dict(runtime.get("env", {})),
             runtime_volumes=_str_dict(runtime.get("volumes", {})),
-            jupyter_token=str(jupyter.get("token", "auto")),
+            jupyter_token=_jupyter_token(jupyter.get("token", "")),
             jupyter_log_level=str(jupyter.get("log_level", "ERROR")),
             jupyter_lab=bool(jupyter.get("lab", True)),
             jupyter_command=(
@@ -190,7 +195,7 @@ def initial_config_text(
     image: str,
     gpus: str,
     port: int,
-    token: str = "auto",
+    token: str = "",
     log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
