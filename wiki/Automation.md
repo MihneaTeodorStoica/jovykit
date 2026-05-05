@@ -71,6 +71,7 @@ wiki/CLI.md
 wiki/Images.md
 wiki/Automation.md
 wiki/_Sidebar.md
+wiki/_Footer.md
 ```
 
 The workflow runs when `wiki/**` or the workflow file changes on `main`, and it
