@@ -34,7 +34,7 @@ wheels = [
 
 [[package]]
 name = "jovykit"
-version = "0.2.2"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },

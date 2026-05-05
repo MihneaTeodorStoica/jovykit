@@ -47,7 +47,7 @@ def run_command(
 def build_signature(config: JovyConfig) -> str:
     """Hash the inputs that affect the overlay image."""
     hasher = hashlib.sha256()
-    for path in (config.env_dir / "jovy.toml", config.env_dir / "requirements.txt"):
+    for path in (config.config_path, config.env_dir / "requirements.txt"):
         hasher.update(path.name.encode("utf-8"))
         hasher.update(path.read_bytes())
     return hasher.hexdigest()

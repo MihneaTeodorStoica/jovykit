@@ -19,10 +19,16 @@ from jovykit.config import (
 )
 from jovykit.deps import add_packages
 from jovykit.generate import ensure_empty_or_jovy_env, write_generated_files
-from jovykit.paths import DEFAULT_ENV_DIR, find_environment
+from jovykit.paths import (
+    DEFAULT_ENV_DIR,
+    environment_from_path,
+    find_environment,
+    has_stale_legacy_config,
+)
 from jovykit.runtime import build as build_image
 from jovykit.runtime import compose, destroy as destroy_environment
 from jovykit.runtime import is_build_stale
+from jovykit.watcher import start_watcher, stop_watcher
 
 app = typer.Typer(help="Manage project-local JovyKit Jupyter container environments.")
 console = Console()
@@ -48,7 +54,11 @@ def callback(
 
 
 def _load_env(env: Path | None = None):
-    env_dir = env.resolve() if env else find_environment()
+    env_dir = environment_from_path(env) if env else find_environment()
+    if has_stale_legacy_config(env_dir):
+        console.print(
+            f"[yellow]Ignoring stale legacy config at {env_dir / 'jovy.toml'}.[/yellow]"
+        )
     return load_config(env_dir)
 
 
@@ -97,7 +107,7 @@ def init(
     ),
     image_tag: str = typer.Option("local", "--tag", help="Project overlay image tag."),
     workdir: str = typer.Option(
-        "../work", "--workdir", help="Project path mounted into the container."
+        "work", "--workdir", help="Project path mounted into the container."
     ),
     force: bool = typer.Option(
         False,
@@ -112,6 +122,7 @@ def init(
     elif (
         env_dir.exists()
         and any(env_dir.iterdir())
+        and not (env_dir.parent / "jovy.toml").exists()
         and not (env_dir / "jovy.toml").exists()
     ):
         raise JovyKitError(
@@ -120,7 +131,7 @@ def init(
     env_dir.mkdir(parents=True, exist_ok=True)
 
     project_root = env_dir.parent
-    (env_dir / "jovy.toml").write_text(
+    (env_dir.parent / "jovy.toml").write_text(
         initial_config_text(
             project_name=project_name or project_root.name,
             env_name=env_dir.name,
@@ -228,7 +239,12 @@ def run(
     args = ["up"]
     if watch:
         args.append("--watch")
-    compose(config, *args, attached=True)
+        start_watcher(config.env_dir)
+    try:
+        compose(config, *args, attached=True)
+    finally:
+        if watch:
+            stop_watcher(config.env_dir)
 
 
 @app.command()
@@ -243,6 +259,7 @@ def start(
     write_generated_files(config)
     _ensure_built(config, no_build=no_build)
     compose(config, "up", "-d", attached=True)
+    start_watcher(config.env_dir)
     console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
 
 
@@ -259,7 +276,9 @@ def stop(
     args = ["stop"]
     if timeout is not None:
         args.extend(["--timeout", str(timeout)])
-    compose(_load_env(env), *args, attached=True)
+    config = _load_env(env)
+    stop_watcher(config.env_dir)
+    compose(config, *args, attached=True)
 
 
 @app.command()
@@ -334,6 +353,7 @@ def destroy(
 ) -> None:
     """Remove the container, volume, and project overlay image."""
     config = _load_env(env)
+    stop_watcher(config.env_dir)
     destroy_environment(config, remove_image=not keep_image)
     if remove_dir:
         shutil.rmtree(config.env_dir)

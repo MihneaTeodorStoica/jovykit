@@ -63,7 +63,7 @@ def test_init_accepts_jupyter_flags(
         ["init", ".jovy", "--token", "dev-token", "--log-level", "INFO"],
     )
 
-    config_text = (tmp_path / ".jovy" / "jovy.toml").read_text(encoding="utf-8")
+    config_text = (tmp_path / "jovy.toml").read_text(encoding="utf-8")
     assert 'token = "dev-token"' in config_text
     assert 'log_level = "INFO"' in config_text
     assert (tmp_path / "work").is_dir()
@@ -80,10 +80,16 @@ def test_run_uses_compose_watch_by_default(
         calls.append(args)
 
     monkeypatch.setattr(cli, "compose", fake_compose)
+    started: list[Path] = []
+    stopped: list[Path] = []
+    monkeypatch.setattr(cli, "start_watcher", lambda env_dir: started.append(env_dir))
+    monkeypatch.setattr(cli, "stop_watcher", lambda env_dir: stopped.append(env_dir))
 
     run_cli(monkeypatch, ["run", "--no-build"])
 
     assert calls == [("up", "--watch")]
+    assert started == [tmp_path / ".jovy"]
+    assert stopped == [tmp_path / ".jovy"]
 
 
 def test_start_does_not_combine_detach_with_compose_watch(
@@ -97,10 +103,33 @@ def test_start_does_not_combine_detach_with_compose_watch(
         calls.append(args)
 
     monkeypatch.setattr(cli, "compose", fake_compose)
+    started: list[Path] = []
+    monkeypatch.setattr(cli, "start_watcher", lambda env_dir: started.append(env_dir))
 
     run_cli(monkeypatch, ["start", "--no-build"])
 
     assert calls == [("up", "-d")]
+    assert started == [tmp_path / ".jovy"]
+
+
+def test_stop_stops_config_watcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_cli(monkeypatch, ["init", ".jovy"])
+    calls: list[tuple[str, ...]] = []
+    stopped: list[Path] = []
+
+    def fake_compose(config, *args: str, attached: bool = False) -> None:
+        calls.append(args)
+
+    monkeypatch.setattr(cli, "compose", fake_compose)
+    monkeypatch.setattr(cli, "stop_watcher", lambda env_dir: stopped.append(env_dir))
+
+    run_cli(monkeypatch, ["stop"])
+
+    assert calls == [("stop",)]
+    assert stopped == [tmp_path / ".jovy"]
 
 
 def test_logs_accepts_since_and_timestamps(

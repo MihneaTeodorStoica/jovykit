@@ -1,8 +1,8 @@
 # CLI
 
-JovyKit manages project-local Jupyter container environments. A `.jovy`
-directory belongs to one project and contains the configuration, generated
-Docker files, dependency manifest, and local build state for that project.
+JovyKit manages project-local Jupyter container environments. A root
+`jovy.toml` file belongs to one project, while `.jovy/` contains generated
+Docker files, dependency manifests, watcher logs, and local build state.
 Project files live in `work/` by default and are mounted into the container.
 
 ## Create an environment
@@ -52,8 +52,9 @@ jovy start
 `jovy run` starts Jupyter in the foreground. `jovy start` starts it in the
 background. Both regenerate files and build the overlay image when the build
 inputs are stale. Use `--no-build` to skip the stale-build check.
-Docker Compose watch is available through `jovy run`; detached `jovy start`
-does not enable watch because Compose does not support combining both modes.
+Docker Compose watch is available through `jovy run`. Detached `jovy start`
+also launches a lightweight config watcher that restarts the container when
+`jovy.toml` changes.
 
 ## Operate on a running environment
 
@@ -70,8 +71,9 @@ jovy exec python --version
 jovy stop --timeout 10
 ```
 
-Most commands discover the nearest `.jovy/jovy.toml` by walking upward from the
-current directory. Pass `--env PATH` to operate on a specific environment.
+Most commands discover the nearest `jovy.toml` by walking upward from the
+current directory. Pass `--env PATH` with either a project root or `.jovy`
+directory to operate on a specific environment.
 
 ## Clean up
 

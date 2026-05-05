@@ -1,5 +1,6 @@
 work/
 .jovy/
+jovy.toml
 .venv/
 __pycache__/
 .pytest_cache/

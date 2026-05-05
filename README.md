@@ -62,11 +62,12 @@ jovy run
 ```
 
 The CLI creates a local `work/` directory for project files and writes a
-reproducible overlay build recipe under `.jovy/`:
+root `jovy.toml` plus a reproducible overlay build recipe under `.jovy/`:
 
 ```text
+jovy.toml
+work/
 .jovy/
-  jovy.toml
   requirements.txt
   Containerfile
   compose.yaml
@@ -94,7 +95,9 @@ Most commands accept `--env PATH` when you want to operate on a JovyKit
 environment outside the current project tree. `jovy init` also supports
 customizing the generated project name, overlay image name/tag, Jupyter port,
 GPU mode, Jupyter token/log level, and mounted work directory.
-Docker Compose watch runs with `jovy run`; `jovy start` stays detached.
+Docker Compose watch runs with `jovy run`; `jovy start` stays detached and
+starts a lightweight watcher that restarts the container when `jovy.toml`
+changes.
 
 ## Repository Layout
 

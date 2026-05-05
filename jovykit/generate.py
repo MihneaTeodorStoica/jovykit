@@ -35,7 +35,7 @@ def ensure_empty_or_jovy_env(env_dir: Path) -> None:
     """Validate that init will not trample a non-JovyKit directory."""
     if not env_dir.exists():
         return
-    if (env_dir / "jovy.toml").exists():
+    if (env_dir / "jovy.toml").exists() or (env_dir.parent / "jovy.toml").exists():
         raise JovyKitError(
             f"JovyKit environment already exists at {env_dir}. "
             "Use --force to refresh its generated files."

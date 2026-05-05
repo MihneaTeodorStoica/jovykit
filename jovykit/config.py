@@ -26,6 +26,8 @@ class JovyConfig:
     """Loaded JovyKit environment configuration."""
 
     env_dir: Path
+    config_path: Path
+    project_dir: Path
     project_root: Path
     project_name: str
     base_image: str
@@ -56,7 +58,11 @@ def slugify_name(value: str) -> str:
 
 def load_config(env_dir: Path) -> JovyConfig:
     """Load JovyKit configuration from an environment directory."""
-    config_path = env_dir / "jovy.toml"
+    env_dir = env_dir.resolve()
+    config_path = env_dir.parent / "jovy.toml"
+    legacy_config_path = env_dir / "jovy.toml"
+    if not config_path.exists() and legacy_config_path.exists():
+        legacy_config_path.replace(config_path)
     if not config_path.exists():
         raise ConfigError(f"No JovyKit configuration found at {config_path}.")
     try:
@@ -71,10 +77,13 @@ def load_config(env_dir: Path) -> JovyConfig:
     jupyter = raw.get("jupyter", {})
     mounts = raw.get("mounts", {})
 
-    project_root = (env_dir / str(project.get("workdir", ".."))).resolve()
+    project_dir = env_dir.parent.resolve()
+    project_root = (project_dir / str(project.get("workdir", "work"))).resolve()
     try:
         return JovyConfig(
-            env_dir=env_dir.resolve(),
+            env_dir=env_dir,
+            config_path=config_path.resolve(),
+            project_dir=project_dir,
             project_root=project_root,
             project_name=str(project.get("name", project_root.name)),
             base_image=str(image["base"]),
@@ -103,7 +112,7 @@ def initial_config_text(
     log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
-    workdir: str = "../work",
+    workdir: str = "work",
 ) -> str:
     """Render the initial jovy.toml content."""
     base_image = resolve_image(image)
