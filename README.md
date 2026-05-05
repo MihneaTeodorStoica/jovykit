@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
-  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-3.1.1-ff5a00"></a>
+  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-3.2.1-ff5a00"></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-0a9e9a">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f3133"></a>
   <a href="https://mihneateodorstoica.github.io/jovykit/"><img alt="Website" src="https://img.shields.io/badge/site-live-ff5a00"></a>
