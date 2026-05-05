@@ -8,6 +8,7 @@ import pytest
 
 from jovykit.config import write_state
 from jovykit.runtime import DockerError
+from jovykit import state
 from jovykit.state import discover_status, status_from_config
 
 
@@ -66,6 +67,25 @@ def test_status_running_healthy_from_compose_json(
     assert status.package_count == 2
 
 
+def test_status_running_from_compose_json_lines(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    output = (
+        '{"Service": "helper", "State": "exited"}\n'
+        "not-json\n"
+        '{"Name": "project-jovy-1", "state": "running"}\n'
+    )
+    monkeypatch.setattr("jovykit.state.compose_ps", lambda config: output)
+    monkeypatch.setattr("jovykit.state.is_build_stale", lambda config: False)
+
+    status = status_from_config(project.config)
+
+    assert status.status == "running"
+    assert status.health == "unknown"
+    assert status.is_running is True
+
+
 def test_status_reports_stale_image(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
@@ -77,6 +97,37 @@ def test_status_reports_stale_image(
 
     assert status.status == "stopped"
     assert status.build == "stale"
+
+
+def test_status_handles_invalid_compose_json_as_stopped(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    monkeypatch.setattr("jovykit.state.compose_ps", lambda config: "not-json")
+    monkeypatch.setattr("jovykit.state.is_build_stale", lambda config: False)
+
+    status = status_from_config(project.config)
+
+    assert status.status == "stopped"
+
+
+def test_status_normalizers_cover_dashboard_states() -> None:
+    assert state._normalize_container_status("created", "") == "starting"
+    assert state._normalize_container_status("exited", "") == "stopped"
+    assert state._normalize_container_status("dead", "") == "error"
+    assert state._normalize_container_status("something else", "") == "unknown"
+    assert state._normalize_health("starting") == "starting"
+    assert state._normalize_health("none") == "unknown"
+    assert state._gpu_label("all") == "enabled"
+    assert state._string_or_none(None) is None
+    assert state._string_or_none("  ") is None
+
+
+def test_status_counts_missing_requirements_as_zero(create_project: Any) -> None:
+    project = create_project()
+    (project.env_dir / "requirements.txt").unlink()
+
+    assert state._package_count(project.env_dir / "requirements.txt") == 0
 
 
 def test_status_error_includes_compact_last_error(

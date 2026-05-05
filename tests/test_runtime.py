@@ -90,6 +90,83 @@ def test_run_command_attached_skips_capture(
     assert calls == [{"cwd": tmp_path, "check": False}]
 
 
+def test_stream_command_streams_lines_and_returns_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime, "require_docker", lambda: None)
+    popen_calls: list[dict[str, Any]] = []
+
+    class FakeProcess:
+        stdout = iter(["one\n", "two\n"])
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(args: list[str], **kwargs: Any) -> FakeProcess:
+        popen_calls.append(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    lines: list[str] = []
+
+    return_code = runtime.stream_command(
+        ["docker", "logs"], cwd=tmp_path, log=lines.append
+    )
+
+    assert return_code == 0
+    assert lines == ["one", "two"]
+    assert popen_calls[0]["cwd"] == tmp_path
+    assert popen_calls[0]["stderr"] == runtime.subprocess.STDOUT
+
+
+def test_stream_command_raises_when_checked_command_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProcess:
+        stdout = iter(["bad\n"])
+
+        def wait(self) -> int:
+            return 9
+
+    monkeypatch.setattr(
+        runtime.subprocess, "Popen", lambda *args, **kwargs: FakeProcess()
+    )
+
+    with pytest.raises(runtime.DockerError, match="exit code 9"):
+        runtime.stream_command(
+            ["host", "bad"],
+            cwd=tmp_path,
+            log=lambda line: None,
+            require_docker_path=False,
+        )
+
+
+def test_run_command_uses_streaming_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[list[str], bool]] = []
+
+    def fake_stream(
+        args: list[str],
+        *,
+        cwd: Path,
+        log: runtime.LogCallback,
+        check: bool = True,
+        require_docker_path: bool = True,
+    ) -> int:
+        calls.append((args, require_docker_path))
+        log("streamed")
+        return 0
+
+    monkeypatch.setattr(runtime, "stream_command", fake_stream)
+    lines: list[str] = []
+
+    runtime.run_command(["docker", "logs"], cwd=tmp_path, log=lines.append)
+
+    assert calls == [(["docker", "logs"], True)]
+    assert lines == ["streamed"]
+
+
 def test_build_signature_tracks_config_and_requirements(create_project: Any) -> None:
     project = create_project()
     original = runtime.build_signature(project.config)
@@ -121,6 +198,43 @@ def test_build_writes_state_after_success(
     assert "built_at" in state
 
 
+def test_build_streaming_writes_state_and_streams_output(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project(
+        config_transform=lambda text: text.replace(
+            "pull = false\n\n[image.build_args]",
+            'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
+        )
+    )
+    calls: list[tuple[list[str], runtime.LogCallback]] = []
+
+    def fake_run_command(
+        args: list[str],
+        *,
+        cwd: Path,
+        attached: bool = False,
+        check: bool = True,
+        log: runtime.LogCallback | None = None,
+        require_docker_path: bool = True,
+    ) -> None:
+        assert log is not None
+        calls.append((args, log))
+        log("building")
+
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+    lines: list[str] = []
+
+    runtime.build_streaming(project.config, no_cache=True, pull=True, log=lines.append)
+
+    assert "--target" in calls[0][0]
+    assert "--platform" in calls[0][0]
+    assert "--build-arg" in calls[0][0]
+    assert "--no-cache" in calls[0][0]
+    assert lines == ["building"]
+    assert read_state(project.env_dir)["image"] == project.config.image_ref
+
+
 def test_compose_constructs_compose_file_command(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
@@ -143,6 +257,83 @@ def test_compose_constructs_compose_file_command(
             False,
         )
     ]
+
+
+def test_compose_passes_streaming_log_callback(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    calls: list[tuple[list[str], runtime.LogCallback]] = []
+
+    def fake_run_command(args: list[str], **kwargs: Any) -> None:
+        calls.append((args, kwargs["log"]))
+
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+
+    runtime.compose(project.config, "logs", log=lambda line: None)
+
+    assert calls[0][0] == ["docker", "compose", "-f", "compose.yaml", "logs"]
+
+
+def test_compose_capture_returns_output_and_raises_on_checked_failure(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    monkeypatch.setattr(runtime, "require_docker", lambda: None)
+
+    def fake_run(args: list[str], **kwargs: Any) -> Any:
+        assert args == ["docker", "compose", "-f", "compose.yaml", "ps"]
+        return runtime.subprocess.CompletedProcess(
+            args=args,
+            returncode=4,
+            stdout="out",
+            stderr="err",
+        )
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+
+    assert runtime.compose_capture(project.config, "ps") == "outerr"
+    with pytest.raises(runtime.DockerError, match="exit code 4"):
+        runtime.compose_capture(project.config, "ps", check=True)
+
+
+def test_compose_ps_logs_and_host_command_delegate_to_helpers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, create_project: Any
+) -> None:
+    project = create_project()
+    compose_calls: list[tuple[str, ...]] = []
+    stream_calls: list[tuple[list[str], bool]] = []
+
+    def fake_compose_capture(config: Any, *args: str, check: bool = False) -> str:
+        compose_calls.append(args)
+        return "compose-output"
+
+    def fake_stream_command(
+        args: list[str],
+        *,
+        cwd: Path,
+        log: runtime.LogCallback,
+        check: bool = True,
+        require_docker_path: bool = True,
+    ) -> int:
+        stream_calls.append((args, require_docker_path))
+        log("host-output")
+        return 5
+
+    monkeypatch.setattr(runtime, "compose_capture", fake_compose_capture)
+    monkeypatch.setattr(runtime, "stream_command", fake_stream_command)
+    lines: list[str] = []
+
+    assert runtime.compose_ps(project.config) == "compose-output"
+    assert runtime.compose_logs(project.config, tail="12") == "compose-output"
+    assert runtime.run_host_command(["pwd"], cwd=tmp_path, log=lines.append) == 5
+
+    assert compose_calls == [
+        ("ps", "--format", "json"),
+        ("logs", "--tail", "12"),
+    ]
+    assert stream_calls == [(["pwd"], False)]
+    assert lines == ["host-output"]
 
 
 def test_destroy_removes_compose_resources_and_optionally_image(

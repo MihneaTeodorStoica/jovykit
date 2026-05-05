@@ -46,6 +46,9 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["jovykit"]
+omit = [
+    "jovykit/tui.py",
+]
 
 [tool.coverage.report]
 show_missing = true
