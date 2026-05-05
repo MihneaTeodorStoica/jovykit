@@ -6,12 +6,7 @@ import shlex
 import yaml
 from typing import Any
 
-from jovykit.config import JovyConfig, hash_jupyter_password
-
-
-def escape_compose_interpolation(value: str) -> str:
-    """Escape dollar signs so Docker Compose does not expand them."""
-    return value.replace("$", "$$")
+from jovykit.config import JovyConfig
 
 
 def render_containerfile(config: JovyConfig) -> str:
@@ -82,18 +77,7 @@ def render_compose(config: JovyConfig) -> str:
         service["restart"] = config.restart_policy
     if config.runtime_user:
         service["user"] = config.runtime_user
-    command = shlex.split(config.jupyter_command or "start-notebook.py")
-    command_args = ["--ServerApp.token="]
-    if config.jupyter_password:
-        password_hash = escape_compose_interpolation(
-            hash_jupyter_password(config.jupyter_password)
-        )
-        command_args.append(
-            f"--PasswordIdentityProvider.hashed_password={password_hash}"
-        )
-    else:
-        command_args.append("--PasswordIdentityProvider.hashed_password=")
-    service["command"] = [*command, *command_args]
+    service["command"] = shlex.split(config.jupyter_command or "start-notebook.py")
     if config.watch_enabled:
         watch_rules: list[dict[str, Any]] = []
         if config.watch_workspace_mode == "sync":

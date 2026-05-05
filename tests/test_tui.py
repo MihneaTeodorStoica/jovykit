@@ -73,7 +73,7 @@ def test_run_jovy_records_errors_directly_after_threaded_work(
     assert calls[-1] == ("refresh", "")
 
 
-def test_dispatch_init_uses_default_jovykit_password(
+def test_dispatch_init_uses_default_jovykit_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = JovyKitDashboard()
@@ -91,7 +91,8 @@ def test_dispatch_init_uses_default_jovykit_password(
 
     app._dispatch_jovy_command(parsed, suspended=True)
 
-    assert calls[0]["password"] == commands.DEFAULT_JUPYTER_PASSWORD
+    assert calls[0]["token"] == commands.DEFAULT_JUPYTER_TOKEN
+    assert "password" not in calls[0]
 
 
 def test_dispatch_destroy_streams_to_dashboard_log(

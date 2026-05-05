@@ -9,7 +9,7 @@ from rich.console import Console
 
 from jovykit import __version__
 from jovykit import commands as command_ops
-from jovykit.config import DEFAULT_JUPYTER_PASSWORD, JovyKitError
+from jovykit.config import DEFAULT_JUPYTER_TOKEN, JovyKitError
 from jovykit.paths import DEFAULT_ENV_DIR
 
 app = typer.Typer(help="Manage project-local JovyKit Jupyter container environments.")
@@ -57,14 +57,9 @@ def init(
     gpus: str = typer.Option("auto", "--gpus", help="GPU mode: auto, none, or all."),
     port: int = typer.Option(8888, "--port", help="Local Jupyter port."),
     token: str = typer.Option(
-        "",
+        DEFAULT_JUPYTER_TOKEN,
         "--token",
-        help="Jupyter access token. Defaults to empty, which disables token auth.",
-    ),
-    password: str = typer.Option(
-        DEFAULT_JUPYTER_PASSWORD,
-        "--password",
-        help="Jupyter password. Pass an empty value to disable password auth.",
+        help="Jupyter access token. Defaults to jovykit.",
     ),
     log_level: str = typer.Option(
         "ERROR",
@@ -94,7 +89,6 @@ def init(
         gpus=gpus,
         port=port,
         token=token,
-        password=password,
         log_level=log_level,
         project_name=project_name,
         image_name=image_name,

@@ -4,7 +4,6 @@ from typing import Any
 
 import yaml
 
-from jovykit.config import DEFAULT_JUPYTER_PASSWORD, hash_jupyter_password
 from jovykit.templates import render_compose, render_containerfile
 
 
@@ -36,16 +35,13 @@ def test_render_compose_omits_develop_watch_when_disabled(create_project: Any) -
     assert "develop" not in service
 
 
-def test_render_compose_escapes_argon2_hash_for_compose(create_project: Any) -> None:
+def test_render_compose_uses_token_only_auth(create_project: Any) -> None:
     project = create_project()
 
     service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
 
-    expected_hash = hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD).replace("$", "$$")
-    assert (
-        f"--PasswordIdentityProvider.hashed_password={expected_hash}"
-        in service["command"]
-    )
+    assert service["environment"]["JUPYTER_TOKEN"] == "jovykit"
+    assert service["command"] == ["start-notebook.py"]
 
 
 def test_render_compose_sync_workspace_has_initial_sync_and_ignores(

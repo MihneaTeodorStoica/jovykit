@@ -1,11 +1,10 @@
 [project]
 name = "jovykit"
-version = "3.0.1"
+version = "3.0.2"
 description = "Layered Jupyter container images and project-local JovyKit environments."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "argon2-cffi",
     "pyyaml",
     "rich",
     "textual",

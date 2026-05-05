@@ -10,11 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from argon2 import PasswordHasher
-
 from jovykit.images import resolve_image
 
-DEFAULT_JUPYTER_PASSWORD = "jovykit"
+DEFAULT_JUPYTER_TOKEN = "jovykit"
 
 
 class JovyKitError(RuntimeError):
@@ -53,7 +51,6 @@ class JovyConfig:
     runtime_env: dict[str, str]
     runtime_volumes: dict[str, str]
     jupyter_token: str
-    jupyter_password: str
     jupyter_log_level: str
     jupyter_lab: bool
     jupyter_command: str | None
@@ -99,21 +96,6 @@ def _str_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value]
-
-
-def _jupyter_token(value: Any) -> str:
-    token = str(value or "")
-    return "" if token.lower() == "auto" else token
-
-
-def hash_jupyter_password(password: str) -> str:
-    """Return a Jupyter-compatible password hash."""
-    password_hasher = PasswordHasher(
-        memory_cost=10240,
-        time_cost=10,
-        parallelism=8,
-    )
-    return f"argon2:{password_hasher.hash(password, salt=b'jovykit-jupyter')}"
 
 
 def load_config(env_dir: Path) -> JovyConfig:
@@ -172,10 +154,7 @@ def load_config(env_dir: Path) -> JovyConfig:
             ),
             runtime_env=_str_dict(runtime.get("env", {})),
             runtime_volumes=_str_dict(runtime.get("volumes", {})),
-            jupyter_token=_jupyter_token(jupyter.get("token", "")),
-            jupyter_password=str(
-                jupyter.get("password", DEFAULT_JUPYTER_PASSWORD) or ""
-            ),
+            jupyter_token=str(jupyter.get("token", DEFAULT_JUPYTER_TOKEN) or ""),
             jupyter_log_level=str(jupyter.get("log_level", "ERROR")),
             jupyter_lab=bool(jupyter.get("lab", True)),
             jupyter_command=(
@@ -217,8 +196,7 @@ def initial_config_text(
     image: str,
     gpus: str,
     port: int,
-    token: str = "",
-    password: str | None = None,
+    token: str = DEFAULT_JUPYTER_TOKEN,
     log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
@@ -226,7 +204,6 @@ def initial_config_text(
 ) -> str:
     """Render the initial jovy.toml content."""
     base_image = resolve_image(image)
-    resolved_password = DEFAULT_JUPYTER_PASSWORD if password is None else password
     resolved_image_name = image_name or f"jovykit-{slugify_name(project_name)}"
     return f"""[project]
 name = "{project_name}"
@@ -257,7 +234,6 @@ restart = "unless-stopped"
 [jupyter]
 lab = true
 token = "{token}"
-password = "{resolved_password}"
 log_level = "{log_level}"
 
 [mounts]

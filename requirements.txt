@@ -4,7 +4,6 @@
 # Keep this file lightweight so local project tooling stays quick to install.
 
 python-dotenv
-argon2-cffi
 pyyaml
 requests
 rich

@@ -92,8 +92,6 @@ def test_init_accepts_project_and_jupyter_flags(
             ".jovy",
             "--token",
             "dev-token",
-            "--password",
-            "dev-password",
             "--log-level",
             "INFO",
             "--name",
@@ -112,19 +110,19 @@ def test_init_accepts_project_and_jupyter_flags(
     assert 'name = "custom-image"' in config_text
     assert 'tag = "dev"' in config_text
     assert 'token = "dev-token"' in config_text
-    assert 'password = "dev-password"' in config_text
+    assert "password" not in config_text
     assert 'log_level = "INFO"' in config_text
     assert (tmp_path / "notebooks").is_dir()
 
 
-def test_init_prints_default_password(
+def test_init_prints_default_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
     result = run_cli(["init", ".jovy"])
 
-    assert "Password: jovykit" in result.output
+    assert "Token: jovykit" in result.output
 
 
 def test_add_updates_toml_packages_and_clears_build_signature(
@@ -375,7 +373,7 @@ def test_up_does_not_combine_detach_with_compose_watch(
 
     assert calls == [("up", "-d")]
     assert started == [project.env_dir]
-    assert "Password: jovykit" in result.output
+    assert "Token: jovykit" in result.output
 
 
 def test_down_stops_config_watcher_and_accepts_timeout(

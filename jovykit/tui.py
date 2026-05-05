@@ -223,10 +223,7 @@ class JovyKitDashboard(App[None]):
                 image=_option_value(args, "--image", "base"),
                 gpus=_option_value(args, "--gpus", "auto"),
                 port=_option_int(args, "--port") or 8888,
-                token=_option_value(args, "--token", ""),
-                password=_option_value(
-                    args, "--password", commands.DEFAULT_JUPYTER_PASSWORD
-                ),
+                token=_option_value(args, "--token", commands.DEFAULT_JUPYTER_TOKEN),
                 project_name=_option_value(args, "--name", "") or None,
                 image_name=_option_value(args, "--image-name", "") or None,
                 image_tag=_option_value(args, "--tag", "local"),

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from jovykit.config import (
-    DEFAULT_JUPYTER_PASSWORD,
+    DEFAULT_JUPYTER_TOKEN,
     JovyConfig,
     JovyKitError,
     initial_config_text,
@@ -61,9 +61,12 @@ def jupyter_url(config: JovyConfig) -> str:
 
 def emit_jupyter_access(config: JovyConfig, emit: Emitter) -> None:
     """Emit Jupyter access details."""
-    emit(f"Jupyter: {jupyter_url(config)}")
-    if config.jupyter_password:
-        emit(f"Password: {config.jupyter_password}")
+    url = jupyter_url(config)
+    if config.jupyter_token:
+        url = f"{url}?token={config.jupyter_token}"
+    emit(f"Jupyter: {url}")
+    if config.jupyter_token:
+        emit(f"Token: {config.jupyter_token}")
 
 
 def load_env(env: Path | None = None, *, emit: Emitter = noop_emit) -> JovyConfig:
@@ -191,8 +194,7 @@ def init_environment(
     image: str = "base",
     gpus: str = "auto",
     port: int = 8888,
-    token: str = "",
-    password: str = DEFAULT_JUPYTER_PASSWORD,
+    token: str = DEFAULT_JUPYTER_TOKEN,
     log_level: str = "ERROR",
     project_name: str | None = None,
     image_name: str | None = None,
@@ -225,7 +227,6 @@ def init_environment(
             gpus=gpus,
             port=port,
             token=token,
-            password=password,
             log_level=log_level,
             image_name=image_name,
             image_tag=image_tag,
