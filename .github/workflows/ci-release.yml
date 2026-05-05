@@ -219,10 +219,6 @@ jobs:
     if: always() && needs.security.result == 'success' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -235,16 +231,6 @@ jobs:
 
       - name: Build docs
         run: mdbook build docs
-
-      - name: Upload Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: docs/book
-
-      - name: Deploy docs
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/deploy-pages@v5
 
   tag:
     name: Release / Create tag
