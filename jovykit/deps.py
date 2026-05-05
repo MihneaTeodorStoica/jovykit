@@ -11,7 +11,7 @@ def add_packages(requirements_path: Path, packages: list[str]) -> list[str]:
     if requirements_path.exists():
         lines = requirements_path.read_text(encoding="utf-8").splitlines()
     else:
-        lines = ["# Project packages managed by LabKit."]
+        lines = ["# Project packages managed by JovyKit."]
 
     existing = {
         line.strip()

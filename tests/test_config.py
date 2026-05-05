@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from labkit.config import initial_config_text, load_config, slugify_name
-from labkit.generate import write_generated_files
-from labkit.images import resolve_image
+from jovykit.config import initial_config_text, load_config, slugify_name
+from jovykit.generate import write_generated_files
+from jovykit.images import resolve_image
 
 
 def test_resolve_image_accepts_levels_and_refs() -> None:
-    assert resolve_image("base") == "ghcr.io/mihneateodorstoica/labkit-base:latest"
+    assert resolve_image("base") == "ghcr.io/mihneateodorstoica/jovykit-base:latest"
     assert resolve_image("example.com/custom:tag") == "example.com/custom:tag"
 
 
@@ -16,12 +16,12 @@ def test_slugify_name_returns_docker_friendly_name() -> None:
 
 
 def test_generated_environment_files(tmp_path: Path) -> None:
-    env_dir = tmp_path / ".lab"
+    env_dir = tmp_path / ".jovy"
     env_dir.mkdir()
-    (env_dir / "lab.toml").write_text(
+    (env_dir / "jovy.toml").write_text(
         initial_config_text(
             project_name="My Project",
-            env_name=".lab",
+            env_name=".jovy",
             image="minimal",
             gpus="none",
             port=9999,
@@ -32,9 +32,9 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     config = load_config(env_dir)
     write_generated_files(config)
 
-    assert config.base_image == "ghcr.io/mihneateodorstoica/labkit-minimal:latest"
+    assert config.base_image == "ghcr.io/mihneateodorstoica/jovykit-minimal:latest"
     assert (
-        "FROM ghcr.io/mihneateodorstoica/labkit-minimal:latest"
+        "FROM ghcr.io/mihneateodorstoica/jovykit-minimal:latest"
         in (env_dir / "Containerfile").read_text()
     )
     compose = (env_dir / "compose.yaml").read_text()

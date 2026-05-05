@@ -1,11 +1,11 @@
 # Images
 
-Images are published to GitHub Container Registry as:
+JovyKit images are published to GitHub Container Registry as:
 
 ```text
-ghcr.io/mihneateodorstoica/labkit-TYPE:latest
-ghcr.io/mihneateodorstoica/labkit-TYPE:nightly
-ghcr.io/mihneateodorstoica/labkit-TYPE:lts
+ghcr.io/mihneateodorstoica/jovykit-TYPE:latest
+ghcr.io/mihneateodorstoica/jovykit-TYPE:nightly
+ghcr.io/mihneateodorstoica/jovykit-TYPE:lts
 ```
 
 `TYPE` is one of `minimal`, `base`, `extended`, or `full`.

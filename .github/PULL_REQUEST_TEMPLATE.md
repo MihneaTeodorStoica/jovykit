@@ -10,7 +10,7 @@ List the checks you ran, such as:
 - `black --check .`
 - `mypy .`
 - `pytest`
-- `docker build --target minimal -t labkit-minimal ./image`
+- `docker build --target minimal -t jovykit-minimal ./image`
 - `mdbook build docs`
 
 ## Notes

@@ -1,4 +1,4 @@
-"""Docker runtime helpers for LabKit."""
+"""Docker runtime helpers for JovyKit."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from labkit.config import LabConfig, read_state, write_state
+from jovykit.config import JovyConfig, JovyKitError, read_state, write_state
 
 
-class DockerError(RuntimeError):
+class DockerError(JovyKitError):
     """Raised when Docker or Docker Compose fails."""
 
 
@@ -44,22 +44,22 @@ def run_command(
         )
 
 
-def build_signature(config: LabConfig) -> str:
+def build_signature(config: JovyConfig) -> str:
     """Hash the inputs that affect the overlay image."""
     hasher = hashlib.sha256()
-    for path in (config.env_dir / "lab.toml", config.env_dir / "requirements.txt"):
+    for path in (config.env_dir / "jovy.toml", config.env_dir / "requirements.txt"):
         hasher.update(path.name.encode("utf-8"))
         hasher.update(path.read_bytes())
     return hasher.hexdigest()
 
 
-def is_build_stale(config: LabConfig) -> bool:
+def is_build_stale(config: JovyConfig) -> bool:
     """Return whether the overlay image should be rebuilt."""
     state = read_state(config.env_dir)
     return state.get("build_signature") != build_signature(config)
 
 
-def build(config: LabConfig, *, no_cache: bool = False) -> None:
+def build(config: JovyConfig, *, no_cache: bool = False, pull: bool = False) -> None:
     """Build the project overlay image."""
     args = [
         "docker",
@@ -73,6 +73,8 @@ def build(config: LabConfig, *, no_cache: bool = False) -> None:
     ]
     if no_cache:
         args.append("--no-cache")
+    if pull:
+        args.append("--pull")
     args.append(".")
     run_command(args, cwd=config.env_dir, attached=True)
     state = read_state(config.env_dir)
@@ -86,16 +88,19 @@ def build(config: LabConfig, *, no_cache: bool = False) -> None:
     write_state(config.env_dir, state)
 
 
-def compose(config: LabConfig, *args: str, attached: bool = False) -> None:
+def compose(
+    config: JovyConfig, *args: str, attached: bool = False, check: bool = True
+) -> None:
     """Run docker compose for this environment."""
     run_command(
         ["docker", "compose", "-f", "compose.yaml", *args],
         cwd=config.env_dir,
         attached=attached,
+        check=check,
     )
 
 
-def destroy(config: LabConfig, *, remove_image: bool = True) -> None:
+def destroy(config: JovyConfig, *, remove_image: bool = True) -> None:
     """Remove compose resources and optionally the project image."""
     compose(config, "down", "--volumes", "--remove-orphans", attached=True)
     if remove_image:

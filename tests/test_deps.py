@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from labkit.deps import add_packages
+from jovykit.deps import add_packages
 
 
 def test_add_packages_appends_only_new_entries(tmp_path: Path) -> None:

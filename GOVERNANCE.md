@@ -1,6 +1,6 @@
 # Governance
 
-Labkit is currently maintained by Mihnea-Teodor Stoica.
+JovyKit is currently maintained by Mihnea-Teodor Stoica.
 
 Project direction, image layering decisions, dependency additions, security
 responses, and release automation are managed by the maintainer.
