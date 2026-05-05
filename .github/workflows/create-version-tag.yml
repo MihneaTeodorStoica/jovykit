@@ -1,20 +1,342 @@
-name: Create Version Tag
+name: Pipeline
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  schedule:
+    - cron: "30 6 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: mihneateodorstoica
 
 jobs:
+  label:
+    name: Apply labels
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Label changed files
+        uses: actions/labeler@v6
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          pr-number: ${{ github.event.pull_request.number }}
+          sync-labels: true
+          dot: true
+
+  codeql:
+    name: Security / CodeQL Python
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+          build-mode: none
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python"
+
+  semgrep:
+    name: Security / Semgrep Python
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Semgrep
+        run: python -m pip install --disable-pip-version-check semgrep
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/security-audit \
+            --error \
+            --metrics=off \
+            --sarif-output semgrep.sarif \
+            .
+
+      - name: Upload Semgrep SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+
+  zizmor:
+    name: Security / Zizmor Actions
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install zizmor
+        run: python -m pip install --disable-pip-version-check zizmor
+
+      - name: Audit workflows
+        run: |
+          zizmor \
+            --format sarif \
+            --min-severity medium \
+            --min-confidence high \
+            .github > zizmor.sarif
+
+      - name: Upload zizmor SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: zizmor.sarif
+
+  dependency-review:
+    name: Security / Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+
+  security:
+    name: Security gate
+    if: always() && github.event_name != 'pull_request_target'
+    needs: [codeql, semgrep, zizmor, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check security results
+        run: |
+          codeql="${{ needs.codeql.result }}"
+          semgrep="${{ needs.semgrep.result }}"
+          zizmor="${{ needs.zizmor.result }}"
+          dependency_review="${{ needs.dependency-review.result }}"
+
+          for result in "$codeql" "$semgrep" "$zizmor"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::Required security job finished with result: $result"
+              exit 1
+            fi
+          done
+
+          if [ "$dependency_review" != "success" ] && [ "$dependency_review" != "skipped" ]; then
+            echo "::error::Dependency review finished with result: $dependency_review"
+            exit 1
+          fi
+
+  images:
+    name: Images / ${{ matrix.type }}
+    if: github.event_name != 'pull_request_target'
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - type: minimal
+            target: minimal
+          - type: base
+            target: base
+          - type: extended
+            target: extended
+          - type: full
+            target: full
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-${{ matrix.type }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
+            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' }}
+            type=raw,value=manual,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=ref,event=pr
+
+      - name: Build and publish ${{ matrix.type }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./image
+          file: ./image/Dockerfile
+          target: ${{ matrix.target }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: ${{ github.event_name != 'pull_request' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=${{ matrix.type }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.type }}
+
+  python:
+    name: Code / Python ${{ matrix.python-version }}
+    if: github.event_name != 'pull_request_target' && github.event_name != 'schedule'
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e .
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Check formatting
+        run: black --check .
+
+      - name: Type-check
+        run: mypy jovykit tests main.py
+
+      - name: Test
+        run: pytest --cov=jovykit --cov-report=term-missing
+
+      - name: Audit project dependencies
+        if: matrix.python-version == '3.12'
+        run: pip-audit -r requirements.txt
+
+      - name: Build package
+        if: matrix.python-version == '3.12'
+        run: python -m build
+
+  docs:
+    name: Code / Docs
+    if: github.event_name != 'pull_request_target' && github.event_name != 'schedule'
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "0.4.52"
+
+      - name: Build docs
+        run: mdbook build docs
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/book
+
+      - name: Deploy docs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/deploy-pages@v5
+
   tag:
-    name: Create tag from pyproject.toml
+    name: Release / Create tag
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [python, docs]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -61,12 +383,11 @@ jobs:
           git fetch --tags --force
           if git rev-parse --verify --quiet "refs/tags/${{ steps.version.outputs.tag }}"; then
             echo "created=false" >> "$GITHUB_OUTPUT"
-            echo "Tag ${{ steps.version.outputs.tag }} already exists; nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists; skipping release publish."
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "publish=true" >> "$GITHUB_OUTPUT"
               echo "Manual run will publish the existing ${{ steps.version.outputs.tag }} tag."
-            else
-              echo "publish=false" >> "$GITHUB_OUTPUT"
             fi
           else
             echo "created=true" >> "$GITHUB_OUTPUT"
@@ -81,8 +402,8 @@ jobs:
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
           git push origin "refs/tags/${{ steps.version.outputs.tag }}"
 
-  build:
-    name: Build package
+  package:
+    name: Release / Build package from tag
     needs: tag
     if: needs.tag.outputs.publish == 'true'
     runs-on: ubuntu-latest
@@ -117,8 +438,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish to PyPI
-    needs: [tag, build]
+    name: Release / Publish to PyPI
+    needs: [tag, package]
     if: needs.tag.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
