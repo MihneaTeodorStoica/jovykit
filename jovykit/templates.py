@@ -44,21 +44,6 @@ def render_compose(config: JovyConfig) -> str:
         "tty": True,
         "develop": {
             "watch": [
-                {
-                    "action": "sync",
-                    "path": config.compose_workdir,
-                    "target": config.work_mount,
-                    "initial_sync": True,
-                    "ignore": [
-                        ".jovy/",
-                        ".git/",
-                        ".venv/",
-                        "__pycache__/",
-                        ".mypy_cache/",
-                        ".pytest_cache/",
-                        ".ruff_cache/",
-                    ],
-                },
                 {"action": "rebuild", "path": "requirements.txt"},
                 {"action": "rebuild", "path": "Containerfile"},
             ]

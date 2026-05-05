@@ -61,7 +61,8 @@ jovy add pandas scikit-learn plotly
 jovy run
 ```
 
-The CLI writes a reproducible overlay build recipe under `.jovy/`:
+The CLI creates a local `work/` directory for project files and writes a
+reproducible overlay build recipe under `.jovy/`:
 
 ```text
 .jovy/

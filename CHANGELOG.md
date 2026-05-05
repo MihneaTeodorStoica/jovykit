@@ -7,6 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Changed new environments to use `work/` as the mounted project directory.
 - Fixed `jovy start` so detached startup does not pass Docker Compose watch.
 - Added `jovy --version`, Jupyter init flags, and additional log filtering
   flags.

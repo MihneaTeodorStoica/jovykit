@@ -43,27 +43,12 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     data = yaml.safe_load(compose)
     service = data["services"]["jovy"]
     assert service["ports"] == ["127.0.0.1:9999:8888"]
-    assert service["volumes"][0] == f"..:{config.work_mount}"
+    assert service["volumes"][0] == f"../work:{config.work_mount}"
     assert service["environment"] == {
         "JUPYTER_ENABLE_LAB": "yes",
         "JUPYTER_LOG_LEVEL": "ERROR",
     }
-    assert service["develop"]["watch"][0] == {
-        "action": "sync",
-        "path": "..",
-        "target": config.work_mount,
-        "initial_sync": True,
-        "ignore": [
-            ".jovy/",
-            ".git/",
-            ".venv/",
-            "__pycache__/",
-            ".mypy_cache/",
-            ".pytest_cache/",
-            ".ruff_cache/",
-        ],
-    }
-    assert service["develop"]["watch"][1:] == [
+    assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "requirements.txt"},
         {"action": "rebuild", "path": "Containerfile"},
     ]
@@ -92,4 +77,7 @@ def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> N
     assert config.project_root == notebooks_dir
     assert service["environment"]["JUPYTER_TOKEN"] == "secret-token"
     assert service["volumes"][0] == f"../notebooks:{config.work_mount}"
-    assert service["develop"]["watch"][0]["path"] == "../notebooks"
+    assert all(
+        watch_rule.get("path") != "../notebooks"
+        for watch_rule in service["develop"]["watch"]
+    )

@@ -97,7 +97,7 @@ def init(
     ),
     image_tag: str = typer.Option("local", "--tag", help="Project overlay image tag."),
     workdir: str = typer.Option(
-        "..", "--workdir", help="Project path mounted into the container."
+        "../work", "--workdir", help="Project path mounted into the container."
     ),
     force: bool = typer.Option(
         False,
@@ -137,6 +137,7 @@ def init(
     )
 
     config = load_config(env_dir)
+    config.project_root.mkdir(parents=True, exist_ok=True)
     write_generated_files(config)
     write_state(env_dir, {})
 

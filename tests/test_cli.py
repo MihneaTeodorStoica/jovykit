@@ -66,6 +66,7 @@ def test_init_accepts_jupyter_flags(
     config_text = (tmp_path / ".jovy" / "jovy.toml").read_text(encoding="utf-8")
     assert 'token = "dev-token"' in config_text
     assert 'log_level = "INFO"' in config_text
+    assert (tmp_path / "work").is_dir()
 
 
 def test_run_uses_compose_watch_by_default(

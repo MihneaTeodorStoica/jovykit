@@ -103,7 +103,7 @@ def initial_config_text(
     log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
-    workdir: str = "..",
+    workdir: str = "../work",
 ) -> str:
     """Render the initial jovy.toml content."""
     base_image = resolve_image(image)

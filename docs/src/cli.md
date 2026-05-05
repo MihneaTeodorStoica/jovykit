@@ -3,6 +3,7 @@
 JovyKit manages project-local Jupyter container environments. A `.jovy`
 directory belongs to one project and contains the configuration, generated
 Docker files, dependency manifest, and local build state for that project.
+Project files live in `work/` by default and are mounted into the container.
 
 ## Create an environment
 
