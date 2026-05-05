@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="site/assets/jovykit-logo.png" alt="JovyKit logo" width="140">
+  <img src="site/assets/jovykit-logo-transparent.png" alt="JovyKit logo" width="140">
 </p>
 
 <h1 align="center">JovyKit</h1>
