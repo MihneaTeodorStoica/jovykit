@@ -59,12 +59,17 @@ def jupyter_url(config: JovyConfig) -> str:
     return f"http://127.0.0.1:{config.port}/lab"
 
 
-def emit_jupyter_access(config: JovyConfig, emit: Emitter) -> None:
-    """Emit Jupyter access details."""
+def jupyter_access_url(config: JovyConfig) -> str:
+    """Return the URL users should open in a browser."""
     url = jupyter_url(config)
     if config.jupyter_token:
-        url = f"{url}?token={config.jupyter_token}"
-    emit(f"Jupyter: {url}")
+        return f"{url}?token={config.jupyter_token}"
+    return url
+
+
+def emit_jupyter_access(config: JovyConfig, emit: Emitter) -> None:
+    """Emit Jupyter access details."""
+    emit(f"Jupyter: {jupyter_access_url(config)}")
     if config.jupyter_token:
         emit(f"Token: {config.jupyter_token}")
 
@@ -442,12 +447,24 @@ def shell(
     *,
     env: Path | None = None,
     command: str | None = None,
+    emit: Emitter = noop_emit,
+    stream: bool = False,
 ) -> None:
     """Open a bash shell in the running JovyKit container."""
+    if stream and command is None:
+        raise JovyKitError("Streaming shell mode requires a command.")
     args = ["exec", "jovy", "bash"]
     if command:
-        args.extend(["-lc", command])
-    compose(load_env(env), *args, attached=True)
+        if stream:
+            args = ["exec", "-T", "jovy", "bash", "-lc", command]
+        else:
+            args.extend(["-lc", command])
+    compose(
+        load_env(env, emit=emit),
+        *args,
+        attached=not stream,
+        log=emit if stream else None,
+    )
 
 
 def exec_in_container(
@@ -530,6 +547,7 @@ def status_data(
         "base_image": config.base_image,
         "project_image": config.image_ref,
         "port": config.port,
+        "url": jupyter_access_url(config),
         "gpus": config.gpus,
         "build_stale": stale,
     }
@@ -547,5 +565,6 @@ def status(
     emit(f"Base image: {data['base_image']}")
     emit(f"Project image: {data['project_image']}")
     emit(f"Port: {data['port']}")
+    emit(f"URL: {data['url']}")
     emit(f"GPU: {data['gpus']}")
     emit(f"Build stale: {'yes' if data['build_stale'] else 'no'}")

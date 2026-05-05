@@ -64,6 +64,12 @@ def test_init_environment_force_rejects_non_jovykit_directory(tmp_path: Path) ->
         commands.init_environment(path=env_dir, force=True)
 
 
+def test_jupyter_access_url_includes_token(create_project: Any) -> None:
+    project = create_project(token="dev-token")
+
+    assert commands.jupyter_access_url(project.config).endswith("/lab?token=dev-token")
+
+
 def test_build_uses_streaming_backend(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
@@ -88,6 +94,28 @@ def test_build_uses_streaming_backend(
     commands.build(no_cache=True, pull=True, stream=True)
 
     assert calls == [(True, True)]
+
+
+def test_shell_command_can_stream_without_tty(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    monkeypatch.chdir(project.root)
+    compose_calls: list[tuple[tuple[str, ...], bool, bool]] = []
+
+    monkeypatch.setattr(
+        commands,
+        "compose",
+        lambda config, *args, attached=False, log=None: compose_calls.append(
+            (args, attached, log is not None)
+        ),
+    )
+
+    commands.shell(command="python --version", stream=True, emit=lambda line: None)
+
+    assert compose_calls == [
+        (("exec", "-T", "jovy", "bash", "-lc", "python --version"), False, True)
+    ]
 
 
 def test_lifecycle_commands_support_streaming_compose(

@@ -7,6 +7,11 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 3.0.3.
+- Reduced dashboard redraw flicker during background commands.
+- Showed tokenized JupyterLab URLs consistently in CLI and dashboard output.
+- Streamed `shell <command>` dashboard commands into the log panel instead of
+  suspending the terminal.
 - Bumped package version to 3.0.2.
 - Removed generated Jupyter password configuration and kept token-only
   authentication with a default `jovykit` token.

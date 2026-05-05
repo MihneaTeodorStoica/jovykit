@@ -22,6 +22,25 @@ from jovykit.state import EnvironmentStatus, discover_status
 from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind, parse_tui_command
 
 
+def _status_key(status: EnvironmentStatus) -> tuple[object, ...]:
+    return (
+        status.initialized,
+        status.project_path,
+        status.env_dir,
+        status.status,
+        status.health,
+        status.build,
+        status.image,
+        status.base_image,
+        status.gpu,
+        status.port,
+        status.url,
+        status.package_count,
+        status.volume,
+        status.last_error,
+    )
+
+
 class JovyKitDashboard(App[None]):
     """Full-screen dashboard for managing a local JovyKit environment."""
 
@@ -61,6 +80,7 @@ class JovyKitDashboard(App[None]):
         super().__init__()
         self.env = env
         self._last_status: EnvironmentStatus | None = None
+        self._last_status_key: tuple[object, ...] | None = None
         self._last_log_snapshot = ""
         self._command_running = False
 
@@ -106,7 +126,10 @@ class JovyKitDashboard(App[None]):
         """Refresh the top status panel."""
         status = discover_status(self.env)
         self._last_status = status
-        self.query_one("#status", Static).update(render_status_panel(status))
+        status_key = _status_key(status)
+        if status_key != self._last_status_key:
+            self._last_status_key = status_key
+            self.query_one("#status", Static).update(render_status_panel(status))
 
     def refresh_logs(self) -> None:
         """Poll recent container logs while the environment is running."""
@@ -142,7 +165,7 @@ class JovyKitDashboard(App[None]):
         if parsed.kind is TuiCommandKind.HOST:
             self.run_worker(self._run_host(parsed.args), exclusive=False)
             return
-        if parsed.name in {"shell", "run"}:
+        if parsed.name == "run" or (parsed.name == "shell" and not parsed.args):
             await self._run_suspended(parsed)
             return
         self.run_worker(self._run_jovy(parsed), exclusive=False)
@@ -275,7 +298,11 @@ class JovyKitDashboard(App[None]):
             )
         elif name == "shell":
             command = " ".join(shlex.quote(arg) for arg in args) if args else None
-            commands.shell(command=command)
+            commands.shell(
+                command=command,
+                emit=emit,
+                stream=not suspended and command is not None,
+            )
         elif name == "exec":
             commands.exec_in_container(args, emit=emit, stream=True)
         elif name == "status":
@@ -340,7 +367,6 @@ class JovyKitDashboard(App[None]):
             command = self.query_one(Input)
         except (NoMatches, ScreenStackError):
             return
-        command.disabled = running
         if not running:
             command.focus()
 

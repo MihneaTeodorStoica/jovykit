@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import pytest
 
 from jovykit import commands
-from jovykit.tui import JovyKitDashboard
+from jovykit.tui import JovyKitDashboard, _status_key
 from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind
 
 
@@ -112,3 +113,50 @@ def test_dispatch_destroy_streams_to_dashboard_log(
     app._dispatch_jovy_command(parsed, suspended=True)
 
     assert calls[0]["stream"] is True
+
+
+def test_dispatch_shell_command_streams_inside_dashboard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    parsed = ParsedTuiCommand(
+        kind=TuiCommandKind.JOVY,
+        name="shell",
+        args=["python", "--version"],
+        raw="shell python --version",
+    )
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(commands, "shell", lambda **kwargs: calls.append(kwargs))
+
+    app._dispatch_jovy_command(parsed)
+
+    assert calls[0]["command"] == "python --version"
+    assert calls[0]["stream"] is True
+
+
+def test_set_command_running_keeps_input_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+
+    class FakeInput:
+        disabled = False
+
+        def focus(self) -> None:
+            return None
+
+    command = FakeInput()
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: command)
+
+    app._set_command_running(True)
+
+    assert command.disabled is False
+
+
+def test_status_key_includes_url(create_project: Any) -> None:
+    from jovykit.state import status_from_config
+
+    status = status_from_config(create_project(token="dev-token").config)
+
+    assert any("token=dev-token" in str(item) for item in _status_key(status))

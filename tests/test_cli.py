@@ -122,6 +122,7 @@ def test_init_prints_default_token(
 
     result = run_cli(["init", ".jovy"])
 
+    assert "Jupyter: http://127.0.0.1:8888/lab?token=jovykit" in result.output
     assert "Token: jovykit" in result.output
 
 
@@ -373,6 +374,7 @@ def test_up_does_not_combine_detach_with_compose_watch(
 
     assert calls == [("up", "-d")]
     assert started == [project.env_dir]
+    assert "Jupyter: http://127.0.0.1:9999/lab?token=jovykit" in result.output
     assert "Token: jovykit" in result.output
 
 

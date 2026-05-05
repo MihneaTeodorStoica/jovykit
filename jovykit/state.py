@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from jovykit.commands import jupyter_url, load_env
+from jovykit.commands import jupyter_access_url, load_env
 from jovykit.config import JovyConfig, JovyKitError, read_state
 from jovykit.runtime import compose_ps, is_build_stale
 
@@ -173,10 +173,7 @@ def _gpu_label(value: str) -> str:
 
 
 def _url(config: JovyConfig) -> str:
-    url = jupyter_url(config)
-    if config.jupyter_token:
-        return f"{url}?token={config.jupyter_token}"
-    return url
+    return jupyter_access_url(config)
 
 
 def _string_or_none(value: object) -> str | None:
