@@ -1,7 +1,8 @@
 # Automation
 
 The repository uses GitHub Actions for Python checks, security scanning, image
-publishing, pull request labeling, releases, and wiki publishing.
+publishing, pull request labeling, releases, website publishing, and wiki
+publishing.
 
 ## Main CI and release workflow
 
@@ -52,6 +53,12 @@ ghcr.io/mihneateodorstoica/jovykit-TYPE:TAG
 ```
 
 See [Images](Images) for the image layout and local build commands.
+
+## Website publishing
+
+`.github/workflows/pages.yml` publishes the promotional website from `site/` to
+GitHub Pages. It runs on pushes to `main` when website files change, and it can
+also be run manually.
 
 ## Wiki publishing
 

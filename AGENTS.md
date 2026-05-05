@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-JovyKit is a Python 3.11+ CLI package for project-local Jupyter container environments. Core package code lives in `jovykit/`, with the Typer entry point in `jovykit/cli.py` and the console script exposed as `jovy`. Tests live in `tests/` and mirror package behavior by feature, for example `tests/test_cli.py` and `tests/test_config.py`. Container image definitions and layered dependency manifests live in `image/`; update the correct `requirements-*.txt` file for the target image layer. Documentation source pages live in `wiki/` and are published to the GitHub Wiki.
+JovyKit is a Python 3.11+ CLI package for project-local Jupyter container environments. Core package code lives in `jovykit/`, with the Typer entry point in `jovykit/cli.py` and the console script exposed as `jovy`. Tests live in `tests/` and mirror package behavior by feature, for example `tests/test_cli.py` and `tests/test_config.py`. Container image definitions and layered dependency manifests live in `image/`; update the correct `requirements-*.txt` file for the target image layer. The promotional website lives in `site/` and is published to GitHub Pages. Documentation source pages live in `wiki/` and are published to the GitHub Wiki.
 
 ## Build, Test, and Development Commands
 
@@ -13,6 +13,7 @@ JovyKit is a Python 3.11+ CLI package for project-local Jupyter container enviro
 - `mypy jovykit tests main.py`: type-check the package, tests, and top-level launcher.
 - `pytest --cov=jovykit --cov-report=term-missing`: run the full test suite with coverage, matching CI.
 - `docker build --target minimal -t jovykit-minimal ./image`: build one image layer locally; replace `minimal` with `base`, `extended`, or `full` as needed.
+- Open `site/index.html` in a browser: preview the GitHub Pages website.
 - Edit Markdown files in `wiki/`: update GitHub Wiki documentation.
 
 ## Coding Style & Naming Conventions

@@ -13,11 +13,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/MihneaTeodorStoica/jovykit"
+Homepage = "https://mihneateodorstoica.github.io/jovykit/"
 Repository = "https://github.com/MihneaTeodorStoica/jovykit"
 Issues = "https://github.com/MihneaTeodorStoica/jovykit/issues"
 Changelog = "https://github.com/MihneaTeodorStoica/jovykit/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/MihneaTeodorStoica/jovykit/tree/main/docs"
+Documentation = "https://github.com/MihneaTeodorStoica/jovykit/wiki"
 
 [project.scripts]
 jovy = "jovykit.cli:main"

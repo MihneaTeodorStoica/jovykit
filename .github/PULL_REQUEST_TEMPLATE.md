@@ -11,6 +11,7 @@ List the checks you ran, such as:
 - `mypy .`
 - `pytest`
 - `docker build --target minimal -t jovykit-minimal ./image`
+- Website preview from `site/index.html`, for website changes
 - Wiki page preview or `.github/workflows/wiki.yml` dry run, for documentation changes
 
 ## Notes

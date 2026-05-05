@@ -39,7 +39,8 @@ docker:
 docs:
   - changed-files:
       - any-glob-to-any-file:
-          - docs/**
+          - site/**
+          - wiki/**
           - "*.md"
 
 governance:

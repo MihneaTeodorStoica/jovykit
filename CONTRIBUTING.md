@@ -47,6 +47,11 @@ Preview documentation changes:
 Edit the Markdown pages in `wiki/` and review them with GitHub Wiki rendering
 before merging.
 
+Preview website changes:
+
+Open `site/index.html` in a browser, or serve `site/` with a local static file
+server.
+
 ## Image Layering Guidelines
 
 - Put common notebook/runtime packages in `image/requirements-minimal.txt`.
