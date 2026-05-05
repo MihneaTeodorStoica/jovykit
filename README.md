@@ -98,8 +98,9 @@ jovy destroy --keep-image
 Most commands accept `--env PATH` when you want to operate on a JovyKit
 environment outside the current project tree. `jovy init` also supports
 customizing the generated project name, overlay image name/tag, Jupyter port,
-GPU mode, Jupyter token/log level, and mounted work directory. The default
-Jupyter token is empty, so JovyKit does not rely on Jupyter's generated token.
+GPU mode, Jupyter token/password/log level, and mounted work directory. The
+default token is empty and the default password is `jovykit`, so JovyKit does
+not rely on Jupyter's generated token.
 Docker Compose watch runs with `jovy run`; `jovy up` stays detached and starts
 a lightweight watcher that restarts the container when `jovy.toml` changes.
 

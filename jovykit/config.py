@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from jovykit.images import resolve_image
+
+DEFAULT_JUPYTER_PASSWORD = "jovykit"
 
 
 class JovyKitError(RuntimeError):
@@ -47,6 +50,7 @@ class JovyConfig:
     runtime_env: dict[str, str]
     runtime_volumes: dict[str, str]
     jupyter_token: str
+    jupyter_password: str
     jupyter_log_level: str
     jupyter_lab: bool
     jupyter_command: str | None
@@ -97,6 +101,13 @@ def _str_list(value: Any) -> list[str]:
 def _jupyter_token(value: Any) -> str:
     token = str(value or "")
     return "" if token.lower() == "auto" else token
+
+
+def hash_jupyter_password(password: str) -> str:
+    """Return a Jupyter-compatible password hash."""
+    salt = "jovykit"
+    digest = hashlib.sha1((password + salt).encode("utf-8")).hexdigest()
+    return f"sha1:{salt}:{digest}"
 
 
 def load_config(env_dir: Path) -> JovyConfig:
@@ -154,6 +165,9 @@ def load_config(env_dir: Path) -> JovyConfig:
             runtime_env=_str_dict(runtime.get("env", {})),
             runtime_volumes=_str_dict(runtime.get("volumes", {})),
             jupyter_token=_jupyter_token(jupyter.get("token", "")),
+            jupyter_password=str(
+                jupyter.get("password", DEFAULT_JUPYTER_PASSWORD) or ""
+            ),
             jupyter_log_level=str(jupyter.get("log_level", "ERROR")),
             jupyter_lab=bool(jupyter.get("lab", True)),
             jupyter_command=(
@@ -196,6 +210,7 @@ def initial_config_text(
     gpus: str,
     port: int,
     token: str = "",
+    password: str = DEFAULT_JUPYTER_PASSWORD,
     log_level: str = "ERROR",
     image_name: str | None = None,
     image_tag: str = "local",
@@ -233,6 +248,7 @@ restart = "unless-stopped"
 [jupyter]
 lab = true
 token = "{token}"
+password = "{password}"
 log_level = "{log_level}"
 
 [mounts]

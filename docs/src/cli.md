@@ -9,7 +9,7 @@ Project files live in `work/` by default and are mounted into the container.
 
 ```bash
 jovy init .jovy --image base --gpus auto --port 8888
-jovy init .jovy --token dev-token --log-level INFO
+jovy init .jovy --password dev-password --log-level INFO
 ```
 
 Image levels are `minimal`, `base`, `extended`, and `full`. You can also pass a
@@ -20,7 +20,8 @@ Useful initialization options:
 - `--name`: project name written to `jovy.toml`
 - `--image-name`: overlay image name
 - `--tag`: overlay image tag
-- `--token`: Jupyter access token. Defaults to empty, which disables token auth.
+- `--token`: Jupyter access token. Defaults to empty so JovyKit does not use token auth.
+- `--password`: Jupyter password. Defaults to `jovykit`.
 - `--log-level`: Jupyter server log level
 - `--workdir`: project path mounted into the container
 - `--force`: refresh an existing JovyKit environment without initializing a

@@ -7,6 +7,8 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 2.0.2.
+- Added a default Jupyter password and print it from `jovy init` and `jovy up`.
 - Bumped package version to 2.0.1.
 - Changed the default Jupyter token to empty and always generated
   `JUPYTER_TOKEN`, so JovyKit no longer relies on Jupyter's generated token.

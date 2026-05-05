@@ -6,7 +6,7 @@ import shlex
 import yaml
 from typing import Any
 
-from jovykit.config import JovyConfig
+from jovykit.config import JovyConfig, hash_jupyter_password
 
 
 def render_containerfile(config: JovyConfig) -> str:
@@ -77,8 +77,15 @@ def render_compose(config: JovyConfig) -> str:
         service["restart"] = config.restart_policy
     if config.runtime_user:
         service["user"] = config.runtime_user
-    if config.jupyter_command:
-        service["command"] = config.jupyter_command
+    command = config.jupyter_command or "start-notebook.py"
+    command_args = ["--ServerApp.token=''"]
+    if config.jupyter_password:
+        command_args.append(
+            f"--PasswordIdentityProvider.hashed_password={shlex.quote(hash_jupyter_password(config.jupyter_password))}"
+        )
+    else:
+        command_args.append("--PasswordIdentityProvider.hashed_password=''")
+    service["command"] = f"{command} {' '.join(command_args)}"
     if config.watch_enabled:
         watch_rules: list[dict[str, Any]] = []
         if config.watch_workspace_mode == "sync":

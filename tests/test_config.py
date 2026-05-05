@@ -7,7 +7,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from jovykit.config import (
+    DEFAULT_JUPYTER_PASSWORD,
     ConfigError,
+    hash_jupyter_password,
     initial_config_text,
     load_config,
     read_state,
@@ -71,6 +73,11 @@ def test_generated_environment_files(tmp_path: Path) -> None:
         "JUPYTER_LOG_LEVEL": "ERROR",
         "JUPYTER_TOKEN": "",
     }
+    assert config.jupyter_password == DEFAULT_JUPYTER_PASSWORD
+    assert service["command"] == (
+        "start-notebook.py --ServerApp.token='' "
+        f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD)}"
+    )
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "requirements.txt"},
         {"action": "rebuild", "path": "Containerfile"},
@@ -105,6 +112,7 @@ def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> N
     service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
     assert config.project_root == notebooks_dir
     assert service["environment"]["JUPYTER_TOKEN"] == "secret-token"
+    assert "PasswordIdentityProvider.hashed_password" in service["command"]
     assert service["volumes"][0] == f"../notebooks:{config.work_mount}"
     assert all(
         watch_rule.get("path") != "../notebooks"
@@ -130,6 +138,27 @@ def test_auto_jupyter_token_is_normalized_to_empty(tmp_path: Path) -> None:
     service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
     assert config.jupyter_token == ""
     assert service["environment"]["JUPYTER_TOKEN"] == ""
+
+
+def test_empty_jupyter_password_disables_password_auth(tmp_path: Path) -> None:
+    env_dir = tmp_path / ".jovy"
+    env_dir.mkdir()
+    config_text = initial_config_text(
+        project_name="My Project",
+        env_name=".jovy",
+        image="minimal",
+        gpus="none",
+        port=9999,
+        password="",
+    )
+    (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
+
+    config = load_config(env_dir)
+    write_generated_files(config)
+
+    service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
+    assert config.jupyter_password == ""
+    assert "--PasswordIdentityProvider.hashed_password=''" in service["command"]
 
 
 def test_legacy_environment_config_is_migrated(tmp_path: Path) -> None:

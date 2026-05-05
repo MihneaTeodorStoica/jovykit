@@ -11,6 +11,7 @@ from rich.console import Console
 
 from jovykit import __version__
 from jovykit.config import (
+    DEFAULT_JUPYTER_PASSWORD,
     JovyKitError,
     initial_config_text,
     load_config,
@@ -90,6 +91,12 @@ def _clear_build_state(env_dir: Path) -> None:
     write_state(env_dir, state)
 
 
+def _print_jupyter_access(config) -> None:
+    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
+    if config.jupyter_password:
+        console.print(f"Password: {config.jupyter_password}")
+
+
 @app.command()
 def init(
     path: Path = typer.Argument(
@@ -104,6 +111,11 @@ def init(
         "",
         "--token",
         help="Jupyter access token. Defaults to empty, which disables token auth.",
+    ),
+    password: str = typer.Option(
+        DEFAULT_JUPYTER_PASSWORD,
+        "--password",
+        help="Jupyter password. Pass an empty value to disable password auth.",
     ),
     log_level: str = typer.Option(
         "ERROR",
@@ -150,6 +162,7 @@ def init(
             gpus=gpus,
             port=port,
             token=token,
+            password=password,
             log_level=log_level,
             image_name=image_name,
             image_tag=image_tag,
@@ -167,7 +180,7 @@ def init(
     console.print(f"Base image: {config.base_image}")
     console.print(f"Project image: {config.image_ref}")
     console.print(f"GPU: {config.gpus}")
-    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
+    _print_jupyter_access(config)
 
 
 @app.command()
@@ -255,7 +268,7 @@ def run(
     """Build if needed and start Jupyter in the foreground."""
     config = _load_env(env)
     _install(config, no_build=no_build)
-    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
+    _print_jupyter_access(config)
     args = ["up"]
     should_watch = watch and config.watch_enabled
     if should_watch:
@@ -281,7 +294,7 @@ def up(
     compose(config, "up", "-d", attached=True)
     if config.watch_enabled:
         start_watcher(config.env_dir)
-    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
+    _print_jupyter_access(config)
 
 
 @app.command()
@@ -323,7 +336,7 @@ def restart(
     compose(config, "up", "-d", attached=True)
     if config.watch_enabled:
         start_watcher(config.env_dir)
-    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
+    _print_jupyter_access(config)
 
 
 @app.command()
