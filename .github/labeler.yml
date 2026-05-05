@@ -1,3 +1,34 @@
+automation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/workflows/**
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - jovykit/cli.py
+          - main.py
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - jovykit/config.py
+          - jovykit/paths.py
+          - pyproject.toml
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - requirements*.txt
+          - image/requirements*.txt
+          - uv.lock
+          - pyproject.toml
+
 docker:
   - changed-files:
       - any-glob-to-any-file:
@@ -5,26 +36,39 @@ docker:
           - Dockerfile
           - "**/Dockerfile"
 
-dependencies:
-  - changed-files:
-      - any-glob-to-any-file:
-          - requirements*.txt
-          - image/requirements*.txt
-
 docs:
   - changed-files:
       - any-glob-to-any-file:
           - docs/**
           - "*.md"
 
-github-actions:
+governance:
   - changed-files:
       - any-glob-to-any-file:
-          - .github/**
+          - CODE_OF_CONDUCT.md
+          - CONTRIBUTING.md
+          - GOVERNANCE.md
+          - SECURITY.md
+          - SUPPORT.md
+          - .github/ISSUE_TEMPLATE/**
+          - .github/PULL_REQUEST_TEMPLATE.md
+
+python:
+  - changed-files:
+      - any-glob-to-any-file:
+          - jovykit/**
+          - tests/**
+          - main.py
+          - pyproject.toml
 
 security:
   - changed-files:
       - any-glob-to-any-file:
-          - .github/workflows/codeql.yml
-          - .github/workflows/codacy-security-scan.yml
-          - .github/workflows/dependency-review.yml
+          - .github/dependabot.yml
+          - .github/workflows/security.yml
+          - SECURITY.md
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tests/**

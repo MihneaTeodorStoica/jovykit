@@ -17,10 +17,9 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
-  group: docker-${{ github.ref }}-${{ github.event_name }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -32,6 +31,9 @@ jobs:
     name: Build ${{ matrix.type }} image
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
 
     strategy:
       fail-fast: false
@@ -81,5 +83,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: ${{ github.event_name != 'pull_request' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=${{ matrix.type }}
           cache-to: type=gha,mode=max,scope=${{ matrix.type }}
