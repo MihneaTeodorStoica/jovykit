@@ -92,15 +92,15 @@ pre {
 .hero {
   min-height: calc(100vh - 74px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
-  align-items: center;
-  gap: clamp(24px, 5vw, 72px);
-  padding: clamp(54px, 8vw, 96px) clamp(20px, 6vw, 88px) clamp(24px, 5vw, 58px);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(34px, 6vw, 74px);
+  padding: clamp(54px, 8vw, 96px) clamp(20px, 6vw, 88px) clamp(42px, 7vw, 86px);
   overflow: hidden;
 }
 
 .hero-copy {
-  max-width: 760px;
+  max-width: 980px;
 }
 
 .eyebrow,
@@ -167,13 +167,15 @@ pre {
   display: grid;
   place-items: center;
   min-width: 0;
-  min-height: 540px;
+  min-height: min(46vw, 430px);
+  justify-self: center;
+  width: min(72vw, 520px);
 }
 
 .hero-art::before {
   content: "";
   position: absolute;
-  width: min(100%, 620px);
+  width: min(100%, 520px);
   aspect-ratio: 1;
   border: 2px dashed rgba(47, 49, 51, 0.32);
   border-radius: 50%;
@@ -182,7 +184,7 @@ pre {
 
 .hero-art img {
   position: relative;
-  width: min(100%, 560px);
+  width: min(92%, 470px);
   aspect-ratio: 1;
   object-fit: contain;
   filter: drop-shadow(0 32px 46px rgba(37, 37, 37, 0.18));
@@ -417,7 +419,6 @@ pre {
     position: static;
   }
 
-  .hero,
   .split-section,
   .terminal-section {
     grid-template-columns: 1fr;
@@ -430,6 +431,7 @@ pre {
 
   .hero-art {
     min-height: 360px;
+    width: min(86vw, 460px);
   }
 
   .hero-art::before,
