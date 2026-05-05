@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from labkit.config import LabConfig, read_state, write_state
 
@@ -26,6 +27,7 @@ def run_command(
 ) -> None:
     """Run a Docker command and raise a useful error on failure."""
     require_docker()
+    result: subprocess.CompletedProcess[Any]
     if attached:
         result = subprocess.run(args, cwd=cwd, check=False)
     else:
