@@ -7,6 +7,9 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 2.1.1.
+- Fixed dashboard command completion so Textual app-thread status updates no
+  longer call `call_from_thread`.
 - Bumped package version to 2.1.0.
 - Escaped generated Argon2 Jupyter password hashes so Docker Compose no longer
   treats `$argon2id`, `$v`, or `$m` hash segments as environment variables.

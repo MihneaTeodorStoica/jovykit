@@ -173,15 +173,12 @@ class JovyKitDashboard(App[None]):
     async def _run_jovy(self, parsed: ParsedTuiCommand) -> None:
         try:
             await asyncio.to_thread(self._dispatch_jovy_command, parsed)
-            self.call_from_thread(self._clear_last_error)
+            self._clear_last_error()
         except Exception as exc:
-            self.call_from_thread(self._record_last_error, str(exc))
-            self.call_from_thread(
-                self._append,
-                f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}",
-            )
+            self._record_last_error(str(exc))
+            self._append(f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}")
         finally:
-            self.call_from_thread(self.refresh_status)
+            self.refresh_status()
 
     async def _run_suspended(self, parsed: ParsedTuiCommand) -> None:
         try:
