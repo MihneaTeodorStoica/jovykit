@@ -36,6 +36,7 @@ from jovykit.runtime import (
     build_streaming,
     compile_requirements_lock,
     compose,
+    compose_ps,
     destroy as destroy_environment,
     is_build_stale,
 )
@@ -107,6 +108,68 @@ def ensure_built(
             build_streaming(config, log=emit)
         else:
             build_image(config)
+
+
+def is_container_running(config: JovyConfig) -> bool:
+    """Return whether the JovyKit service appears to be running."""
+    try:
+        output = compose_ps(config).strip()
+    except JovyKitError:
+        return False
+    if not output:
+        return False
+    services: list[dict[str, Any]] = []
+    try:
+        parsed = json.loads(output)
+    except json.JSONDecodeError:
+        for line in output.splitlines():
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                services.append(item)
+    else:
+        if isinstance(parsed, list):
+            services = [item for item in parsed if isinstance(item, dict)]
+        elif isinstance(parsed, dict):
+            services = [parsed]
+    for service in services:
+        name = str(service.get("Service") or service.get("Name") or "").lower()
+        if name and "jovy" not in name:
+            continue
+        state = str(
+            service.get("State")
+            or service.get("state")
+            or service.get("Status")
+            or service.get("status")
+            or ""
+        ).lower()
+        if "running" in state or state == "up":
+            return True
+    return False
+
+
+def restart_running_container(
+    config: JovyConfig,
+    *,
+    emit: Emitter = noop_emit,
+    stream: bool = False,
+) -> None:
+    """Quickly recreate the running service after slow install work is done."""
+    emit("Restarting JovyKit container to apply updates...")
+    stop_watcher(config.env_dir)
+    compose(
+        config,
+        "up",
+        "-d",
+        "--no-build",
+        "jovy",
+        attached=not stream,
+        log=emit if stream else None,
+    )
+    if config.watch_enabled:
+        start_watcher(config.env_dir)
 
 
 def migrate_legacy_requirements(
@@ -185,12 +248,17 @@ def install(
     *,
     no_build: bool = False,
     upgrade: bool = False,
+    restart_running: bool = True,
     emit: Emitter = noop_emit,
     stream: bool = False,
 ) -> None:
     """Regenerate files and build the overlay image when stale."""
+    was_running = restart_running and is_container_running(config)
     config = prepare_environment(config, upgrade=upgrade, emit=emit, stream=stream)
+    needs_build = is_build_stale(config)
     ensure_built(config, no_build=no_build, emit=emit, stream=stream)
+    if was_running and needs_build and not no_build:
+        restart_running_container(config, emit=emit, stream=stream)
 
 
 def init_environment(
@@ -327,7 +395,7 @@ def run(
 ) -> None:
     """Build if needed and start Jupyter in the foreground."""
     config = load_env(env, emit=emit)
-    install(config, no_build=no_build, emit=emit, stream=stream)
+    install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
     emit_jupyter_access(config, emit)
     args = ["up"]
     should_watch = watch and config.watch_enabled
@@ -350,7 +418,7 @@ def up(
 ) -> None:
     """Build if needed and start Jupyter in the background."""
     config = load_env(env, emit=emit)
-    install(config, no_build=no_build, emit=emit, stream=stream)
+    install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
     compose(
         config,
         "up",
@@ -394,7 +462,7 @@ def restart(
 ) -> None:
     """Build if needed and restart Jupyter in the background."""
     config = load_env(env, emit=emit)
-    install(config, no_build=no_build, emit=emit, stream=stream)
+    install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
     stop_watcher(config.env_dir)
     args = ["stop"]
     if timeout is not None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -116,6 +117,108 @@ def test_shell_command_can_stream_without_tty(
     assert compose_calls == [
         (("exec", "-T", "jovy", "bash", "-lc", "python --version"), False, True)
     ]
+
+
+def test_install_restarts_running_container_after_build(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    events: list[object] = []
+    ps_output = json.dumps(
+        [{"Service": "jovy", "State": "running", "Health": "healthy"}]
+    )
+
+    def prepare(config: Any, **_kwargs: Any) -> Any:
+        events.append("prepare")
+        return config
+
+    monkeypatch.setattr(commands, "compose_ps", lambda config: ps_output)
+    monkeypatch.setattr(commands, "prepare_environment", prepare)
+    monkeypatch.setattr(commands, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(
+        commands,
+        "build_streaming",
+        lambda config, *, log: events.append("build"),
+    )
+    monkeypatch.setattr(
+        commands,
+        "stop_watcher",
+        lambda env_dir: events.append(("stop_watcher", env_dir)),
+    )
+    monkeypatch.setattr(
+        commands,
+        "start_watcher",
+        lambda env_dir: events.append(("start_watcher", env_dir)),
+    )
+    monkeypatch.setattr(
+        commands,
+        "compose",
+        lambda config, *args, attached=False, log=None: events.append(
+            ("compose", args, attached, log is not None)
+        ),
+    )
+
+    commands.install(project.config, stream=True, emit=lambda line: None)
+
+    assert events == [
+        "prepare",
+        "build",
+        ("stop_watcher", project.env_dir),
+        ("compose", ("up", "-d", "--no-build", "jovy"), False, True),
+        ("start_watcher", project.env_dir),
+    ]
+
+
+def test_is_container_running_accepts_json_lines(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    output = (
+        '{"Service": "helper", "State": "exited"}\n'
+        "not-json\n"
+        '{"Name": "project-jovy-1", "state": "running"}\n'
+    )
+    monkeypatch.setattr(commands, "compose_ps", lambda config: output)
+
+    assert commands.is_container_running(project.config) is True
+
+
+def test_is_container_running_handles_missing_or_stopped_services(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    monkeypatch.setattr(commands, "compose_ps", lambda config: "")
+    assert commands.is_container_running(project.config) is False
+
+    monkeypatch.setattr(
+        commands,
+        "compose_ps",
+        lambda config: json.dumps([{"Service": "jovy", "State": "exited"}]),
+    )
+    assert commands.is_container_running(project.config) is False
+
+
+def test_install_skips_restart_when_no_build_is_used(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    events: list[str] = []
+    monkeypatch.setattr(
+        commands,
+        "compose_ps",
+        lambda config: json.dumps([{"Service": "jovy", "State": "running"}]),
+    )
+    monkeypatch.setattr(
+        commands, "prepare_environment", lambda config, **kwargs: config
+    )
+    monkeypatch.setattr(commands, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(
+        commands, "compose", lambda *args, **kwargs: events.append("compose")
+    )
+
+    commands.install(project.config, no_build=True)
+
+    assert events == []
 
 
 def test_lifecycle_commands_support_streaming_compose(

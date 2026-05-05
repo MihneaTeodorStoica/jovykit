@@ -7,6 +7,9 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 3.0.4.
+- Changed `jovy install` to build updates before quickly recreating a running
+  container, avoiding a long stop-then-build downtime window.
 - Bumped package version to 3.0.3.
 - Reduced dashboard redraw flicker during background commands.
 - Showed tokenized JupyterLab URLs consistently in CLI and dashboard output.
