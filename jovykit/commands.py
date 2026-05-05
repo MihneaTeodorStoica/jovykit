@@ -478,11 +478,16 @@ def destroy(
     remove_dir: bool = False,
     keep_image: bool = False,
     emit: Emitter = noop_emit,
+    stream: bool = False,
 ) -> None:
     """Remove the container, volume, and project overlay image."""
     config = load_env(env, emit=emit)
     stop_watcher(config.env_dir)
-    destroy_environment(config, remove_image=not keep_image)
+    destroy_environment(
+        config,
+        remove_image=not keep_image,
+        log=emit if stream else None,
+    )
     if remove_dir:
         shutil.rmtree(config.env_dir)
         emit(f"Removed {config.env_dir}")

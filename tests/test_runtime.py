@@ -414,24 +414,63 @@ def test_destroy_removes_compose_resources_and_optionally_image(
             "other": "kept",
         },
     )
-    compose_calls: list[tuple[str, ...]] = []
-    command_calls: list[list[str]] = []
+    compose_calls: list[tuple[tuple[str, ...], bool, bool]] = []
+    command_calls: list[tuple[list[str], runtime.LogCallback | None]] = []
     monkeypatch.setattr(
         runtime,
         "compose",
-        lambda config, *args, attached=False, check=True: compose_calls.append(args),
+        lambda config, *args, attached=False, check=True, log=None: compose_calls.append(
+            (args, attached, log is not None)
+        ),
     )
     monkeypatch.setattr(
         runtime,
         "run_command",
-        lambda args, *, cwd, attached=False, check=True: command_calls.append(args),
+        lambda args, *, cwd, attached=False, check=True, log=None: command_calls.append(
+            (args, log)
+        ),
     )
 
     runtime.destroy(project.config)
 
-    assert compose_calls == [("down", "--volumes", "--remove-orphans")]
-    assert command_calls == [["docker", "image", "rm", "-f", project.config.image_ref]]
+    assert compose_calls == [(("down", "--volumes", "--remove-orphans"), True, False)]
+    assert command_calls == [
+        (["docker", "image", "rm", "-f", project.config.image_ref], None)
+    ]
     assert read_state(project.env_dir) == {"other": "kept"}
+
+
+def test_destroy_streams_output_to_log(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    compose_calls: list[tuple[tuple[str, ...], bool, bool]] = []
+    command_calls: list[tuple[list[str], runtime.LogCallback | None]] = []
+
+    def log(_line: str) -> None:
+        return None
+
+    monkeypatch.setattr(
+        runtime,
+        "compose",
+        lambda config, *args, attached=False, check=True, log=None: compose_calls.append(
+            (args, attached, log is not None)
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "run_command",
+        lambda args, *, cwd, attached=False, check=True, log=None: command_calls.append(
+            (args, log)
+        ),
+    )
+
+    runtime.destroy(project.config, log=log)
+
+    assert compose_calls == [(("down", "--volumes", "--remove-orphans"), False, True)]
+    assert command_calls == [
+        (["docker", "image", "rm", "-f", project.config.image_ref], log)
+    ]
 
 
 def test_destroy_keep_image_preserves_build_state(
@@ -444,7 +483,9 @@ def test_destroy_keep_image_preserves_build_state(
         "built_at": "2026-05-05T00:00:00+00:00",
     }
     write_state(project.env_dir, state)
-    monkeypatch.setattr(runtime, "compose", lambda config, *args, attached=False: None)
+    monkeypatch.setattr(
+        runtime, "compose", lambda config, *args, attached=False, log=None: None
+    )
     monkeypatch.setattr(
         runtime,
         "run_command",

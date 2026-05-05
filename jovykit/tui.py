@@ -10,8 +10,9 @@ from pathlib import Path
 from rich.panel import Panel
 from rich.table import Table
 from textual import on
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, ScreenStackError
 from textual.containers import Vertical
+from textual.css.query import NoMatches
 from textual.widgets import Input, RichLog, Static
 
 from jovykit import commands
@@ -48,10 +49,9 @@ class JovyKitDashboard(App[None]):
     }
 
     #command {
-        dock: bottom;
         height: 3;
         border: tall #4f7890;
-        margin-top: 1;
+        margin-bottom: 1;
     }
     """
 
@@ -62,11 +62,13 @@ class JovyKitDashboard(App[None]):
         self.env = env
         self._last_status: EnvironmentStatus | None = None
         self._last_log_snapshot = ""
+        self._command_running = False
 
     def compose(self) -> ComposeResult:
         """Compose the dashboard layout."""
         with Vertical(id="root"):
             yield Static(id="status")
+            yield Input(placeholder="jovy> up", id="command")
             yield RichLog(
                 id="logs",
                 highlight=False,
@@ -75,7 +77,6 @@ class JovyKitDashboard(App[None]):
                 auto_scroll=True,
                 max_lines=2000,
             )
-            yield Input(placeholder="jovy> up", id="command")
 
     def on_mount(self) -> None:
         """Initialize dashboard state."""
@@ -110,6 +111,8 @@ class JovyKitDashboard(App[None]):
     def refresh_logs(self) -> None:
         """Poll recent container logs while the environment is running."""
         status = self._last_status
+        if self._command_running:
+            return
         if status is None or not status.is_running or status.env_dir is None:
             return
         try:
@@ -130,6 +133,11 @@ class JovyKitDashboard(App[None]):
             return
         if parsed.kind is TuiCommandKind.LOCAL:
             await self._handle_local(parsed)
+            return
+        if self._command_running:
+            self._append(
+                "[bold yellow][JovyKit][/bold yellow] Command already running."
+            )
             return
         if parsed.kind is TuiCommandKind.HOST:
             self.run_worker(self._run_host(parsed.args), exclusive=False)
@@ -161,16 +169,21 @@ class JovyKitDashboard(App[None]):
         if not args:
             self._append("[bold red]Pass a host command after !.[/bold red]")
             return
-        await asyncio.to_thread(
-            run_host_command,
-            args,
-            cwd=Path.cwd(),
-            log=lambda line: self.call_from_thread(
-                self._append, _escape_log_markup(line)
-            ),
-        )
+        self._set_command_running(True)
+        try:
+            await asyncio.to_thread(
+                run_host_command,
+                args,
+                cwd=Path.cwd(),
+                log=lambda line: self.call_from_thread(
+                    self._append, _escape_log_markup(line)
+                ),
+            )
+        finally:
+            self._set_command_running(False)
 
     async def _run_jovy(self, parsed: ParsedTuiCommand) -> None:
+        self._set_command_running(True)
         try:
             await asyncio.to_thread(self._dispatch_jovy_command, parsed)
             self._clear_last_error()
@@ -178,10 +191,15 @@ class JovyKitDashboard(App[None]):
             self._record_last_error(str(exc))
             self._append(f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}")
         finally:
+            self._set_command_running(False)
             self.refresh_status()
 
     async def _run_suspended(self, parsed: ParsedTuiCommand) -> None:
+        self._set_command_running(True)
         try:
+            self._append(
+                "[cyan][JovyKit][/cyan] Suspending dashboard for interactive command..."
+            )
             with self.suspend():
                 self._dispatch_jovy_command(parsed, suspended=True)
             self._clear_last_error()
@@ -189,7 +207,9 @@ class JovyKitDashboard(App[None]):
             self._record_last_error(str(exc))
             self._append(f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}")
         finally:
+            self._set_command_running(False)
             self.refresh_status()
+            self.query_one(Input).focus()
 
     def _dispatch_jovy_command(
         self, parsed: ParsedTuiCommand, *, suspended: bool = False
@@ -198,7 +218,22 @@ class JovyKitDashboard(App[None]):
         name = parsed.name
         args = parsed.args
         if name == "init":
-            commands.init_environment(emit=emit)
+            commands.init_environment(
+                path=_init_path(args),
+                image=_option_value(args, "--image", "base"),
+                gpus=_option_value(args, "--gpus", "auto"),
+                port=_option_int(args, "--port") or 8888,
+                token=_option_value(args, "--token", ""),
+                password=_option_value(
+                    args, "--password", commands.DEFAULT_JUPYTER_PASSWORD
+                ),
+                project_name=_option_value(args, "--name", "") or None,
+                image_name=_option_value(args, "--image-name", "") or None,
+                image_tag=_option_value(args, "--tag", "local"),
+                workdir=_option_value(args, "--workdir", "work"),
+                force="--force" in args,
+                emit=emit,
+            )
         elif name == "add":
             packages, requirement_files = _add_args(args)
             commands.add(packages, requirement_files=requirement_files, emit=emit)
@@ -255,6 +290,7 @@ class JovyKitDashboard(App[None]):
                 remove_dir="--remove-dir" in args,
                 keep_image="--keep-image" in args,
                 emit=emit,
+                stream=True,
             )
 
     def _open_url(self) -> None:
@@ -300,6 +336,16 @@ class JovyKitDashboard(App[None]):
 
     def _append(self, line: str) -> None:
         self.query_one(RichLog).write(line)
+
+    def _set_command_running(self, running: bool) -> None:
+        self._command_running = running
+        try:
+            command = self.query_one(Input)
+        except (NoMatches, ScreenStackError):
+            return
+        command.disabled = running
+        if not running:
+            command.focus()
 
 
 def render_status_panel(status: EnvironmentStatus) -> Panel:
@@ -362,6 +408,12 @@ def _option_int(args: list[str], name: str) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _init_path(args: list[str]) -> Path:
+    if args and not args[0].startswith("-"):
+        return Path(args[0])
+    return Path(commands.DEFAULT_ENV_DIR)
 
 
 def _add_args(args: list[str]) -> tuple[list[str], list[Path]]:

@@ -490,7 +490,7 @@ def test_destroy_stops_watcher_removes_environment_and_can_keep_image(
     monkeypatch.setattr(
         command_ops,
         "destroy_environment",
-        lambda config, *, remove_image=True: destroyed.append(remove_image),
+        lambda config, *, remove_image=True, log=None: destroyed.append(remove_image),
     )
 
     run_cli(["destroy", "--keep-image", "--remove-dir"])

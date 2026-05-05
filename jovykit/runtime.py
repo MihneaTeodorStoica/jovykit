@@ -291,15 +291,28 @@ def run_host_command(args: list[str], *, cwd: Path, log: LogCallback) -> int:
     )
 
 
-def destroy(config: JovyConfig, *, remove_image: bool = True) -> None:
+def destroy(
+    config: JovyConfig,
+    *,
+    remove_image: bool = True,
+    log: LogCallback | None = None,
+) -> None:
     """Remove compose resources and optionally the project image."""
-    compose(config, "down", "--volumes", "--remove-orphans", attached=True)
+    compose(
+        config,
+        "down",
+        "--volumes",
+        "--remove-orphans",
+        attached=log is None,
+        log=log,
+    )
     if remove_image:
         run_command(
             ["docker", "image", "rm", "-f", config.image_ref],
             cwd=config.env_dir,
             attached=False,
             check=False,
+            log=log,
         )
         state = read_state(config.env_dir)
         for key in ("build_signature", "image", "built_at"):

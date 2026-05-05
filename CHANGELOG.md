@@ -7,6 +7,13 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 3.0.1.
+- Moved the dashboard command input above the live log panel.
+- Streamed destructive dashboard command output into the log panel so `destroy`
+  no longer writes over the Textual screen.
+- Suspended the dashboard cleanly for foreground commands such as `shell` and
+  `run`, then restored input focus on return.
+- Made dashboard `init` use the default `jovykit` password unless overridden.
 - Bumped package version to 3.0.0.
 - Replaced project environment `requirements.txt` manifests with
   `[python].packages` in `jovy.toml` plus a generated `.jovy/jovy.lock`.
