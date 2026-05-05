@@ -2,37 +2,25 @@
 
 from __future__ import annotations
 
-import json
-import shutil
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
 from jovykit import __version__
-from jovykit.config import (
-    DEFAULT_JUPYTER_PASSWORD,
-    JovyKitError,
-    initial_config_text,
-    load_config,
-    read_state,
-    write_state,
-)
-from jovykit.deps import add_packages, remove_packages
-from jovykit.generate import ensure_empty_or_jovy_env, write_generated_files
-from jovykit.paths import (
-    DEFAULT_ENV_DIR,
-    environment_from_path,
-    find_environment,
-    has_stale_legacy_config,
-)
-from jovykit.runtime import build as build_image
-from jovykit.runtime import compose, destroy as destroy_environment
-from jovykit.runtime import is_build_stale
-from jovykit.watcher import start_watcher, stop_watcher
+from jovykit import commands as command_ops
+from jovykit.config import DEFAULT_JUPYTER_PASSWORD, JovyKitError
+from jovykit.paths import DEFAULT_ENV_DIR
 
 app = typer.Typer(help="Manage project-local JovyKit Jupyter container environments.")
 console = Console()
+
+
+def launch_dashboard() -> None:
+    """Launch the default interactive dashboard."""
+    from jovykit.tui import run_dashboard
+
+    run_dashboard()
 
 
 def _version_callback(show_version: bool) -> None:
@@ -41,8 +29,9 @@ def _version_callback(show_version: bool) -> None:
         raise typer.Exit()
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def callback(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
@@ -52,49 +41,9 @@ def callback(
     ),
 ) -> None:
     """Manage project-local JovyKit Jupyter container environments."""
-
-
-def _load_env(env: Path | None = None):
-    env_dir = environment_from_path(env) if env else find_environment()
-    if has_stale_legacy_config(env_dir):
-        console.print(
-            f"[yellow]Ignoring stale legacy config at {env_dir / 'jovy.toml'}.[/yellow]"
-        )
-    return load_config(env_dir)
-
-
-def _display_path(path: Path) -> Path:
-    cwd = Path.cwd()
-    return path.relative_to(cwd) if path.is_relative_to(cwd) else path
-
-
-def _ensure_built(config, *, no_build: bool = False) -> None:
-    if no_build:
-        if is_build_stale(config):
-            console.print(
-                "[yellow]Build is stale; continuing because --no-build was used.[/yellow]"
-            )
-        return
-    if is_build_stale(config):
-        console.print("[bold]Building JovyKit overlay image...[/bold]")
-        build_image(config)
-
-
-def _install(config, *, no_build: bool = False) -> None:
-    write_generated_files(config)
-    _ensure_built(config, no_build=no_build)
-
-
-def _clear_build_state(env_dir: Path) -> None:
-    state = read_state(env_dir)
-    state.pop("build_signature", None)
-    write_state(env_dir, state)
-
-
-def _print_jupyter_access(config) -> None:
-    console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
-    if config.jupyter_password:
-        console.print(f"Password: {config.jupyter_password}")
+    if ctx.invoked_subcommand is None:
+        launch_dashboard()
+        raise typer.Exit()
 
 
 @app.command()
@@ -139,48 +88,21 @@ def init(
     ),
 ) -> None:
     """Create a project-local JovyKit environment."""
-    env_dir = path.resolve()
-    if not force:
-        ensure_empty_or_jovy_env(env_dir)
-    elif (
-        env_dir.exists()
-        and any(env_dir.iterdir())
-        and not (env_dir.parent / "jovy.toml").exists()
-        and not (env_dir / "jovy.toml").exists()
-    ):
-        raise JovyKitError(
-            f"Refusing to force initialize non-JovyKit directory: {env_dir}"
-        )
-    env_dir.mkdir(parents=True, exist_ok=True)
-
-    project_root = env_dir.parent
-    (env_dir.parent / "jovy.toml").write_text(
-        initial_config_text(
-            project_name=project_name or project_root.name,
-            env_name=env_dir.name,
-            image=image,
-            gpus=gpus,
-            port=port,
-            token=token,
-            password=password,
-            log_level=log_level,
-            image_name=image_name,
-            image_tag=image_tag,
-            workdir=workdir,
-        ),
-        encoding="utf-8",
+    command_ops.init_environment(
+        path=path,
+        image=image,
+        gpus=gpus,
+        port=port,
+        token=token,
+        password=password,
+        log_level=log_level,
+        project_name=project_name,
+        image_name=image_name,
+        image_tag=image_tag,
+        workdir=workdir,
+        force=force,
+        emit=console.print,
     )
-
-    config = load_config(env_dir)
-    config.project_root.mkdir(parents=True, exist_ok=True)
-    write_generated_files(config)
-    write_state(env_dir, {})
-
-    console.print(f"JovyKit environment: [bold]{_display_path(env_dir)}[/bold]")
-    console.print(f"Base image: {config.base_image}")
-    console.print(f"Project image: {config.image_ref}")
-    console.print(f"GPU: {config.gpus}")
-    _print_jupyter_access(config)
 
 
 @app.command()
@@ -193,16 +115,7 @@ def add(
     ),
 ) -> None:
     """Add packages to the project environment manifest."""
-    config = _load_env(env)
-    added = add_packages(config.env_dir / "requirements.txt", packages)
-    _clear_build_state(config.env_dir)
-    if added:
-        console.print(f"Added: {', '.join(added)}")
-        console.print(
-            "Run [bold]jovy install[/bold], [bold]jovy run[/bold], or [bold]jovy up[/bold] to apply changes."
-        )
-    else:
-        console.print("No new packages added.")
+    command_ops.add(packages, env=env, emit=console.print)
 
 
 @app.command()
@@ -215,16 +128,7 @@ def remove(
     ),
 ) -> None:
     """Remove packages from the project environment manifest."""
-    config = _load_env(env)
-    removed = remove_packages(config.env_dir / "requirements.txt", packages)
-    _clear_build_state(config.env_dir)
-    if removed:
-        console.print(f"Removed: {', '.join(removed)}")
-        console.print(
-            "Run [bold]jovy install[/bold], [bold]jovy run[/bold], or [bold]jovy up[/bold] to apply changes."
-        )
-    else:
-        console.print("No matching packages removed.")
+    command_ops.remove(packages, env=env, emit=console.print)
 
 
 @app.command()
@@ -235,7 +139,11 @@ def install(
     no_build: bool = typer.Option(False, "--no-build", help="Only regenerate files."),
 ) -> None:
     """Regenerate files and build the overlay image when stale."""
-    _install(_load_env(env), no_build=no_build)
+    command_ops.install(
+        command_ops.load_env(env, emit=console.print),
+        no_build=no_build,
+        emit=console.print,
+    )
 
 
 @app.command()
@@ -249,8 +157,7 @@ def build(
     ),
 ) -> None:
     """Build the project overlay image."""
-    config = _load_env(env)
-    build_image(config, no_cache=no_cache, pull=pull)
+    command_ops.build(env=env, no_cache=no_cache, pull=pull, emit=console.print)
 
 
 @app.command()
@@ -266,19 +173,7 @@ def run(
     ),
 ) -> None:
     """Build if needed and start Jupyter in the foreground."""
-    config = _load_env(env)
-    _install(config, no_build=no_build)
-    _print_jupyter_access(config)
-    args = ["up"]
-    should_watch = watch and config.watch_enabled
-    if should_watch:
-        args.append("--watch")
-        start_watcher(config.env_dir)
-    try:
-        compose(config, *args, attached=True)
-    finally:
-        if should_watch:
-            stop_watcher(config.env_dir)
+    command_ops.run(env=env, no_build=no_build, watch=watch, emit=console.print)
 
 
 @app.command()
@@ -289,12 +184,7 @@ def up(
     no_build: bool = typer.Option(False, "--no-build", help="Skip stale build check."),
 ) -> None:
     """Build if needed and start Jupyter in the background."""
-    config = _load_env(env)
-    _install(config, no_build=no_build)
-    compose(config, "up", "-d", attached=True)
-    if config.watch_enabled:
-        start_watcher(config.env_dir)
-    _print_jupyter_access(config)
+    command_ops.up(env=env, no_build=no_build, emit=console.print)
 
 
 @app.command()
@@ -307,12 +197,7 @@ def down(
     ),
 ) -> None:
     """Stop the JovyKit environment."""
-    args = ["stop"]
-    if timeout is not None:
-        args.extend(["--timeout", str(timeout)])
-    config = _load_env(env)
-    stop_watcher(config.env_dir)
-    compose(config, *args, attached=True)
+    command_ops.down(env=env, timeout=timeout, emit=console.print)
 
 
 @app.command()
@@ -326,17 +211,12 @@ def restart(
     ),
 ) -> None:
     """Build if needed and restart Jupyter in the background."""
-    config = _load_env(env)
-    _install(config, no_build=no_build)
-    stop_watcher(config.env_dir)
-    args = ["stop"]
-    if timeout is not None:
-        args.extend(["--timeout", str(timeout)])
-    compose(config, *args, attached=True)
-    compose(config, "up", "-d", attached=True)
-    if config.watch_enabled:
-        start_watcher(config.env_dir)
-    _print_jupyter_access(config)
+    command_ops.restart(
+        env=env,
+        no_build=no_build,
+        timeout=timeout,
+        emit=console.print,
+    )
 
 
 @app.command()
@@ -354,14 +234,14 @@ def logs(
     ),
 ) -> None:
     """Follow JovyKit container logs."""
-    args = ["logs", "--tail", tail]
-    if since:
-        args.extend(["--since", since])
-    if timestamps:
-        args.append("--timestamps")
-    if follow:
-        args.append("-f")
-    compose(_load_env(env), *args, attached=True)
+    command_ops.logs(
+        env=env,
+        follow=follow,
+        tail=tail,
+        since=since,
+        timestamps=timestamps,
+        emit=console.print,
+    )
 
 
 @app.command()
@@ -374,10 +254,7 @@ def shell(
     ),
 ) -> None:
     """Open a bash shell in the running JovyKit container."""
-    args = ["exec", "jovy", "bash"]
-    if command:
-        args.extend(["-lc", command])
-    compose(_load_env(env), *args, attached=True)
+    command_ops.shell(env=env, command=command)
 
 
 @app.command(
@@ -394,7 +271,7 @@ def exec(
         raise typer.BadParameter(
             "Pass a command to run, for example: jovy exec python --version"
         )
-    compose(_load_env(env), "exec", "jovy", *ctx.args, attached=True)
+    command_ops.exec_in_container(ctx.args, env=env, emit=console.print)
 
 
 @app.command()
@@ -410,12 +287,12 @@ def destroy(
     ),
 ) -> None:
     """Remove the container, volume, and project overlay image."""
-    config = _load_env(env)
-    stop_watcher(config.env_dir)
-    destroy_environment(config, remove_image=not keep_image)
-    if remove_dir:
-        shutil.rmtree(config.env_dir)
-        console.print(f"Removed {config.env_dir}")
+    command_ops.destroy(
+        env=env,
+        remove_dir=remove_dir,
+        keep_image=keep_image,
+        emit=console.print,
+    )
 
 
 @app.command()
@@ -425,27 +302,7 @@ def clean(
     ),
 ) -> None:
     """Remove generated files and local build state."""
-    config = _load_env(env)
-    removed: list[Path] = []
-    for name in (
-        "Containerfile",
-        "compose.yaml",
-        ".gitignore",
-        "state.json",
-        "requirements.lock",
-        "watcher.pid",
-        "watcher.log",
-    ):
-        path = config.env_dir / name
-        if path.exists():
-            path.unlink()
-            removed.append(path)
-    if removed:
-        console.print("Removed generated artifacts:")
-        for path in removed:
-            console.print(f"- {_display_path(path)}")
-    else:
-        console.print("No generated artifacts to remove.")
+    command_ops.clean(env=env, emit=console.print)
 
 
 @app.command()
@@ -458,25 +315,7 @@ def status(
     ),
 ) -> None:
     """Show basic JovyKit environment state."""
-    config = _load_env(env)
-    stale = is_build_stale(config)
-    data = {
-        "environment": str(config.env_dir),
-        "base_image": config.base_image,
-        "project_image": config.image_ref,
-        "port": config.port,
-        "gpus": config.gpus,
-        "build_stale": stale,
-    }
-    if json_output:
-        console.print(json.dumps(data, indent=2, sort_keys=True))
-        return
-    console.print(f"Environment: {config.env_dir}")
-    console.print(f"Base image: {config.base_image}")
-    console.print(f"Project image: {config.image_ref}")
-    console.print(f"Port: {config.port}")
-    console.print(f"GPU: {config.gpus}")
-    console.print(f"Build stale: {'yes' if stale else 'no'}")
+    command_ops.status(env=env, json_output=json_output, emit=console.print)
 
 
 def main() -> None:

@@ -8,5 +8,6 @@ argon2-cffi
 pyyaml
 requests
 rich
+textual
 typer
 uv

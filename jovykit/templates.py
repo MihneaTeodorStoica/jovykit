@@ -9,6 +9,11 @@ from typing import Any
 from jovykit.config import JovyConfig, hash_jupyter_password
 
 
+def escape_compose_interpolation(value: str) -> str:
+    """Escape dollar signs so Docker Compose does not expand them."""
+    return value.replace("$", "$$")
+
+
 def render_containerfile(config: JovyConfig) -> str:
     """Render the project overlay Containerfile."""
     apt_block = ""
@@ -80,8 +85,11 @@ def render_compose(config: JovyConfig) -> str:
     command = shlex.split(config.jupyter_command or "start-notebook.py")
     command_args = ["--ServerApp.token="]
     if config.jupyter_password:
+        password_hash = escape_compose_interpolation(
+            hash_jupyter_password(config.jupyter_password)
+        )
         command_args.append(
-            f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(config.jupyter_password)}"
+            f"--PasswordIdentityProvider.hashed_password={password_hash}"
         )
     else:
         command_args.append("--PasswordIdentityProvider.hashed_password=")

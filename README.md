@@ -62,6 +62,12 @@ jovy install
 jovy run
 ```
 
+Run `jovy` with no subcommand to open the interactive terminal dashboard for
+the current project. The dashboard shows environment status, recent logs, and a
+`jovy>` command line for common operations. Closing the dashboard with `quit` or
+`exit` does not stop the container; use `jovy down` or `down` inside the
+dashboard when you want to stop it.
+
 The CLI creates a local `work/` directory for project files and writes a
 root `jovy.toml` plus a reproducible overlay build recipe under `.jovy/`:
 
@@ -79,6 +85,7 @@ Useful commands:
 
 ```bash
 jovy --version
+jovy
 jovy status
 jovy status --json
 jovy remove plotly
@@ -103,6 +110,8 @@ default token is empty and the default password is `jovykit`, so JovyKit does
 not rely on Jupyter's generated token.
 Docker Compose watch runs with `jovy run`; `jovy up` stays detached and starts
 a lightweight watcher that restarts the container when `jovy.toml` changes.
+Use `jovy up` for background startup, `jovy down` to stop the environment, and
+`jovy run` when you want attached foreground Jupyter logs.
 
 `jovy.toml` can also customize runtime environment variables, extra volumes,
 restart policy, Jupyter command/logging, Compose Watch behavior, image build

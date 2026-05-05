@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 import jovykit.cli as cli
+from jovykit import commands as command_ops
 from jovykit.config import read_state, write_state
 
 
@@ -49,6 +50,31 @@ def test_version_flag_prints_package_version(run_cli: Any) -> None:
     result = run_cli(["--version"])
 
     assert "jovykit" in result.output
+
+
+def test_bare_command_launches_dashboard(
+    monkeypatch: pytest.MonkeyPatch, run_cli: Any
+) -> None:
+    launched: list[bool] = []
+    monkeypatch.setattr(cli, "launch_dashboard", lambda: launched.append(True))
+
+    run_cli([])
+
+    assert launched == [True]
+
+
+def test_help_does_not_launch_dashboard(
+    monkeypatch: pytest.MonkeyPatch, run_cli: Any
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "launch_dashboard",
+        lambda: pytest.fail("dashboard should not launch for --help"),
+    )
+
+    result = run_cli(["--help"])
+
+    assert "Manage project-local JovyKit" in result.output
 
 
 def test_init_accepts_project_and_jupyter_flags(
@@ -140,10 +166,10 @@ def test_install_no_build_warns_without_building(
 ) -> None:
     project = create_project()
     monkeypatch.chdir(project.root)
-    monkeypatch.setattr(cli, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
     monkeypatch.setattr(
-        cli,
-        "build_image",
+        command_ops,
+        "build_streaming",
         lambda config: pytest.fail("build should be skipped by --no-build"),
     )
 
@@ -158,9 +184,11 @@ def test_install_regenerates_and_builds_when_stale(
     project = create_project()
     monkeypatch.chdir(project.root)
     built: list[str] = []
-    monkeypatch.setattr(cli, "is_build_stale", lambda config: True)
+    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
     monkeypatch.setattr(
-        cli, "build_image", lambda config, **kwargs: built.append(config.image_ref)
+        command_ops,
+        "build_image",
+        lambda config, **kwargs: built.append(config.image_ref),
     )
 
     run_cli(["install"])
@@ -188,9 +216,16 @@ def test_build_forwards_build_options(
     monkeypatch.chdir(project.root)
     calls: list[tuple[bool, bool]] = []
     monkeypatch.setattr(
-        cli,
+        command_ops,
         "build_image",
         lambda config, *, no_cache=False, pull=False: calls.append((no_cache, pull)),
+    )
+    monkeypatch.setattr(
+        command_ops,
+        "build_streaming",
+        lambda config, *, no_cache=False, pull=False, log=None: calls.append(
+            (no_cache, pull)
+        ),
     )
 
     run_cli(["build", "--no-cache", "--pull"])
@@ -208,10 +243,16 @@ def test_run_uses_compose_watch_by_default(
     stopped: list[Path] = []
 
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
-    monkeypatch.setattr(cli, "start_watcher", lambda env_dir: started.append(env_dir))
-    monkeypatch.setattr(cli, "stop_watcher", lambda env_dir: stopped.append(env_dir))
+    monkeypatch.setattr(
+        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
+    )
+    monkeypatch.setattr(
+        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
+    )
 
     run_cli(["run", "--no-build"])
 
@@ -229,9 +270,13 @@ def test_run_no_watch_skips_watcher(
     started: list[Path] = []
 
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
-    monkeypatch.setattr(cli, "start_watcher", lambda env_dir: started.append(env_dir))
+    monkeypatch.setattr(
+        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
+    )
 
     run_cli(["run", "--no-build", "--no-watch"])
 
@@ -248,9 +293,13 @@ def test_up_does_not_combine_detach_with_compose_watch(
     started: list[Path] = []
 
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
-    monkeypatch.setattr(cli, "start_watcher", lambda env_dir: started.append(env_dir))
+    monkeypatch.setattr(
+        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
+    )
 
     result = run_cli(["up", "--no-build"])
 
@@ -268,9 +317,13 @@ def test_down_stops_config_watcher_and_accepts_timeout(
     stopped: list[Path] = []
 
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
-    monkeypatch.setattr(cli, "stop_watcher", lambda env_dir: stopped.append(env_dir))
+    monkeypatch.setattr(
+        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
+    )
 
     run_cli(["down", "--timeout", "5"])
 
@@ -288,10 +341,16 @@ def test_restart_stops_installs_and_starts_detached(
     stopped: list[Path] = []
 
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
-    monkeypatch.setattr(cli, "start_watcher", lambda env_dir: started.append(env_dir))
-    monkeypatch.setattr(cli, "stop_watcher", lambda env_dir: stopped.append(env_dir))
+    monkeypatch.setattr(
+        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
+    )
+    monkeypatch.setattr(
+        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
+    )
 
     run_cli(["restart", "--no-build", "--timeout", "5"])
 
@@ -307,7 +366,9 @@ def test_logs_accepts_since_timestamps_and_no_follow(
     monkeypatch.chdir(project.root)
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
 
     run_cli(["logs", "--tail", "50", "--since", "10m", "--timestamps", "--no-follow"])
@@ -322,7 +383,9 @@ def test_shell_and_exec_construct_compose_commands(
     monkeypatch.chdir(project.root)
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(
-        cli, "compose", lambda config, *args, attached=False: calls.append(args)
+        command_ops,
+        "compose",
+        lambda config, *args, attached=False, log=None: calls.append(args),
     )
 
     run_cli(["shell", "--command", "python --version"])
@@ -350,9 +413,11 @@ def test_destroy_stops_watcher_removes_environment_and_can_keep_image(
     monkeypatch.chdir(project.root)
     destroyed: list[bool] = []
     stopped: list[Path] = []
-    monkeypatch.setattr(cli, "stop_watcher", lambda env_dir: stopped.append(env_dir))
     monkeypatch.setattr(
-        cli,
+        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
+    )
+    monkeypatch.setattr(
+        command_ops,
         "destroy_environment",
         lambda config, *, remove_image=True: destroyed.append(remove_image),
     )
@@ -385,7 +450,7 @@ def test_status_outputs_json(
 ) -> None:
     project = create_project()
     monkeypatch.chdir(project.root)
-    monkeypatch.setattr(cli, "is_build_stale", lambda config: False)
+    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
 
     result = run_cli(["status", "--json"])
 
@@ -402,7 +467,7 @@ def test_env_option_loads_environment_outside_cwd(
     other_dir = tmp_path / "other"
     other_dir.mkdir()
     monkeypatch.chdir(other_dir)
-    monkeypatch.setattr(cli, "is_build_stale", lambda config: False)
+    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
 
     result = run_cli(["status", "--env", str(project.env_dir), "--json"])
 

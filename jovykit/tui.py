@@ -1,0 +1,375 @@
+"""Textual dashboard for JovyKit project environments."""
+
+from __future__ import annotations
+
+import asyncio
+import shlex
+import webbrowser
+from pathlib import Path
+
+from rich.panel import Panel
+from rich.table import Table
+from textual import on
+from textual.app import App, ComposeResult
+from textual.containers import Vertical
+from textual.widgets import Input, RichLog, Static
+
+from jovykit import commands
+from jovykit.config import JovyKitError, read_state, write_state
+from jovykit.runtime import compose_logs, run_host_command
+from jovykit.state import EnvironmentStatus, discover_status
+from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind, parse_tui_command
+
+
+class JovyKitDashboard(App[None]):
+    """Full-screen dashboard for managing a local JovyKit environment."""
+
+    CSS = """
+    Screen {
+        background: #101418;
+        color: #e8eef2;
+    }
+
+    #root {
+        height: 100%;
+        padding: 1;
+    }
+
+    #status {
+        height: 10;
+        margin-bottom: 1;
+    }
+
+    #logs {
+        height: 1fr;
+        border: round #3b5666;
+        padding: 0 1;
+        background: #0b0f12;
+    }
+
+    #command {
+        dock: bottom;
+        height: 3;
+        border: tall #4f7890;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [("ctrl+c", "quit", "Quit"), ("ctrl+l", "clear_logs", "Clear logs")]
+
+    def __init__(self, *, env: Path | None = None) -> None:
+        super().__init__()
+        self.env = env
+        self._last_status: EnvironmentStatus | None = None
+        self._last_log_snapshot = ""
+
+    def compose(self) -> ComposeResult:
+        """Compose the dashboard layout."""
+        with Vertical(id="root"):
+            yield Static(id="status")
+            yield RichLog(
+                id="logs",
+                highlight=False,
+                markup=True,
+                wrap=True,
+                auto_scroll=True,
+                max_lines=2000,
+            )
+            yield Input(placeholder="jovy> up", id="command")
+
+    def on_mount(self) -> None:
+        """Initialize dashboard state."""
+        self.title = "JovyKit"
+        self.query_one(Input).focus()
+        self._append("[bold cyan][JovyKit][/bold cyan] Dashboard ready. Type help.")
+        self.refresh_status()
+        self.set_interval(4, self.refresh_status)
+        self.set_interval(5, self.refresh_logs)
+
+    @on(Input.Submitted, "#command")
+    async def on_command_submitted(self, event: Input.Submitted) -> None:
+        """Handle submitted dashboard commands."""
+        raw = event.value
+        event.input.clear()
+        parsed = parse_tui_command(raw)
+        if parsed.kind is TuiCommandKind.EMPTY:
+            return
+        self._append(f"[bold]jovy>[/bold] {raw.strip()}")
+        await self._handle_parsed_command(parsed)
+
+    def action_clear_logs(self) -> None:
+        """Clear visible dashboard logs."""
+        self.query_one(RichLog).clear()
+
+    def refresh_status(self) -> None:
+        """Refresh the top status panel."""
+        status = discover_status(self.env)
+        self._last_status = status
+        self.query_one("#status", Static).update(render_status_panel(status))
+
+    def refresh_logs(self) -> None:
+        """Poll recent container logs while the environment is running."""
+        status = self._last_status
+        if status is None or not status.is_running or status.env_dir is None:
+            return
+        try:
+            config = commands.load_env(self.env)
+            snapshot = compose_logs(config, tail="60").strip()
+        except JovyKitError:
+            return
+        if not snapshot or snapshot == self._last_log_snapshot:
+            return
+        new_text = _snapshot_suffix(self._last_log_snapshot, snapshot)
+        self._last_log_snapshot = snapshot
+        for line in new_text.splitlines():
+            self._append(_escape_log_markup(line))
+
+    async def _handle_parsed_command(self, parsed: ParsedTuiCommand) -> None:
+        if parsed.kind is TuiCommandKind.UNKNOWN:
+            self._append(f"[bold red]{parsed.message or 'Unknown command'}[/bold red]")
+            return
+        if parsed.kind is TuiCommandKind.LOCAL:
+            await self._handle_local(parsed)
+            return
+        if parsed.kind is TuiCommandKind.HOST:
+            self.run_worker(self._run_host(parsed.args), exclusive=False)
+            return
+        if parsed.name in {"shell", "run"}:
+            await self._run_suspended(parsed)
+            return
+        self.run_worker(self._run_jovy(parsed), exclusive=False)
+
+    async def _handle_local(self, parsed: ParsedTuiCommand) -> None:
+        if parsed.name in {"quit", "exit"}:
+            self.exit()
+            return
+        if parsed.name == "clear":
+            self.action_clear_logs()
+            return
+        if parsed.name == "refresh":
+            self.refresh_status()
+            self.refresh_logs()
+            self._append("[cyan][JovyKit][/cyan] Status refreshed.")
+            return
+        if parsed.name == "open":
+            self._open_url()
+            return
+        if parsed.name == "help":
+            self._show_help()
+
+    async def _run_host(self, args: list[str]) -> None:
+        if not args:
+            self._append("[bold red]Pass a host command after !.[/bold red]")
+            return
+        await asyncio.to_thread(
+            run_host_command,
+            args,
+            cwd=Path.cwd(),
+            log=lambda line: self.call_from_thread(
+                self._append, _escape_log_markup(line)
+            ),
+        )
+
+    async def _run_jovy(self, parsed: ParsedTuiCommand) -> None:
+        try:
+            await asyncio.to_thread(self._dispatch_jovy_command, parsed)
+            self.call_from_thread(self._clear_last_error)
+        except Exception as exc:
+            self.call_from_thread(self._record_last_error, str(exc))
+            self.call_from_thread(
+                self._append,
+                f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}",
+            )
+        finally:
+            self.call_from_thread(self.refresh_status)
+
+    async def _run_suspended(self, parsed: ParsedTuiCommand) -> None:
+        try:
+            with self.suspend():
+                self._dispatch_jovy_command(parsed, suspended=True)
+            self._clear_last_error()
+        except Exception as exc:
+            self._record_last_error(str(exc))
+            self._append(f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}")
+        finally:
+            self.refresh_status()
+
+    def _dispatch_jovy_command(
+        self, parsed: ParsedTuiCommand, *, suspended: bool = False
+    ) -> None:
+        emit = self._append if suspended else self._threadsafe_append
+        name = parsed.name
+        args = parsed.args
+        if name == "init":
+            commands.init_environment(emit=emit)
+        elif name == "add":
+            commands.add(args, emit=emit)
+        elif name == "remove":
+            commands.remove(args, emit=emit)
+        elif name == "install":
+            commands.install(
+                commands.load_env(emit=emit),
+                no_build="--no-build" in args,
+                emit=emit,
+                stream=True,
+            )
+        elif name == "build":
+            commands.build(
+                no_cache="--no-cache" in args,
+                pull="--pull" in args,
+                emit=emit,
+                stream=True,
+            )
+        elif name == "run":
+            commands.run(no_build="--no-build" in args, watch=True, emit=emit)
+        elif name == "up":
+            commands.up(no_build="--no-build" in args, emit=emit, stream=True)
+        elif name == "down":
+            commands.down(
+                timeout=_option_int(args, "--timeout"), emit=emit, stream=True
+            )
+        elif name == "restart":
+            commands.restart(
+                no_build="--no-build" in args,
+                timeout=_option_int(args, "--timeout"),
+                emit=emit,
+                stream=True,
+            )
+        elif name == "logs":
+            commands.logs(
+                follow=False,
+                tail=_option_value(args, "--tail", "100"),
+                emit=emit,
+                stream=True,
+            )
+        elif name == "shell":
+            command = " ".join(shlex.quote(arg) for arg in args) if args else None
+            commands.shell(command=command)
+        elif name == "exec":
+            commands.exec_in_container(args, emit=emit, stream=True)
+        elif name == "status":
+            commands.status(json_output="--json" in args, emit=emit)
+        elif name == "clean":
+            commands.clean(emit=emit)
+        elif name == "destroy":
+            commands.destroy(
+                remove_dir="--remove-dir" in args,
+                keep_image="--keep-image" in args,
+                emit=emit,
+            )
+
+    def _open_url(self) -> None:
+        status = self._last_status or discover_status(self.env)
+        if status.url == "unavailable":
+            self._append("[bold yellow][JovyKit][/bold yellow] URL unavailable.")
+            return
+        webbrowser.open(status.url)
+        self._append(f"[cyan][JovyKit][/cyan] Opened {status.url}")
+
+    def _record_last_error(self, message: str) -> None:
+        try:
+            config = commands.load_env(self.env)
+        except JovyKitError:
+            return
+        state = read_state(config.env_dir)
+        state["last_error"] = message
+        write_state(config.env_dir, state)
+
+    def _clear_last_error(self) -> None:
+        try:
+            config = commands.load_env(self.env)
+        except JovyKitError:
+            return
+        state = read_state(config.env_dir)
+        if "last_error" in state:
+            state.pop("last_error", None)
+            write_state(config.env_dir, state)
+
+    def _show_help(self) -> None:
+        self._append(
+            "[bold cyan]Commands[/bold cyan]\n"
+            "init, add, remove, install, build, run, up, down, restart, logs, shell, "
+            "exec, status, clean, destroy\n"
+            "[bold cyan]Dashboard[/bold cyan]\n"
+            "help, clear, open, refresh, quit, exit\n"
+            "[bold cyan]Host shell[/bold cyan]\n"
+            "!pwd, !ls, !docker ps"
+        )
+
+    def _threadsafe_append(self, line: str) -> None:
+        self.call_from_thread(self._append, _escape_log_markup(line))
+
+    def _append(self, line: str) -> None:
+        self.query_one(RichLog).write(line)
+
+
+def render_status_panel(status: EnvironmentStatus) -> Panel:
+    """Render the top status panel."""
+    table = Table.grid(expand=True)
+    table.add_column(ratio=1)
+    table.add_column(ratio=1)
+    table.add_row(f"Project: {status.project_path}", f"Status: {_status_label(status)}")
+    table.add_row(f"Image: {status.image}", f"Build: {status.build}")
+    table.add_row(f"Base: {status.base_image}", f"GPU: {status.gpu}")
+    table.add_row(f"Port: {status.port}", f"URL: {status.url}")
+    table.add_row(f"Packages: {status.package_count}", f"Volume: {status.volume}")
+    if status.last_error:
+        table.add_row(
+            f"[red]Last error:[/red] {status.last_error}",
+            "Hint: check the logs panel for details",
+        )
+    return Panel(table, title="JovyKit", border_style=_border_style(status.status))
+
+
+def run_dashboard(*, env: Path | None = None) -> None:
+    """Run the JovyKit Textual dashboard."""
+    JovyKitDashboard(env=env).run()
+
+
+def _status_label(status: EnvironmentStatus) -> str:
+    if status.health in {"healthy", "unhealthy"} and status.status == status.health:
+        return status.status
+    if status.health != "unknown" and status.status == "running":
+        return f"{status.status} {status.health}"
+    return status.status
+
+
+def _border_style(status: str) -> str:
+    if status in {"healthy", "running"}:
+        return "green"
+    if status in {"error", "unhealthy"}:
+        return "red"
+    if status in {"starting", "stale image", "unknown"}:
+        return "yellow"
+    return "blue"
+
+
+def _option_value(args: list[str], name: str, default: str) -> str:
+    try:
+        index = args.index(name)
+    except ValueError:
+        return default
+    try:
+        return args[index + 1]
+    except IndexError:
+        return default
+
+
+def _option_int(args: list[str], name: str) -> int | None:
+    value = _option_value(args, name, "")
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _snapshot_suffix(previous: str, current: str) -> str:
+    if previous and current.startswith(previous):
+        return current[len(previous) :].lstrip("\n")
+    return current
+
+
+def _escape_log_markup(line: str) -> str:
+    return line.replace("[", "\\[").replace("]", "\\]")

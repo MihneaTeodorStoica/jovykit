@@ -7,6 +7,11 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 2.1.0.
+- Escaped generated Argon2 Jupyter password hashes so Docker Compose no longer
+  treats `$argon2id`, `$v`, or `$m` hash segments as environment variables.
+- Added a Textual dashboard that opens with bare `jovy` while preserving the
+  scriptable CLI command set.
 - Switched generated Jupyter password hashes to Argon2 for security scanning.
 - Bumped package version to 2.0.2.
 - Added a default Jupyter password and print it from `jovy init` and `jovy up`.

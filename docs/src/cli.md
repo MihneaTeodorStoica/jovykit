@@ -5,6 +5,11 @@ JovyKit manages project-local Jupyter container environments. A root
 Docker files, dependency manifests, watcher logs, and local build state.
 Project files live in `work/` by default and are mounted into the container.
 
+Run `jovy` without a subcommand to open the full-screen terminal dashboard. The
+dashboard shows project status, recent logs, and a `jovy>` input line for the
+same command model as the scriptable CLI. Exiting the dashboard closes only the
+dashboard; it does not stop a running environment.
+
 ## Create an environment
 
 ```bash
@@ -59,6 +64,7 @@ foreground; `jovy up` installs if stale and starts it in the background. Use
 `--no-build` to skip the stale-build check. Docker Compose watch is available
 through `jovy run`. Detached `jovy up` and `jovy restart` also launch a
 lightweight config watcher that restarts the container when `jovy.toml` changes.
+Use `jovy down` to stop the detached environment.
 
 ## Customize with TOML
 
@@ -69,6 +75,7 @@ target/platform, apt packages, and uv/pip install options.
 ## Operate on a running environment
 
 ```bash
+jovy
 jovy status
 jovy --version
 jovy status --json
@@ -84,6 +91,11 @@ jovy down --timeout 10
 Most commands discover the nearest `jovy.toml` by walking upward from the
 current directory. Pass `--env PATH` with either a project root or `.jovy`
 directory to operate on a specific environment.
+
+Inside the dashboard, plain input runs JovyKit commands such as `up`, `down`,
+`add numpy pandas`, and `exec python --version`. Prefix host shell commands with
+`!`, for example `!pwd` or `!docker ps`. Dashboard-local commands are `help`,
+`clear`, `open`, `refresh`, `quit`, and `exit`.
 
 ## Clean up
 

@@ -77,7 +77,7 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     assert service["command"] == [
         "start-notebook.py",
         "--ServerApp.token=",
-        f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD)}",
+        f"--PasswordIdentityProvider.hashed_password={hash_jupyter_password(DEFAULT_JUPYTER_PASSWORD).replace('$', '$$')}",
     ]
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "requirements.txt"},
