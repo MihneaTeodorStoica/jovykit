@@ -2,12 +2,12 @@
 authors = ["mihneateodorstoica"]
 language = "en"
 src = "src"
-title = "Labkit"
+title = "JovyKit"
 
 [build]
 build-dir = "book"
 create-missing = false
 
 [output.html]
-git-repository-url = "https://github.com/mihneateodorstoica/labkit"
-edit-url-template = "https://github.com/mihneateodorstoica/labkit/edit/main/docs/{path}"
+git-repository-url = "https://github.com/MihneaTeodorStoica/jovykit"
+edit-url-template = "https://github.com/MihneaTeodorStoica/jovykit/edit/main/docs/{path}"

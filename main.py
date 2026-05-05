@@ -1,4 +1,4 @@
-from labkit.cli import main
+from jovykit.cli import main
 
 if __name__ == "__main__":
     main()

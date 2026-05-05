@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Labkit follows the Mozilla Community Participation Guidelines.
+JovyKit follows the Mozilla Community Participation Guidelines.
 
 The project expects everyone who participates in issues, pull requests,
 discussions, reviews, and other project spaces to help keep the community

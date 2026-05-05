@@ -1,6 +1,6 @@
-# Labkit
+# JovyKit
 
-Labkit provides layered Jupyter notebook container images for data science,
+JovyKit provides layered Jupyter notebook container images for data science,
 machine learning, and research workflows.
 
 The images are designed as progressively larger environments, so users can pick
@@ -19,9 +19,9 @@ the smallest image that fits their workload:
 Published image variants use the following naming pattern:
 
 ```text
-ghcr.io/mihneateodorstoica/labkit-TYPE:latest
-ghcr.io/mihneateodorstoica/labkit-TYPE:nightly
-ghcr.io/mihneateodorstoica/labkit-TYPE:lts
+ghcr.io/mihneateodorstoica/jovykit-TYPE:latest
+ghcr.io/mihneateodorstoica/jovykit-TYPE:nightly
+ghcr.io/mihneateodorstoica/jovykit-TYPE:lts
 ```
 
 `TYPE` is one of `minimal`, `base`, `extended`, or `full`.
@@ -38,55 +38,64 @@ copying, and SSH-backed sync:
 Build a specific image target from the repository root:
 
 ```bash
-docker build --target minimal -t labkit-minimal ./image
-docker build --target base -t labkit-base ./image
-docker build --target extended -t labkit-extended ./image
-docker build --target full -t labkit-full ./image
+docker build --target minimal -t jovykit-minimal ./image
+docker build --target base -t jovykit-base ./image
+docker build --target extended -t jovykit-extended ./image
+docker build --target full -t jovykit-full ./image
 ```
 
-## CLI Preview
+## CLI
 
-LabKit also includes an early CLI for project-local container environments. The
-mental model is:
+JovyKit includes a CLI for project-local container environments. The mental
+model is:
 
 ```text
-.lab is to LabKit what .venv is to Python.
+.jovy is to JovyKit what .venv is to Python.
 ```
 
 Create an environment, add project packages, and run Jupyter:
 
 ```bash
-lab init .lab --image base --gpus auto
-lab add pandas scikit-learn plotly
-lab run
+jovy init .jovy --image base --gpus auto
+jovy add pandas scikit-learn plotly
+jovy run
 ```
 
-The CLI writes a reproducible overlay build recipe under `.lab/`:
+The CLI writes a reproducible overlay build recipe under `.jovy/`:
 
 ```text
-.lab/
-  lab.toml
+.jovy/
+  jovy.toml
   requirements.txt
   Containerfile
   compose.yaml
   state.json
 ```
 
-Useful MVP commands:
+Useful commands:
 
 ```bash
-lab build
-lab start
-lab stop
-lab shell
-lab logs
-lab destroy
+jovy status
+jovy status --json
+jovy build --pull
+jovy sync --no-build
+jovy start --no-build
+jovy logs --tail 100 --no-follow
+jovy shell -c "python --version"
+jovy exec python --version
+jovy stop --timeout 10
+jovy destroy --keep-image
 ```
+
+Most commands accept `--env PATH` when you want to operate on a JovyKit
+environment outside the current project tree. `jovy init` also supports
+customizing the generated project name, overlay image name/tag, Jupyter port,
+GPU mode, and mounted work directory.
 
 ## Repository Layout
 
 ```text
-labkit/              Python CLI package
+jovykit/              Python CLI package
 image/               Dockerfile and layered image dependency manifests
 docs/                mdBook documentation
 .github/workflows/   CI, security, docs, and image publishing automation

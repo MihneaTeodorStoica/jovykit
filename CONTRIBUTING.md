@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for considering a contribution to Labkit.
+Thank you for considering a contribution to JovyKit.
 
 ## Ways to Contribute
 
@@ -39,7 +39,7 @@ pytest
 Build an image target:
 
 ```bash
-docker build --target minimal -t labkit-minimal ./image
+docker build --target minimal -t jovykit-minimal ./image
 ```
 
 Build documentation:
