@@ -26,6 +26,13 @@ def test_exec_command_keeps_container_command_args() -> None:
     assert parsed.args == ["python", "--version"]
 
 
+def test_config_command_maps_to_jovy_command() -> None:
+    parsed = parse_tui_command("config")
+
+    assert parsed.kind is TuiCommandKind.JOVY
+    assert parsed.name == "config"
+
+
 def test_quit_and_exit_are_local_dashboard_commands() -> None:
     assert parse_tui_command("quit").kind is TuiCommandKind.LOCAL
     assert parse_tui_command("exit").kind is TuiCommandKind.LOCAL

@@ -82,6 +82,7 @@ target/platform, apt packages, and uv/pip install options.
 
 ```bash
 jovy
+jovy config
 jovy status
 jovy --version
 jovy status --json
@@ -99,9 +100,9 @@ current directory. Pass `--env PATH` with either a project root or `.jovy`
 directory to operate on a specific environment.
 
 Inside the dashboard, plain input runs JovyKit commands such as `up`, `down`,
-`add numpy pandas`, and `exec python --version`. Prefix host shell commands with
-`!`, for example `!pwd` or `!docker ps`. Dashboard-local commands are `help`,
-`clear`, `open`, `refresh`, `quit`, and `exit`.
+`config`, `add numpy pandas`, and `exec python --version`. Prefix host shell
+commands with `!`, for example `!pwd` or `!docker ps`. Dashboard-local commands
+are `help`, `clear`, `open`, `refresh`, `quit`, and `exit`.
 
 ## Clean up
 

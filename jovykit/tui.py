@@ -165,7 +165,9 @@ class JovyKitDashboard(App[None]):
         if parsed.kind is TuiCommandKind.HOST:
             self.run_worker(self._run_host(parsed.args), exclusive=False)
             return
-        if parsed.name == "run" or (parsed.name == "shell" and not parsed.args):
+        if parsed.name in {"config", "run"} or (
+            parsed.name == "shell" and not parsed.args
+        ):
             await self._run_suspended(parsed)
             return
         self.run_worker(self._run_jovy(parsed), exclusive=False)
@@ -232,6 +234,7 @@ class JovyKitDashboard(App[None]):
         finally:
             self._set_command_running(False)
             self.refresh_status()
+            self.refresh_logs()
             self.query_one(Input).focus()
 
     def _dispatch_jovy_command(
@@ -307,6 +310,11 @@ class JovyKitDashboard(App[None]):
             commands.exec_in_container(args, emit=emit, stream=True)
         elif name == "status":
             commands.status(json_output="--json" in args, emit=emit)
+        elif name == "config":
+            from jovykit.config_editor import run_config_editor
+
+            run_config_editor(env=self.env)
+            emit("Config editor closed.")
         elif name == "clean":
             commands.clean(emit=emit)
         elif name == "destroy":
@@ -348,7 +356,7 @@ class JovyKitDashboard(App[None]):
         self._append(
             "[bold cyan]Commands[/bold cyan]\n"
             "init, add, remove, install, build, run, up, down, restart, logs, shell, "
-            "exec, status, clean, destroy\n"
+            "exec, status, config, clean, destroy\n"
             "[bold cyan]Dashboard[/bold cyan]\n"
             "help, clear, open, refresh, quit, exit\n"
             "[bold cyan]Host shell[/bold cyan]\n"

@@ -120,7 +120,8 @@ compiles them with uv into `.jovy/jovy.lock`, and Docker installs from that
 lockfile. `jovy.toml` can also customize runtime environment variables, extra
 volumes, restart policy, Jupyter command/logging, Compose Watch behavior, image
 build arguments, build target/platform, apt packages, and uv/pip install
-options.
+options. Use `jovy config` or the dashboard `config` command to edit common
+settings from a guided terminal UI.
 
 ## Repository Layout
 

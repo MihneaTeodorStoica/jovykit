@@ -32,6 +32,7 @@ JOVY_COMMANDS = {
     "shell",
     "exec",
     "status",
+    "config",
     "clean",
     "destroy",
 }

@@ -67,6 +67,21 @@ def test_bare_command_launches_dashboard(
     assert launched == [True]
 
 
+def test_config_command_launches_editor(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    launched: list[Path | None] = []
+    monkeypatch.setattr(
+        "jovykit.config_editor.run_config_editor",
+        lambda **kwargs: launched.append(kwargs["env"]),
+    )
+
+    run_cli(["config", "--env", str(project.env_dir)])
+
+    assert launched == [project.env_dir]
+
+
 def test_help_does_not_launch_dashboard(
     monkeypatch: pytest.MonkeyPatch, run_cli: Any
 ) -> None:

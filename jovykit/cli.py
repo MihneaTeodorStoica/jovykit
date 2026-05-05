@@ -319,6 +319,18 @@ def clean(
 
 
 @app.command()
+def config(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Edit core jovy.toml settings interactively."""
+    from jovykit.config_editor import run_config_editor
+
+    run_config_editor(env=env)
+
+
+@app.command()
 def status(
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."

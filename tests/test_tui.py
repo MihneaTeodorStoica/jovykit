@@ -135,6 +135,30 @@ def test_dispatch_shell_command_streams_inside_dashboard(
     assert calls[0]["stream"] is True
 
 
+def test_dispatch_config_launches_editor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    parsed = ParsedTuiCommand(
+        kind=TuiCommandKind.JOVY,
+        name="config",
+        args=[],
+        raw="config",
+    )
+    calls: list[Any] = []
+
+    monkeypatch.setattr(
+        "jovykit.config_editor.run_config_editor",
+        lambda **kwargs: calls.append(kwargs["env"]),
+    )
+    monkeypatch.setattr(app, "_append", lambda message: calls.append(message))
+
+    app._dispatch_jovy_command(parsed, suspended=True)
+
+    assert calls[0] is None
+    assert "Config editor closed." in calls
+
+
 def test_set_command_running_keeps_input_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
