@@ -71,9 +71,15 @@ def build(config: JovyConfig, *, no_cache: bool = False, pull: bool = False) -> 
         "-t",
         config.image_ref,
     ]
+    if config.image_target:
+        args.extend(["--target", config.image_target])
+    if config.image_platform:
+        args.extend(["--platform", config.image_platform])
+    for key, value in config.image_build_args.items():
+        args.extend(["--build-arg", f"{key}={value}"])
     if no_cache:
         args.append("--no-cache")
-    if pull:
+    if pull or config.image_pull:
         args.append("--pull")
     args.append(".")
     run_command(args, cwd=config.env_dir, attached=True)

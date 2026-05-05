@@ -42,6 +42,7 @@ def is_process_running(pid: int) -> bool:
 def start_watcher(env_dir: Path) -> None:
     """Start the background config watcher unless it is already running."""
     env_dir = env_dir.resolve()
+    config = load_config(env_dir)
     env_dir.mkdir(parents=True, exist_ok=True)
     pid_file = pid_path(env_dir)
     if pid_file.exists():
@@ -53,7 +54,14 @@ def start_watcher(env_dir: Path) -> None:
 
     with log_path(env_dir).open("ab") as log_handle:
         process = subprocess.Popen(
-            [sys.executable, "-m", "jovykit.watcher", str(env_dir)],
+            [
+                sys.executable,
+                "-m",
+                "jovykit.watcher",
+                str(env_dir),
+                "--poll-interval",
+                str(config.watch_poll_interval),
+            ],
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,

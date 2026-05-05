@@ -56,6 +56,12 @@ Docker Compose watch is available through `jovy run`. Detached `jovy start`
 also launches a lightweight config watcher that restarts the container when
 `jovy.toml` changes.
 
+## Customize with TOML
+
+`jovy.toml` supports runtime env vars, extra volumes, restart policy, user,
+Jupyter command/logging, Compose Watch controls, build args, build
+target/platform, apt packages, and uv/pip install options.
+
 ## Operate on a running environment
 
 ```bash

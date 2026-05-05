@@ -51,6 +51,12 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "requirements.txt"},
         {"action": "rebuild", "path": "Containerfile"},
+        {
+            "action": "sync+restart",
+            "path": "jovy.toml",
+            "target": "/tmp/jovykit-watch/jovy.toml",
+            "initial_sync": True,
+        },
     ]
     assert "deploy" not in service
 
@@ -103,3 +109,68 @@ def test_legacy_environment_config_is_migrated(tmp_path: Path) -> None:
     assert config.config_path == tmp_path / "jovy.toml"
     assert config.config_path.exists()
     assert not legacy_config.exists()
+
+
+def test_customization_tables_render_into_generated_files(tmp_path: Path) -> None:
+    env_dir = tmp_path / ".jovy"
+    env_dir.mkdir()
+    config_text = initial_config_text(
+        project_name="My Project",
+        env_name=".jovy",
+        image="minimal",
+        gpus="none",
+        port=9999,
+    )
+    config_text = config_text.replace(
+        "[runtime.env]\n\n[runtime.volumes]",
+        '[runtime.env]\nEXTRA_FLAG = "yes"\n\n[runtime.volumes]\n"./data" = "/data"',
+    )
+    config_text = config_text.replace(
+        'restart = "unless-stopped"',
+        'restart = "always"\nuser = "1000:1000"',
+    )
+    config_text = config_text.replace(
+        'log_level = "ERROR"',
+        'log_level = "INFO"\ncommand = "start-notebook.py --ServerApp.root_dir=/home/jovyan/work"',
+    )
+    config_text = config_text.replace(
+        'workspace_mode = "bind"',
+        'workspace_mode = "sync"',
+    )
+    config_text = config_text.replace(
+        'restart = ["jovy.toml"]',
+        'restart = ["jovy.toml", "runtime.toml"]',
+    )
+    config_text = config_text.replace(
+        "pull = false\n\n[image.build_args]",
+        'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
+    )
+    config_text = config_text.replace(
+        "packages = []",
+        'packages = ["curl"]',
+    )
+    config_text = config_text.replace(
+        "pip_args = []",
+        'pip_args = ["--upgrade"]',
+    )
+    (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
+
+    config = load_config(env_dir)
+    write_generated_files(config)
+
+    service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
+    assert service["build"]["target"] == "base"
+    assert service["build"]["platform"] == "linux/amd64"
+    assert service["build"]["args"] == {"EXAMPLE": "1"}
+    assert service["environment"]["EXTRA_FLAG"] == "yes"
+    assert service["restart"] == "always"
+    assert service["user"] == "1000:1000"
+    assert service["command"].startswith("start-notebook.py")
+    assert f"../work:{config.work_mount}" not in service["volumes"]
+    assert "./data:/data" in service["volumes"]
+    assert service["develop"]["watch"][0]["action"] == "sync"
+    assert service["develop"]["watch"][-1]["action"] == "sync+restart"
+
+    containerfile = (env_dir / "Containerfile").read_text(encoding="utf-8")
+    assert "apt-get install -y --no-install-recommends curl" in containerfile
+    assert "uv pip install --upgrade --system" in containerfile

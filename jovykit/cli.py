@@ -237,13 +237,14 @@ def run(
     _ensure_built(config, no_build=no_build)
     console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
     args = ["up"]
-    if watch:
+    should_watch = watch and config.watch_enabled
+    if should_watch:
         args.append("--watch")
         start_watcher(config.env_dir)
     try:
         compose(config, *args, attached=True)
     finally:
-        if watch:
+        if should_watch:
             stop_watcher(config.env_dir)
 
 
@@ -259,7 +260,8 @@ def start(
     write_generated_files(config)
     _ensure_built(config, no_build=no_build)
     compose(config, "up", "-d", attached=True)
-    start_watcher(config.env_dir)
+    if config.watch_enabled:
+        start_watcher(config.env_dir)
     console.print(f"Jupyter: http://127.0.0.1:{config.port}/lab")
 
 

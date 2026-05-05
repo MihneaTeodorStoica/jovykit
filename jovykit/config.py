@@ -33,11 +33,30 @@ class JovyConfig:
     base_image: str
     image_name: str
     image_tag: str
+    image_target: str | None
+    image_platform: str | None
+    image_pull: bool
+    image_build_args: dict[str, str]
+    apt_packages: list[str]
+    pip_args: list[str]
+    uv_link_mode: str
     port: int
     gpus: str
+    restart_policy: str
+    runtime_user: str | None
+    runtime_env: dict[str, str]
+    runtime_volumes: dict[str, str]
     jupyter_token: str
     jupyter_log_level: str
+    jupyter_lab: bool
+    jupyter_command: str | None
     work_mount: str
+    watch_enabled: bool
+    watch_workspace_mode: str
+    watch_ignore: list[str]
+    watch_rebuild: list[str]
+    watch_restart: list[str]
+    watch_poll_interval: float
 
     @property
     def image_ref(self) -> str:
@@ -54,6 +73,18 @@ def slugify_name(value: str) -> str:
     """Create a Docker-image-friendly project slug."""
     slug = re.sub(r"[^a-z0-9_.-]+", "-", value.lower()).strip("-_.")
     return slug or "project"
+
+
+def _str_dict(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
 
 
 def load_config(env_dir: Path) -> JovyConfig:
@@ -73,9 +104,11 @@ def load_config(env_dir: Path) -> JovyConfig:
 
     project = raw.get("project", {})
     image = raw.get("image", {})
+    python = raw.get("python", {})
     runtime = raw.get("runtime", {})
     jupyter = raw.get("jupyter", {})
     mounts = raw.get("mounts", {})
+    watch = raw.get("watch", {})
 
     project_dir = env_dir.parent.resolve()
     project_root = (project_dir / str(project.get("workdir", "work"))).resolve()
@@ -89,11 +122,53 @@ def load_config(env_dir: Path) -> JovyConfig:
             base_image=str(image["base"]),
             image_name=str(image["name"]),
             image_tag=str(image.get("tag", "local")),
+            image_target=(
+                str(image["target"]) if image.get("target") is not None else None
+            ),
+            image_platform=(
+                str(image["platform"]) if image.get("platform") is not None else None
+            ),
+            image_pull=bool(image.get("pull", False)),
+            image_build_args=_str_dict(image.get("build_args", {})),
+            apt_packages=_str_list(image.get("apt", {}).get("packages", [])),
+            pip_args=_str_list(python.get("pip_args", [])),
+            uv_link_mode=str(python.get("uv_link_mode", "copy")),
             port=int(runtime.get("port", 8888)),
             gpus=str(runtime.get("gpus", "auto")),
+            restart_policy=str(runtime.get("restart", "unless-stopped")),
+            runtime_user=(
+                str(runtime["user"]) if runtime.get("user") is not None else None
+            ),
+            runtime_env=_str_dict(runtime.get("env", {})),
+            runtime_volumes=_str_dict(runtime.get("volumes", {})),
             jupyter_token=str(jupyter.get("token", "auto")),
             jupyter_log_level=str(jupyter.get("log_level", "ERROR")),
+            jupyter_lab=bool(jupyter.get("lab", True)),
+            jupyter_command=(
+                str(jupyter["command"]) if jupyter.get("command") is not None else None
+            ),
             work_mount=str(mounts.get("work", "/home/jovyan/work")),
+            watch_enabled=bool(watch.get("enabled", True)),
+            watch_workspace_mode=str(watch.get("workspace_mode", "bind")),
+            watch_ignore=_str_list(
+                watch.get(
+                    "ignore",
+                    [
+                        ".jovy/",
+                        ".git/",
+                        ".venv/",
+                        "__pycache__/",
+                        ".mypy_cache/",
+                        ".pytest_cache/",
+                        ".ruff_cache/",
+                    ],
+                )
+            ),
+            watch_rebuild=_str_list(
+                watch.get("rebuild", ["requirements.txt", "Containerfile"])
+            ),
+            watch_restart=_str_list(watch.get("restart", ["jovy.toml"])),
+            watch_poll_interval=float(watch.get("poll_interval_seconds", 1.0)),
         )
     except KeyError as exc:
         raise ConfigError(f"Missing required setting in {config_path}: {exc}") from exc
@@ -126,11 +201,22 @@ environment = "{env_name}"
 base = "{base_image}"
 name = "{resolved_image_name}"
 tag = "{image_tag}"
+pull = false
+
+[image.build_args]
+
+[image.apt]
+packages = []
 
 [runtime]
 port = {port}
 gpus = "{gpus}"
 attach_mode = "stop-on-ctrl-c"
+restart = "unless-stopped"
+
+[runtime.env]
+
+[runtime.volumes]
 
 [jupyter]
 lab = true
@@ -139,6 +225,18 @@ log_level = "{log_level}"
 
 [mounts]
 work = "/home/jovyan/work"
+
+[watch]
+enabled = true
+workspace_mode = "bind"
+ignore = [".jovy/", ".git/", ".venv/", "__pycache__/", ".mypy_cache/", ".pytest_cache/", ".ruff_cache/"]
+rebuild = ["requirements.txt", "Containerfile"]
+restart = ["jovy.toml"]
+poll_interval_seconds = 1.0
+
+[python]
+pip_args = []
+uv_link_mode = "copy"
 """
 
 

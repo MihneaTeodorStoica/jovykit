@@ -7,6 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Added TOML customization for runtime, watch, and image build behavior.
 - Moved `jovy.toml` to the project root and added config-change restarts.
 - Changed new environments to use `work/` as the mounted project directory.
 - Fixed `jovy start` so detached startup does not pass Docker Compose watch.

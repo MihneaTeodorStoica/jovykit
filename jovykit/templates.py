@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import yaml
 from typing import Any
 
@@ -10,13 +11,25 @@ from jovykit.config import JovyConfig
 
 def render_containerfile(config: JovyConfig) -> str:
     """Render the project overlay Containerfile."""
+    apt_block = ""
+    if config.apt_packages:
+        packages = " ".join(shlex.quote(package) for package in config.apt_packages)
+        apt_block = f"""RUN apt-get update && \\
+    apt-get install -y --no-install-recommends {packages} && \\
+    rm -rf /var/lib/apt/lists/*
+
+"""
+    pip_args = " ".join(shlex.quote(arg) for arg in config.pip_args)
+    pip_args_prefix = f"{pip_args} " if pip_args else ""
+    uv_link_mode = shlex.quote(config.uv_link_mode)
     return f"""FROM {config.base_image}
 
 USER root
+{apt_block}\
 COPY requirements.txt /tmp/jovykit/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \\
-    UV_SYSTEM_PYTHON=1 UV_LINK_MODE=copy \\
-    uv pip install --system -r /tmp/jovykit/requirements.txt && \\
+    UV_SYSTEM_PYTHON=1 UV_LINK_MODE={uv_link_mode} \\
+    uv pip install {pip_args_prefix}--system -r /tmp/jovykit/requirements.txt && \\
     fix-permissions "${{CONDA_DIR}}" && \\
     fix-permissions "/home/${{NB_USER}}"
 
@@ -27,30 +40,71 @@ WORKDIR ${{HOME}}/work
 
 def render_compose(config: JovyConfig) -> str:
     """Render the Docker Compose file for a JovyKit environment."""
+    build: dict[str, Any] = {"context": ".", "dockerfile": "Containerfile"}
+    if config.image_target:
+        build["target"] = config.image_target
+    if config.image_platform:
+        build["platform"] = config.image_platform
+    if config.image_build_args:
+        build["args"] = config.image_build_args
+
+    environment = {
+        "JUPYTER_ENABLE_LAB": "yes" if config.jupyter_lab else "no",
+        "JUPYTER_LOG_LEVEL": config.jupyter_log_level,
+        **config.runtime_env,
+    }
+    if config.jupyter_token and config.jupyter_token.lower() != "auto":
+        environment["JUPYTER_TOKEN"] = config.jupyter_token
+
+    volumes = ["jovykit-home:/home/jovyan"]
+    if config.watch_workspace_mode == "bind":
+        volumes.insert(0, f"{config.compose_workdir}:{config.work_mount}")
+    volumes.extend(
+        f"{host_path}:{container_path}"
+        for host_path, container_path in config.runtime_volumes.items()
+    )
+
     service: dict[str, Any] = {
         "image": config.image_ref,
-        "build": {"context": ".", "dockerfile": "Containerfile"},
+        "build": build,
         "ports": [f"127.0.0.1:{config.port}:8888"],
-        "environment": {
-            "JUPYTER_ENABLE_LAB": "yes",
-            "JUPYTER_LOG_LEVEL": config.jupyter_log_level,
-        },
-        "volumes": [
-            f"{config.compose_workdir}:{config.work_mount}",
-            "jovykit-home:/home/jovyan",
-        ],
+        "environment": environment,
+        "volumes": volumes,
         "working_dir": config.work_mount,
         "stdin_open": True,
         "tty": True,
-        "develop": {
-            "watch": [
-                {"action": "rebuild", "path": "requirements.txt"},
-                {"action": "rebuild", "path": "Containerfile"},
-            ]
-        },
     }
-    if config.jupyter_token and config.jupyter_token.lower() != "auto":
-        service["environment"]["JUPYTER_TOKEN"] = config.jupyter_token
+    if config.restart_policy:
+        service["restart"] = config.restart_policy
+    if config.runtime_user:
+        service["user"] = config.runtime_user
+    if config.jupyter_command:
+        service["command"] = config.jupyter_command
+    if config.watch_enabled:
+        watch_rules: list[dict[str, Any]] = []
+        if config.watch_workspace_mode == "sync":
+            watch_rules.append(
+                {
+                    "action": "sync",
+                    "path": config.compose_workdir,
+                    "target": config.work_mount,
+                    "initial_sync": True,
+                    "ignore": config.watch_ignore,
+                }
+            )
+        watch_rules.extend(
+            {"action": "rebuild", "path": path} for path in config.watch_rebuild
+        )
+        watch_rules.extend(
+            {
+                "action": "sync+restart",
+                "path": path,
+                "target": f"/tmp/jovykit-watch/{path.replace('/', '-')}",
+                "initial_sync": True,
+            }
+            for path in config.watch_restart
+        )
+        service["develop"] = {"watch": watch_rules}
     if config.gpus in {"auto", "all"}:
         service["deploy"] = {
             "resources": {
