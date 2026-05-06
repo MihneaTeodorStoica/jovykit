@@ -294,12 +294,14 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         border: round #c0c0c0;
         padding: 0 1;
         background: #ffffff;
+        color: #1f1f1f;
         margin-bottom: 1;
     }
 
     Screen.dark-theme #fields {
         border: round #3b5666;
         background: #0b0f12;
+        color: #e8eef2;
     }
 
     """
