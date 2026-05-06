@@ -684,6 +684,15 @@ def test_render_textual_fields_shows_keybind_legend(create_project: Any) -> None
     assert "q quit | w save | a apply | arrows move | Enter edit" in text
 
 
+def test_render_textual_fields_adopts_dark_theme_styles(
+    create_project: Any,
+) -> None:
+    values = values_from_config(create_project().config)
+    rendered = _render_textual_fields(values, 0, "Ready.", dirty=False)
+
+    assert rendered.border_style is not None
+
+
 class _FakeKey:
     def __init__(self, key: str, *, character: str | None = None) -> None:
         self.key = key

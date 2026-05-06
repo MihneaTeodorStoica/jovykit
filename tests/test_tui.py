@@ -16,8 +16,9 @@ from jovykit.tui import (
     SelectableLog,
     _status_key,
     render_status_panel,
+    _strip_ansi,
 )
-from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind
+from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind, parse_tui_command
 
 
 def test_run_jovy_updates_ui_directly_after_threaded_work(
@@ -149,6 +150,39 @@ def test_ctrl_c_quits_when_no_dashboard_text_is_selected(
 
     assert copied == []
     assert exited == [True]
+
+
+def test_theme_command_toggles_and_sets_explicit_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    events: list[str] = []
+
+    monkeypatch.setattr(app, "_apply_theme", lambda: events.append(app.ui_theme))
+    monkeypatch.setattr(app, "refresh", lambda **_kwargs: events.append("refresh"))
+    monkeypatch.setattr(app, "_append_markup", lambda _message: events.append("log"))
+    monkeypatch.setattr(app, "_append_error", lambda _message: events.append("error"))
+
+    app._set_theme([])
+    app._set_theme(["light"])
+    app._set_theme(["dark"])
+    app._set_theme(["sepia"])
+
+    assert app.ui_theme == "dark"
+    assert "refresh" in events
+    assert "error" in events
+
+
+def test_slash_theme_command_is_parsed_as_local_command() -> None:
+    parsed = parse_tui_command("/theme dark")
+
+    assert parsed.kind is TuiCommandKind.LOCAL
+    assert parsed.name == "theme"
+    assert parsed.args == ["dark"]
+
+
+def test_strip_ansi_removes_color_codes() -> None:
+    assert _strip_ansi("\x1b[31mred\x1b[0m plain") == "red plain"
 
 
 def test_dispatch_init_uses_default_jovykit_token(

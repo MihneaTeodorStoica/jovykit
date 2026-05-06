@@ -36,7 +36,7 @@ JOVY_COMMANDS = {
     "destroy",
 }
 
-LOCAL_COMMANDS = {"help", "clear", "open", "refresh", "quit", "exit"}
+LOCAL_COMMANDS = {"help", "clear", "open", "refresh", "quit", "exit", "theme"}
 BLOCKED_COMMAND_HINTS = {
     "run": "The run command is not available inside the dashboard. Use up, or run jovy run from your shell.",
 }
@@ -63,6 +63,8 @@ def parse_tui_command(raw: str) -> ParsedTuiCommand:
     stripped = raw.strip()
     if not stripped:
         return ParsedTuiCommand(TuiCommandKind.EMPTY, "", [], raw)
+    if stripped.startswith("/"):
+        stripped = stripped[1:].strip()
     if stripped.startswith("!"):
         host_command = stripped[1:].strip()
         if not host_command:

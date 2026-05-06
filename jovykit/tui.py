@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import shlex
 import webbrowser
 from pathlib import Path
@@ -27,6 +28,9 @@ class SelectableLog(RichLog):
 
     ALLOW_SELECT = True
     FOCUS_ON_CLICK = False
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def _status_key(status: EnvironmentStatus) -> tuple[object, ...]:
@@ -57,6 +61,11 @@ class JovyKitDashboard(App[None]):
         color: #1f1f1f;
     }
 
+    Screen.dark-theme {
+        background: #101418;
+        color: #e8eef2;
+    }
+
     #root {
         height: 100%;
         padding: 1;
@@ -75,6 +84,11 @@ class JovyKitDashboard(App[None]):
         background: #ffffff;
     }
 
+    Screen.dark-theme #logs {
+        border: round #3b5666;
+        background: #0b0f12;
+    }
+
     #command {
         height: 3;
         border: tall #c7c7c7;
@@ -91,6 +105,19 @@ class JovyKitDashboard(App[None]):
         background: #ffffff;
         color: #1f1f1f;
     }
+
+    Screen.dark-theme #status, Screen.dark-theme #logs, Screen.dark-theme #command {
+        background: #101418;
+        color: #e8eef2;
+    }
+
+    Screen.dark-theme #command {
+        border: tall #4f7890;
+    }
+
+    Screen.dark-theme #command:focus {
+        border: tall #f37726;
+    }
     """
 
     BINDINGS = [
@@ -102,6 +129,7 @@ class JovyKitDashboard(App[None]):
     def __init__(self, *, env: Path | None = None) -> None:
         super().__init__()
         self.env = env
+        self.ui_theme = "light"
         self._last_status: EnvironmentStatus | None = None
         self._last_status_key: tuple[object, ...] | None = None
         self._last_log_snapshot = ""
@@ -125,6 +153,7 @@ class JovyKitDashboard(App[None]):
     def on_mount(self) -> None:
         """Initialize dashboard state."""
         self.title = "JovyKit"
+        self._apply_theme()
         self.query_one(Input).focus()
         self._append_markup(
             "[bold cyan][JovyKit][/bold cyan] Dashboard ready. Type help."
@@ -201,6 +230,9 @@ class JovyKitDashboard(App[None]):
             return
         if parsed.name == "config":
             self._open_config_screen()
+            return
+        if parsed.name == "theme":
+            self._set_theme(parsed.args)
             return
         if parsed.name == "shell" and not parsed.args:
             await self._run_suspended(parsed)
@@ -401,7 +433,7 @@ class JovyKitDashboard(App[None]):
             "init, add, remove, install, build, up, down, restart, logs, shell, "
             "exec, status, config, clean, destroy\n"
             "[bold cyan]Dashboard[/bold cyan]\n"
-            "help, clear, open, refresh, quit, exit\n"
+            "help, clear, open, refresh, theme, quit, exit\n"
             "[bold cyan]Host shell[/bold cyan]\n"
             "!pwd, !ls, !docker ps"
         )
@@ -410,7 +442,7 @@ class JovyKitDashboard(App[None]):
         self.call_from_thread(self._append, line)
 
     def _append(self, line: str) -> None:
-        self.query_one(RichLog).write(Text(line))
+        self.query_one(RichLog).write(Text(_strip_ansi(line)))
 
     def _append_markup(self, line: str) -> None:
         self.query_one(RichLog).write(Text.from_markup(line))
@@ -439,6 +471,27 @@ class JovyKitDashboard(App[None]):
             self.query_one(Input).focus()
         except (NoMatches, ScreenStackError):
             return
+
+    def _apply_theme(self) -> None:
+        self.set_class(self.ui_theme == "dark", "dark-theme")
+        self.set_class(self.ui_theme == "light", "light-theme")
+        try:
+            self.screen.set_class(self.ui_theme == "dark", "dark-theme")
+        except Exception:
+            pass
+
+    def _set_theme(self, args: list[str]) -> None:
+        if not args:
+            self.ui_theme = "dark" if self.ui_theme == "light" else "light"
+        else:
+            theme = args[0].lower()
+            if theme not in {"light", "dark"}:
+                self._append_error("Theme must be light or dark.")
+                return
+            self.ui_theme = theme
+        self._apply_theme()
+        self.refresh(repaint=True, layout=True)
+        self._append_markup(f"[cyan][JovyKit][/cyan] Theme set to {self.ui_theme}.")
 
     def _set_command_running(self, running: bool) -> None:
         self._command_running = running
@@ -546,3 +599,7 @@ def _snapshot_suffix(previous: str, current: str) -> str:
     if previous and current.startswith(previous):
         return current[len(previous) :].lstrip("\n")
     return current
+
+
+def _strip_ansi(value: str) -> str:
+    return _ANSI_RE.sub("", value)
