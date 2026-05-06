@@ -394,14 +394,15 @@ def test_textual_editor_actions_update_selection_and_cycle(
 
     app.action_next_field()
     app.action_previous_field()
+    app.action_edit_selected()
     app.action_cycle_right()
-    app.selected = 0
+    app.action_edit_selected()
     app.action_cycle_left()
 
-    assert app.selected == 0
+    assert app.selected == 6
     assert app.values.gpus == "all"
     assert any("Updated GPU mode" in message for message in messages)
-    assert "Error: This field is edited with Enter." in refreshed[-1]
+    assert refreshed[-1] == "Press Enter to change this setting."
 
 
 def test_textual_editor_handles_option_keys_without_focus(
@@ -414,13 +415,14 @@ def test_textual_editor_handles_option_keys_without_focus(
     events: list[str] = []
     monkeypatch.setattr(app, "_refresh", lambda: events.append(app.status))
 
-    key = _FakeKey("right")
+    key = _FakeKey("enter")
     app.on_key(cast(Any, key))
+    app.on_key(cast(Any, _FakeKey("right")))
 
     assert app.values.gpus == "all"
     assert key.stopped is True
     assert key.prevented is True
-    assert events[-1] == "Updated GPU mode."
+    assert events[-1] == "Changing GPU mode: all. Press Enter to choose."
 
 
 def test_textual_editor_lets_input_handle_keys_while_editing(
@@ -463,6 +465,7 @@ def test_textual_editor_edit_action_and_prompt_updates(
     app.action_edit_selected()
     assert value_input.display is True
     assert value_input.focused is True
+    app._apply_prompt_value("New name")
     app.selected = 5
     app.action_edit_selected()
     app._apply_prompt_value("7777")
@@ -470,7 +473,9 @@ def test_textual_editor_edit_action_and_prompt_updates(
     app.action_edit_selected()
 
     assert app.values.port == 7777
-    assert "Use left/right arrows for this setting." == app.status
+    assert (
+        app.status == "Changing GPU mode. Use left/right or up/down, Enter to choose."
+    )
 
 
 def test_textual_editor_prompt_update_noops_without_values() -> None:

@@ -321,6 +321,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self.config: JovyConfig | None = None
         self.values: ConfigEditorValues | None = None
         self.editing_field: ConfigField | None = None
+        self.choosing_field: ConfigField | None = None
         self.selected = 0
         self.status = "Edit the selected setting, or use arrow keys to move."
 
@@ -345,11 +346,24 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Handle navigation keys even when no field owns focus."""
         if self.editing_field is not None:
             return
+        if self.choosing_field is not None:
+            actions = {
+                "up": self.action_cycle_left,
+                "left": self.action_cycle_left,
+                "down": self.action_cycle_right,
+                "right": self.action_cycle_right,
+                "enter": self.action_edit_selected,
+            }
+            action = actions.get(event.key)
+            if action is None:
+                return
+            event.prevent_default()
+            event.stop()
+            action()
+            return
         actions = {
             "up": self.action_previous_field,
             "down": self.action_next_field,
-            "left": self.action_cycle_left,
-            "right": self.action_cycle_right,
             "enter": self.action_edit_selected,
         }
         action = actions.get(event.key)
@@ -363,6 +377,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Move to the previous editable field."""
         if self.values is None:
             return
+        if self.choosing_field is not None:
+            self._cycle_selected("left")
+            return
         self._cancel_inline_edit()
         self.selected = (self.selected - 1) % len(EDITOR_FIELDS)
         self.status = "Edit the selected setting, or use arrow keys to move."
@@ -371,6 +388,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     def action_next_field(self) -> None:
         """Move to the next editable field."""
         if self.values is None:
+            return
+        if self.choosing_field is not None:
+            self._cycle_selected("right")
             return
         self._cancel_inline_edit()
         self.selected = (self.selected + 1) % len(EDITOR_FIELDS)
@@ -389,9 +409,17 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Open a prompt for typed fields."""
         if self.values is None:
             return
+        if self.choosing_field is not None:
+            self.status = f"Updated {self.choosing_field.label}."
+            self.choosing_field = None
+            self._refresh()
+            return
         field = EDITOR_FIELDS[self.selected]
         if field.kind in {"bool", "choice"}:
-            self.status = "Use left/right arrows for this setting."
+            self.choosing_field = field
+            self.status = (
+                f"Changing {field.label}. Use left/right or up/down, Enter to choose."
+            )
             self._refresh()
             return
         current = _format_field_value(self.values, field)
@@ -422,15 +450,27 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self.status = "Edit cancelled."
             self._refresh()
             return
+        if self.choosing_field is not None:
+            self.choosing_field = None
+            self.status = "Edit cancelled."
+            self._refresh()
+            return
         self.dismiss("cancelled")
 
     def _cycle_selected(self, direction: str) -> None:
         if self.values is None:
             return
-        field = EDITOR_FIELDS[self.selected]
+        field = self.choosing_field
+        if field is None:
+            self.status = "Press Enter to change this setting."
+            self._refresh()
+            return
         try:
             self.values = _cycle_field(self.values, field, direction)
-            self.status = f"Updated {field.label}."
+            self.status = (
+                f"Changing {field.label}: {_format_field_value(self.values, field)}. "
+                "Press Enter to choose."
+            )
             self._append(
                 f"[cyan][JovyKit][/cyan] Updated {field.label}: "
                 f"{_escape_markup(_format_field_value(self.values, field))}"
@@ -459,7 +499,12 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     def _refresh(self) -> None:
         self.query_one("#fields", Static).update(
-            _render_textual_fields(self.values, self.selected, self.status)
+            _render_textual_fields(
+                self.values,
+                self.selected,
+                self.status,
+                choosing_key=self.choosing_field.key if self.choosing_field else None,
+            )
         )
 
     def _append(self, line: str) -> None:
@@ -479,13 +524,17 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     def _cancel_inline_edit(self) -> None:
         self.editing_field = None
+        self.choosing_field = None
         try:
             value_input = self.query_one("#value", Input)
         except Exception:
             return
         value_input.display = False
         value_input.value = ""
-        self.set_focus(None)
+        try:
+            self.set_focus(None)
+        except Exception:
+            return
 
 
 class JovyKitConfigEditor(App[str | None]):
@@ -506,6 +555,7 @@ def _render_textual_fields(
     values: ConfigEditorValues | None,
     selected: int,
     status: str,
+    choosing_key: str | None = None,
 ) -> Panel:
     table = Table.grid(expand=True)
     table.add_column(width=2, no_wrap=True)
@@ -520,12 +570,27 @@ def _render_textual_fields(
     else:
         for index, field in enumerate(EDITOR_FIELDS):
             is_selected = index == selected
+            is_choosing = field.key == choosing_key
             table.add_row(
-                Text(">" if is_selected else " ", style="bold cyan"),
-                Text(field.label, style="bold cyan" if is_selected else "white"),
+                Text(
+                    "*" if is_choosing else ">" if is_selected else " ",
+                    style="bold yellow" if is_choosing else "bold cyan",
+                ),
+                Text(
+                    field.label,
+                    style=(
+                        "bold yellow"
+                        if is_choosing
+                        else "bold cyan" if is_selected else "white"
+                    ),
+                ),
                 Text(
                     _format_field_value(values, field),
-                    style="bold white" if is_selected else "bright_black",
+                    style=(
+                        "bold yellow"
+                        if is_choosing
+                        else "bold white" if is_selected else "bright_black"
+                    ),
                 ),
             )
 
