@@ -17,10 +17,13 @@ from jovykit.config_editor import (
     values_from_config,
     _cycle_field,
     _edit_field,
+    _field_placeholder,
     _parse_bool,
     _read_key,
     _replace_editor_value,
+    _render_textual_fields,
     _set_scalar_value,
+    _set_textual_field_value,
     _validate_values,
 )
 
@@ -112,6 +115,24 @@ def test_line_parsers_ignore_blanks_and_preserve_values() -> None:
 def test_parse_mapping_lines_requires_non_empty_key() -> None:
     with pytest.raises(JovyKitError, match="empty key"):
         parse_mapping_lines("=missing", field_name="Runtime env")
+
+
+def test_run_config_editor_defaults_to_textual_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launched: list[object] = []
+
+    def fake_run_textual_config_editor(**kwargs: object) -> str:
+        launched.append(kwargs["env"])
+        return "saved"
+
+    monkeypatch.setattr(
+        "jovykit.config_editor.run_textual_config_editor",
+        fake_run_textual_config_editor,
+    )
+
+    assert run_config_editor(env=None) == "saved"
+    assert launched == [None]
 
 
 def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
@@ -265,6 +286,25 @@ def test_edit_field_toggles_booleans(create_project: Any) -> None:
     )
 
     assert edited.watch_enabled is False
+
+
+def test_textual_field_helpers_update_and_render_values(create_project: Any) -> None:
+    values = values_from_config(create_project().config)
+
+    edited = _set_textual_field_value(
+        values,
+        ConfigField("python_packages", "Python packages", "list"),
+        "numpy, pandas",
+    )
+
+    assert edited.python_packages == ["numpy", "pandas"]
+    assert "comma-separated packages" in _field_placeholder(
+        edited,
+        ConfigField("python_packages", "Python packages", "list"),
+    )
+    assert _render_textual_fields(edited, 0, "Updated Project name.").title == (
+        "JovyKit config"
+    )
 
 
 def test_scalar_editor_validation_helpers(create_project: Any) -> None:

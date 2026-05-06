@@ -17,6 +17,10 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from textual import on
+from textual.app import App, ComposeResult
+from textual.containers import Vertical
+from textual.widgets import Input, RichLog, Static
 import tomlkit
 
 from jovykit import commands
@@ -204,6 +208,29 @@ def run_config_editor(
     output: OutputFunc = print,
 ) -> str | None:
     """Run the keyboard-driven config editor."""
+    if input_func is input and key_func is None and output is print:
+        return run_textual_config_editor(env=env)
+    return run_keyboard_config_editor(
+        env=env,
+        input_func=input_func,
+        key_func=key_func,
+        output=output,
+    )
+
+
+def run_textual_config_editor(*, env: Path | None = None) -> str | None:
+    """Run the Textual config editor used by the CLI."""
+    return JovyKitConfigEditor(env=env).run()
+
+
+def run_keyboard_config_editor(
+    *,
+    env: Path | None = None,
+    input_func: InputFunc = input,
+    key_func: KeyFunc | None = None,
+    output: OutputFunc = print,
+) -> str | None:
+    """Run the testable keyboard-driven config editor."""
     config = commands.load_env(env, emit=output)
     values = values_from_config(config)
     selected = 0
@@ -241,6 +268,286 @@ def run_config_editor(
                 status = "Use up/down, left/right, Enter, s, a, or q."
         except JovyKitError as exc:
             status = f"Error: {exc}"
+
+
+class JovyKitConfigEditor(App[str | None]):
+    """Full-screen Textual editor for core JovyKit configuration."""
+
+    CSS = """
+    Screen {
+        background: #101418;
+        color: #e8eef2;
+    }
+
+    #root {
+        height: 100%;
+        padding: 1;
+    }
+
+    #fields {
+        height: 1fr;
+        border: round #3b5666;
+        padding: 0 1;
+        background: #0b0f12;
+        margin-bottom: 1;
+    }
+
+    #command {
+        height: 3;
+        border: tall #4f7890;
+        margin-bottom: 1;
+    }
+
+    #details {
+        height: 8;
+        border: round #3b5666;
+        padding: 0 1;
+        background: #0b0f12;
+    }
+    """
+
+    BINDINGS = [
+        ("ctrl+c", "cancel", "Cancel"),
+        ("escape", "cancel", "Cancel"),
+        ("up", "previous_field", "Previous"),
+        ("down", "next_field", "Next"),
+        ("left", "cycle_left", "Cycle left"),
+        ("right", "cycle_right", "Cycle right"),
+        ("ctrl+s", "save", "Save"),
+        ("ctrl+a", "apply", "Apply"),
+    ]
+
+    def __init__(self, *, env: Path | None = None) -> None:
+        super().__init__()
+        self.env = env
+        self.config: JovyConfig | None = None
+        self.values: ConfigEditorValues | None = None
+        self.selected = 0
+        self.status = "Edit the selected setting, or use arrow keys to move."
+
+    def compose(self) -> ComposeResult:
+        """Compose the editor layout."""
+        with Vertical(id="root"):
+            yield Static(id="fields")
+            yield Input(id="command")
+            yield RichLog(
+                id="details",
+                highlight=False,
+                markup=True,
+                wrap=True,
+                auto_scroll=True,
+                max_lines=200,
+            )
+
+    def on_mount(self) -> None:
+        """Load config and initialize the editor."""
+        self.title = "JovyKit Config"
+        try:
+            self.config = commands.load_env(self.env)
+            self.values = values_from_config(self.config)
+        except JovyKitError as exc:
+            self.status = f"Error: {exc}"
+            self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
+        self._refresh()
+        self.query_one(Input).focus()
+
+    @on(Input.Submitted, "#command")
+    def on_value_submitted(self, event: Input.Submitted) -> None:
+        """Apply typed input to the selected field."""
+        if self.values is None:
+            return
+        raw = event.value.strip()
+        event.input.clear()
+        command = raw.lower()
+        if command in {"q", "quit", "cancel"}:
+            self.action_cancel()
+            return
+        if command in {"s", "save"}:
+            self.action_save()
+            return
+        if command in {"a", "apply"}:
+            self.action_apply()
+            return
+        field = EDITOR_FIELDS[self.selected]
+        try:
+            self.values = _set_textual_field_value(self.values, field, raw)
+            self.status = f"Updated {field.label}."
+            self._append(
+                f"[cyan][JovyKit][/cyan] Updated {field.label}: "
+                f"{_escape_markup(_format_field_value(self.values, field))}"
+            )
+        except JovyKitError as exc:
+            self.status = f"Error: {exc}"
+            self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
+        self._refresh()
+
+    def action_previous_field(self) -> None:
+        """Move to the previous editable field."""
+        if self.values is None:
+            return
+        self.selected = (self.selected - 1) % len(EDITOR_FIELDS)
+        self.status = "Edit the selected setting, or use arrow keys to move."
+        self._refresh()
+
+    def action_next_field(self) -> None:
+        """Move to the next editable field."""
+        if self.values is None:
+            return
+        self.selected = (self.selected + 1) % len(EDITOR_FIELDS)
+        self.status = "Edit the selected setting, or use arrow keys to move."
+        self._refresh()
+
+    def action_cycle_left(self) -> None:
+        """Cycle the selected choice backward."""
+        self._cycle_selected("left")
+
+    def action_cycle_right(self) -> None:
+        """Cycle the selected choice forward."""
+        self._cycle_selected("right")
+
+    def action_save(self) -> None:
+        """Save edited values and exit."""
+        self._save(apply_now=False)
+
+    def action_apply(self) -> None:
+        """Save, apply edited values, and exit."""
+        self._save(apply_now=True)
+
+    def action_cancel(self) -> None:
+        """Cancel editing."""
+        self.exit("cancelled")
+
+    def _cycle_selected(self, direction: str) -> None:
+        if self.values is None:
+            return
+        field = EDITOR_FIELDS[self.selected]
+        try:
+            self.values = _cycle_field(self.values, field, direction)
+            self.status = f"Updated {field.label}."
+            self._append(
+                f"[cyan][JovyKit][/cyan] Updated {field.label}: "
+                f"{_escape_markup(_format_field_value(self.values, field))}"
+            )
+        except JovyKitError as exc:
+            self.status = f"Error: {exc}"
+            self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
+        self._refresh()
+
+    def _save(self, *, apply_now: bool) -> None:
+        if self.config is None or self.values is None:
+            return
+        try:
+            save_config_values(
+                self.config,
+                self.values,
+                apply_now=apply_now,
+                emit=lambda line: self._append(_escape_markup(line)),
+            )
+        except JovyKitError as exc:
+            self.status = f"Error: {exc}"
+            self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
+            self._refresh()
+            return
+        self.exit("applied" if apply_now else "saved")
+
+    def _refresh(self) -> None:
+        self.query_one("#fields", Static).update(
+            _render_textual_fields(self.values, self.selected, self.status)
+        )
+        command = self.query_one(Input)
+        if self.values is None:
+            command.placeholder = ""
+            return
+        field = EDITOR_FIELDS[self.selected]
+        command.placeholder = _field_placeholder(self.values, field)
+
+    def _append(self, line: str) -> None:
+        self.query_one(RichLog).write(line)
+
+
+def _render_textual_fields(
+    values: ConfigEditorValues | None,
+    selected: int,
+    status: str,
+) -> Panel:
+    table = Table.grid(expand=True)
+    table.add_column(width=2)
+    table.add_column(width=24)
+    table.add_column(ratio=1)
+    if values is None:
+        table.add_row("[bold red]![/bold red]", "Config", status)
+    else:
+        for index, field in enumerate(EDITOR_FIELDS):
+            is_selected = index == selected
+            marker = "[bold cyan]>[/bold cyan]" if is_selected else " "
+            label = (
+                f"[bold cyan]{field.label}[/bold cyan]" if is_selected else field.label
+            )
+            value = _escape_markup(_format_field_value(values, field))
+            if is_selected:
+                value = f"[bold white]{value}[/bold white]"
+            else:
+                value = f"[bright_black]{value}[/bright_black]"
+            table.add_row(marker, label, value)
+
+    body = Table.grid(expand=True)
+    body.add_column(ratio=1)
+    body.add_row(
+        "[dim]Up/down move | left/right cycle | Ctrl+S save | Ctrl+A apply | Esc cancel[/dim]"
+    )
+    body.add_row("")
+    body.add_row(table)
+    body.add_row("")
+    body.add_row(_status_markup(status))
+    return Panel(body, title="JovyKit config", border_style="bright_blue")
+
+
+def _set_textual_field_value(
+    values: ConfigEditorValues,
+    field: ConfigField,
+    raw: str,
+) -> ConfigEditorValues:
+    if field.kind == "bool":
+        if not raw:
+            return _replace_editor_value(
+                values, field.key, not getattr(values, field.key)
+            )
+        return _set_scalar_value(values, field.key, raw)
+    if field.kind == "list":
+        return _replace_editor_value(values, field.key, _parse_inline_list(raw))
+    if field.kind == "mapping":
+        return _replace_editor_value(
+            values,
+            field.key,
+            _parse_inline_mapping(raw, field.label),
+        )
+    if not raw:
+        return values
+    return _set_scalar_value(values, field.key, raw)
+
+
+def _field_placeholder(values: ConfigEditorValues, field: ConfigField) -> str:
+    current = _format_field_value(values, field)
+    if field.kind == "choice":
+        return f"{field.label}: {current} ({', '.join(field.choices)})"
+    if field.kind == "bool":
+        return f"{field.label}: {current} (enter toggles)"
+    if field.kind == "list":
+        return f"{field.label}: comma-separated packages"
+    if field.kind == "mapping":
+        return f"{field.label}: comma-separated KEY=VALUE entries"
+    return f"{field.label}: {current}"
+
+
+def _status_markup(status: str) -> str:
+    escaped = _escape_markup(status)
+    if status.startswith("Error:"):
+        return f"[bold red]{escaped}[/bold red]"
+    return f"[cyan]{escaped}[/cyan]"
+
+
+def _escape_markup(value: str) -> str:
+    return value.replace("[", "\\[").replace("]", "\\]")
 
 
 def _render_editor(
