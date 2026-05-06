@@ -326,8 +326,6 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     def on_mount(self) -> None:
         """Load config and initialize the editor."""
         self.title = "JovyKit Config"
-        self.styles.background = "#111111"
-        self.styles.color = "#e0e0e0"
         try:
             self.config = commands.load_env(self.env)
             self.values = values_from_config(self.config)
