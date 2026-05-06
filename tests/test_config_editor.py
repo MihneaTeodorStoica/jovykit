@@ -571,6 +571,50 @@ def test_textual_editor_inline_submit_and_cancel(
     assert app.status == "Edit cancelled."
 
 
+def test_textual_editor_quit_prompts_to_save_when_dirty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitConfigEditorScreen()
+    app.config = None
+    app.values = ConfigEditorValues(
+        project_name="work",
+        workdir=".",
+        base_image="base",
+        image_name="image",
+        image_tag="latest",
+        port=8888,
+        gpus="auto",
+        restart_policy="no",
+        jupyter_token="token",
+        jupyter_log_level="ERROR",
+        jupyter_lab=True,
+        work_mount="/work",
+        watch_enabled=True,
+        watch_workspace_mode="bind",
+        python_packages=[],
+        runtime_env={},
+        runtime_volumes={},
+    )
+    dismissed: list[str | None] = []
+    monkeypatch.setattr(
+        JovyKitConfigEditorScreen,
+        "dismiss",
+        lambda _self, result: dismissed.append(result),
+    )
+    monkeypatch.setattr(app, "_refresh", lambda: None)
+    app.dirty = True
+
+    app.action_cancel()
+
+    assert app.discard_prompt is True
+    assert dismissed == []
+    assert "Unsaved changes" in app.status
+
+    app.action_cancel()
+
+    assert dismissed == ["cancelled"]
+
+
 def test_textual_editor_save_paths(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
@@ -628,6 +672,16 @@ def test_textual_editor_refresh_updates_widgets(
 
     assert updated
     assert app.status
+
+
+def test_render_textual_fields_shows_keybind_legend(create_project: Any) -> None:
+    values = values_from_config(create_project().config)
+    rendered = _render_textual_fields(values, 0, "Ready.", dirty=True)
+    console = Console(record=True, width=96)
+    console.print(rendered)
+
+    text = console.export_text()
+    assert "q quit | w save | a apply | arrows move | Enter edit" in text
 
 
 class _FakeKey:

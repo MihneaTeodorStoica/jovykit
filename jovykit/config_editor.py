@@ -295,17 +295,15 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     """
 
     BINDINGS = [
-        ("ctrl+c", "cancel", "Cancel"),
+        ("q", "cancel", "Quit"),
         ("escape", "cancel", "Cancel"),
         ("up", "previous_field", "Previous"),
         ("down", "next_field", "Next"),
         ("left", "cycle_left", "Cycle left"),
         ("right", "cycle_right", "Cycle right"),
         ("enter", "edit_selected", "Edit"),
-        ("s", "save", "Save"),
+        ("w", "save", "Save"),
         ("a", "apply", "Apply"),
-        ("ctrl+s", "save", "Save"),
-        ("ctrl+a", "apply", "Apply"),
     ]
 
     def __init__(self, *, env: Path | None = None) -> None:
@@ -317,6 +315,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self.choosing_field: ConfigField | None = None
         self.editing_value = ""
         self.editing_cursor = 0
+        self.dirty = False
+        self.discard_prompt = False
         self.selected = 0
         self.status = "Edit the selected setting, or use arrow keys to move."
 
@@ -446,6 +446,13 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self.status = "Edit cancelled."
             self._refresh()
             return
+        if self.dirty and not self.discard_prompt:
+            self.discard_prompt = True
+            self.status = (
+                "Unsaved changes. Press w to save, a to apply, or q again to discard."
+            )
+            self._refresh()
+            return
         self.dismiss("cancelled")
 
     def _cycle_selected(self, direction: str) -> None:
@@ -462,6 +469,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
                 f"Changing {field.label}: {_format_field_value(self.values, field)}. "
                 "Press Enter to choose."
             )
+            self.dirty = True
+            self.discard_prompt = False
             self._append(
                 f"[cyan][JovyKit][/cyan] Updated {field.label}: "
                 f"{_escape_markup(_format_field_value(self.values, field))}"
@@ -486,6 +495,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
             self._refresh()
             return
+        self.dirty = False
+        self.discard_prompt = False
         self.dismiss("applied" if apply_now else "saved")
 
     def _refresh(self) -> None:
@@ -494,6 +505,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
                 self.values,
                 self.selected,
                 self.status,
+                dirty=self.dirty,
                 choosing_key=self.choosing_field.key if self.choosing_field else None,
                 editing_key=self.editing_field.key if self.editing_field else None,
                 editing_value=self.editing_value,
@@ -511,6 +523,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         try:
             self.values = _set_textual_field_value(self.values, field, raw.strip())
             self.status = f"Updated {field.label}."
+            self.dirty = True
+            self.discard_prompt = False
         except JovyKitError as exc:
             self.status = f"Error: {exc}"
         self._cancel_inline_edit()
@@ -566,6 +580,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
                 + self.editing_value[self.editing_cursor :]
             )
             self.editing_cursor += len(character)
+            self.dirty = True
+            self.discard_prompt = False
             self._refresh()
 
     def _cancel_inline_edit(self) -> None:
@@ -573,6 +589,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self.choosing_field = None
         self.editing_value = ""
         self.editing_cursor = 0
+        self.discard_prompt = False
 
 
 class JovyKitConfigEditor(App[str | None]):
@@ -593,6 +610,7 @@ def _render_textual_fields(
     values: ConfigEditorValues | None,
     selected: int,
     status: str,
+    dirty: bool = False,
     choosing_key: str | None = None,
     editing_key: str | None = None,
     editing_value: str = "",
@@ -660,6 +678,13 @@ def _render_textual_fields(
     body.add_row("")
     body.add_row(
         Text(status, style="bold red" if status.startswith("Error:") else "cyan")
+    )
+    body.add_row("")
+    body.add_row(
+        Text(
+            "q quit | w save | a apply | arrows move | Enter edit",
+            style="dim" if not dirty else "bold yellow",
+        )
     )
     return Panel(body, title="JovyKit config", border_style="bright_blue")
 
