@@ -637,8 +637,9 @@ def test_textual_editor_save_paths(
     app.action_save()
     app.action_apply()
 
-    assert exits == ["saved", "applied"]
+    assert exits == ["applied"]
     assert saved == [False, True]
+    assert app.status == "Applied."
 
     def fail_save(*_args: object, **_kwargs: object) -> object:
         raise JovyKitError("bad save")
@@ -648,6 +649,25 @@ def test_textual_editor_save_paths(
 
     assert "Error: bad save" == app.status
     assert any("bad save" in message for message in messages)
+
+
+def test_textual_editor_save_keeps_editor_open(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    project = create_project()
+    app = JovyKitConfigEditorScreen()
+    app.config = project.config
+    app.values = values_from_config(project.config)
+    dismissed: list[str | None] = []
+    monkeypatch.setattr(app, "dismiss", lambda result: dismissed.append(result))
+    monkeypatch.setattr(app, "_refresh", lambda: None)
+
+    app.action_save()
+
+    assert dismissed == []
+    assert app.dirty is False
+    assert app.status == "Saved."
 
 
 def test_textual_editor_refresh_updates_widgets(

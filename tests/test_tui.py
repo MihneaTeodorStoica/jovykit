@@ -158,23 +158,33 @@ def test_theme_command_toggles_and_sets_explicit_modes(
     app = JovyKitDashboard()
     events: list[str] = []
 
-    monkeypatch.setattr(app, "_apply_theme", lambda: events.append(app.ui_theme))
     monkeypatch.setattr(app, "refresh", lambda **_kwargs: events.append("refresh"))
     monkeypatch.setattr(app, "_append_markup", lambda _message: events.append("log"))
     monkeypatch.setattr(app, "_append_error", lambda _message: events.append("error"))
+    app._apply_theme()
+    assert app.ui_theme == "light"
 
     app._set_theme([])
+    assert app.ui_theme == "dark"
     app._set_theme(["light"])
+    assert app.ui_theme == "light"
     app._set_theme(["dark"])
+    assert app.ui_theme == "dark"
     app._set_theme(["sepia"])
-
     assert app.ui_theme == "dark"
     assert "refresh" in events
     assert "error" in events
 
 
-def test_slash_theme_command_is_parsed_as_local_command() -> None:
-    parsed = parse_tui_command("/theme dark")
+def test_dashboard_log_hides_scrollbars() -> None:
+    log = SelectableLog(id="logs")
+
+    assert log.show_vertical_scrollbar is False
+    assert log.show_horizontal_scrollbar is False
+
+
+def test_theme_command_is_parsed_as_local_command() -> None:
+    parsed = parse_tui_command("theme dark")
 
     assert parsed.kind is TuiCommandKind.LOCAL
     assert parsed.name == "theme"

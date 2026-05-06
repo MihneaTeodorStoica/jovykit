@@ -446,12 +446,12 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self._refresh()
 
     def action_save(self) -> None:
-        """Save edited values and exit."""
-        self._save(apply_now=False)
+        """Save edited values without closing the editor."""
+        self._save(apply_now=False, close=False)
 
     def action_apply(self) -> None:
         """Save, apply edited values, and exit."""
-        self._save(apply_now=True)
+        self._save(apply_now=True, close=True)
 
     def action_cancel(self) -> None:
         """Cancel editing."""
@@ -499,7 +499,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
         self._refresh()
 
-    def _save(self, *, apply_now: bool) -> None:
+    def _save(self, *, apply_now: bool, close: bool = True) -> None:
         if self.config is None or self.values is None:
             return
         try:
@@ -516,7 +516,10 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             return
         self.dirty = False
         self.discard_prompt = False
-        self.dismiss("applied" if apply_now else "saved")
+        self.status = "Saved." if not apply_now else "Applied."
+        self._refresh()
+        if close:
+            self.dismiss("applied" if apply_now else "saved")
 
     def _refresh(self) -> None:
         self.query_one("#fields", Static).update(

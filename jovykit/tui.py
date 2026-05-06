@@ -29,6 +29,35 @@ class SelectableLog(RichLog):
     ALLOW_SELECT = True
     FOCUS_ON_CLICK = False
 
+    def __init__(
+        self,
+        *,
+        max_lines: int | None = None,
+        min_width: int = 78,
+        wrap: bool = False,
+        highlight: bool = False,
+        markup: bool = False,
+        auto_scroll: bool = True,
+        name: str | None = None,
+        id: str | None = None,
+        classes: str | None = None,
+        disabled: bool = False,
+    ) -> None:
+        super().__init__(
+            max_lines=max_lines,
+            min_width=min_width,
+            wrap=wrap,
+            highlight=highlight,
+            markup=markup,
+            auto_scroll=auto_scroll,
+            name=name,
+            id=id,
+            classes=classes,
+            disabled=disabled,
+        )
+        self.show_vertical_scrollbar = False
+        self.show_horizontal_scrollbar = False
+
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -477,6 +506,8 @@ class JovyKitDashboard(App[None]):
         self.set_class(self.ui_theme == "light", "light-theme")
         try:
             self.screen.set_class(self.ui_theme == "dark", "dark-theme")
+            self.screen.set_class(self.ui_theme == "light", "light-theme")
+            self.screen.refresh(repaint=True, layout=True)
         except Exception:
             pass
 
