@@ -270,7 +270,7 @@ def _cycle_field(
     direction: str,
 ) -> ConfigEditorValues:
     if field.kind == "bool":
-        return replace(values, **{field.key: not getattr(values, field.key)})
+        return _replace_editor_value(values, field.key, not getattr(values, field.key))
     if field.kind != "choice":
         raise JovyKitError("This field is edited with Enter.")
     current = str(getattr(values, field.key))
@@ -279,9 +279,10 @@ def _cycle_field(
     except ValueError:
         index = 0
     step = -1 if direction == "left" else 1
-    return replace(
+    return _replace_editor_value(
         values,
-        **{field.key: field.choices[(index + step) % len(field.choices)]},
+        field.key,
+        field.choices[(index + step) % len(field.choices)],
     )
 
 
@@ -295,7 +296,7 @@ def _edit_field(
     if field.kind == "choice":
         return _edit_choice(values, field, input_func=input_func, output=output)
     if field.kind == "bool":
-        return replace(values, **{field.key: not getattr(values, field.key)})
+        return _replace_editor_value(values, field.key, not getattr(values, field.key))
     if field.kind == "list":
         raw = _prompt(
             "Comma-separated packages",
@@ -303,7 +304,7 @@ def _edit_field(
             input_func,
             output,
         )
-        return replace(values, **{field.key: _parse_inline_list(raw)})
+        return _replace_editor_value(values, field.key, _parse_inline_list(raw))
     if field.kind == "mapping":
         raw = _prompt(
             "Comma-separated KEY=VALUE entries",
@@ -311,7 +312,11 @@ def _edit_field(
             input_func,
             output,
         )
-        return replace(values, **{field.key: _parse_inline_mapping(raw, field.label)})
+        return _replace_editor_value(
+            values,
+            field.key,
+            _parse_inline_mapping(raw, field.label),
+        )
     raw = _prompt(
         field.label, _format_value(getattr(values, field.key)), input_func, output
     )
@@ -409,7 +414,83 @@ def _set_scalar_value(
         value = raw_value
     if field.choices and key not in {"jupyter_lab", "watch_enabled"}:
         _validate_choice(field.label, str(value), field.choices)
-    return replace(values, **{key: value})
+    return _replace_editor_value(values, key, value)
+
+
+def _replace_editor_value(
+    values: ConfigEditorValues,
+    key: str,
+    value: object,
+) -> ConfigEditorValues:
+    if key == "project_name":
+        if not isinstance(value, str):
+            raise JovyKitError("project_name must be a string.")
+        return replace(values, project_name=value)
+    if key == "workdir":
+        if not isinstance(value, str):
+            raise JovyKitError("workdir must be a string.")
+        return replace(values, workdir=value)
+    if key == "base_image":
+        if not isinstance(value, str):
+            raise JovyKitError("base_image must be a string.")
+        return replace(values, base_image=value)
+    if key == "image_name":
+        if not isinstance(value, str):
+            raise JovyKitError("image_name must be a string.")
+        return replace(values, image_name=value)
+    if key == "image_tag":
+        if not isinstance(value, str):
+            raise JovyKitError("image_tag must be a string.")
+        return replace(values, image_tag=value)
+    if key == "gpus":
+        if not isinstance(value, str):
+            raise JovyKitError("gpus must be a string.")
+        return replace(values, gpus=value)
+    if key == "restart_policy":
+        if not isinstance(value, str):
+            raise JovyKitError("restart_policy must be a string.")
+        return replace(values, restart_policy=value)
+    if key == "jupyter_token":
+        if not isinstance(value, str):
+            raise JovyKitError("jupyter_token must be a string.")
+        return replace(values, jupyter_token=value)
+    if key == "jupyter_log_level":
+        if not isinstance(value, str):
+            raise JovyKitError("jupyter_log_level must be a string.")
+        return replace(values, jupyter_log_level=value)
+    if key == "work_mount":
+        if not isinstance(value, str):
+            raise JovyKitError("work_mount must be a string.")
+        return replace(values, work_mount=value)
+    if key == "watch_workspace_mode":
+        if not isinstance(value, str):
+            raise JovyKitError("watch_workspace_mode must be a string.")
+        return replace(values, watch_workspace_mode=value)
+    if key == "port":
+        if not isinstance(value, int):
+            raise JovyKitError("port must be an integer.")
+        return replace(values, port=value)
+    if key == "jupyter_lab":
+        if not isinstance(value, bool):
+            raise JovyKitError("jupyter_lab must be a boolean.")
+        return replace(values, jupyter_lab=value)
+    if key == "watch_enabled":
+        if not isinstance(value, bool):
+            raise JovyKitError("watch_enabled must be a boolean.")
+        return replace(values, watch_enabled=value)
+    if key == "python_packages":
+        if not isinstance(value, list):
+            raise JovyKitError("python_packages must be a list.")
+        return replace(values, python_packages=value)
+    if key == "runtime_env":
+        if not isinstance(value, dict):
+            raise JovyKitError("runtime_env must be a mapping.")
+        return replace(values, runtime_env=value)
+    if key == "runtime_volumes":
+        if not isinstance(value, dict):
+            raise JovyKitError("runtime_volumes must be a mapping.")
+        return replace(values, runtime_volumes=value)
+    raise JovyKitError(f"Unknown field: {key}. Type list to see fields.")
 
 
 def _parse_bool(raw_value: str) -> bool:
