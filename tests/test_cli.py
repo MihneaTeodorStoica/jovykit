@@ -536,6 +536,28 @@ def test_clean_removes_generated_artifacts_but_keeps_manifest(
     assert not (project.env_dir / "requirements.txt").exists()
 
 
+def test_destroy_regenerates_compose_after_clean(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    monkeypatch.chdir(project.root)
+    destroyed: list[Path] = []
+    monkeypatch.setattr(command_ops, "stop_watcher", lambda env_dir: None)
+    monkeypatch.setattr(
+        command_ops,
+        "destroy_environment",
+        lambda config, *, remove_image=True, log=None: destroyed.append(
+            config.env_dir / "compose.yaml"
+        ),
+    )
+
+    run_cli(["clean"])
+    run_cli(["destroy", "--keep-image"])
+
+    assert destroyed == [project.env_dir / "compose.yaml"]
+    assert (project.env_dir / "compose.yaml").exists()
+
+
 def test_status_outputs_json(
     monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
 ) -> None:

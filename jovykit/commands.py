@@ -563,6 +563,8 @@ def destroy(
 ) -> None:
     """Remove the container, volume, and project overlay image."""
     config = load_env(env, emit=emit)
+    if not (config.env_dir / "compose.yaml").exists():
+        write_generated_files(config)
     stop_watcher(config.env_dir)
     destroy_environment(
         config,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
+from rich.console import Console
 
 from jovykit.config import JovyKitError, read_state, write_state
 from jovykit.config_editor import (
@@ -327,30 +328,37 @@ def test_textual_field_helpers_update_and_render_values(create_project: Any) -> 
     assert _render_textual_fields(None, 0, "Error: nope").title == "JovyKit config"
 
 
+def test_textual_fields_render_cleanly_in_narrow_terminals(create_project: Any) -> None:
+    values = values_from_config(create_project().config)
+    console = Console(record=True, width=44)
+
+    console.print(_render_textual_fields(values, 0, "Ready."))
+    rendered = console.export_text()
+
+    assert "[bold" not in rendered
+    assert "Project name" in rendered
+    assert "Ready." in rendered
+
+
 def test_textual_editor_mount_loads_values(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
     project = create_project()
     app = JovyKitConfigEditorScreen(env=project.env_dir)
-    focused: list[str] = []
-
-    class FakeInput:
-        def focus(self) -> None:
-            focused.append("focus")
+    events: list[str] = []
 
     monkeypatch.setattr(
         "jovykit.config_editor.commands.load_env",
         lambda env: project.config,
     )
-    monkeypatch.setattr(app, "_refresh", lambda: focused.append("refresh"))
-    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: FakeInput())
+    monkeypatch.setattr(app, "_refresh", lambda: events.append("refresh"))
 
     app.on_mount()
 
     assert app.config == project.config
     assert app.values == values_from_config(project.config)
-    assert focused == ["refresh", "focus"]
+    assert events == ["refresh"]
 
 
 def test_textual_editor_mount_reports_load_errors(
@@ -359,17 +367,12 @@ def test_textual_editor_mount_reports_load_errors(
     app = JovyKitConfigEditorScreen()
     messages: list[str] = []
 
-    class FakeInput:
-        def focus(self) -> None:
-            messages.append("focus")
-
     def fail_load(env: object) -> object:
         raise JovyKitError("missing config")
 
     monkeypatch.setattr("jovykit.config_editor.commands.load_env", fail_load)
     monkeypatch.setattr(app, "_append", messages.append)
     monkeypatch.setattr(app, "_refresh", lambda: messages.append("refresh"))
-    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: FakeInput())
 
     app.on_mount()
 
@@ -413,39 +416,63 @@ def test_textual_editor_actions_noop_without_values() -> None:
     assert app.selected == 0
 
 
-def test_textual_editor_input_commands_and_value_updates(
+def test_textual_editor_edit_action_and_prompt_updates(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
+    value_input = _FakeInput()
     events: list[str] = []
-    monkeypatch.setattr(app, "action_save", lambda: events.append("save"))
-    monkeypatch.setattr(app, "action_apply", lambda: events.append("apply"))
-    monkeypatch.setattr(app, "action_cancel", lambda: events.append("cancel"))
-    monkeypatch.setattr(app, "_refresh", lambda: events.append("refresh"))
-    monkeypatch.setattr(app, "_append", events.append)
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: value_input)
+    monkeypatch.setattr(app, "_refresh", lambda: events.append(app.status))
 
-    app.on_value_submitted(cast(Any, _FakeSubmitted("s")))
-    app.on_value_submitted(cast(Any, _FakeSubmitted("a")))
-    app.on_value_submitted(cast(Any, _FakeSubmitted("q")))
+    app.selected = 0
+    app.action_edit_selected()
+    assert value_input.display is True
+    assert value_input.focused is True
     app.selected = 5
-    app.on_value_submitted(cast(Any, _FakeSubmitted("7777")))
+    app.action_edit_selected()
+    app._apply_prompt_value("7777")
     app.selected = 6
-    app.on_value_submitted(cast(Any, _FakeSubmitted("sometimes")))
+    app.action_edit_selected()
 
-    assert events[:3] == ["save", "apply", "cancel"]
     assert app.values.port == 7777
-    assert "Error: Use left/right arrows to choose this setting." == app.status
+    assert "Use left/right arrows for this setting." == app.status
 
 
-def test_textual_editor_input_noops_without_values() -> None:
+def test_textual_editor_prompt_update_noops_without_values() -> None:
     app = JovyKitConfigEditorScreen()
-    event = _FakeSubmitted("7777")
 
-    app.on_value_submitted(cast(Any, event))
+    app._apply_prompt_value("7777")
+    app._apply_prompt_value(None)
 
-    assert event.input.cleared is False
+    assert app.values is None
+
+
+def test_textual_editor_inline_submit_and_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditorScreen()
+    app.values = values_from_config(create_project().config)
+    value_input = _FakeInput()
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: value_input)
+    monkeypatch.setattr(app, "_refresh", lambda: None)
+
+    app.selected = 5
+    app.action_edit_selected()
+    app.on_value_submitted(cast(Any, _FakeSubmitted("7777")))
+
+    assert app.values.port == 7777
+    assert app.editing_field is None
+    assert value_input.display is False
+
+    app.action_edit_selected()
+    app.action_cancel()
+
+    assert app.editing_field is None
+    assert app.status == "Edit cancelled."
 
 
 def test_textual_editor_save_paths(
@@ -495,34 +522,31 @@ def test_textual_editor_refresh_updates_widgets(
         def update(self, value: object) -> None:
             updated.append(value)
 
-    class FakeInput:
-        placeholder = ""
-
-    command = FakeInput()
-
     def fake_query_one(selector: object, *_args: object, **_kwargs: object) -> object:
-        return FakeStatic() if selector == "#fields" else command
+        assert selector == "#fields"
+        return FakeStatic()
 
     monkeypatch.setattr(app, "query_one", fake_query_one)
 
     app._refresh()
 
     assert updated
-    assert command.placeholder.startswith("Project name:")
+    assert app.status
 
 
 class _FakeInput:
-    def __init__(self) -> None:
-        self.cleared = False
+    display = False
+    focused = False
+    placeholder = ""
+    value = ""
 
-    def clear(self) -> None:
-        self.cleared = True
+    def focus(self) -> None:
+        self.focused = True
 
 
 class _FakeSubmitted:
     def __init__(self, value: str) -> None:
         self.value = value
-        self.input = _FakeInput()
 
 
 def test_scalar_editor_validation_helpers(create_project: Any) -> None:

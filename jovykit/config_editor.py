@@ -292,7 +292,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         margin-bottom: 1;
     }
 
-    #command {
+    #value {
+        display: none;
         height: 3;
         border: tall #4f7890;
         margin-bottom: 1;
@@ -306,6 +307,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         ("down", "next_field", "Next"),
         ("left", "cycle_left", "Cycle left"),
         ("right", "cycle_right", "Cycle right"),
+        ("enter", "edit_selected", "Edit"),
+        ("s", "save", "Save"),
+        ("a", "apply", "Apply"),
         ("ctrl+s", "save", "Save"),
         ("ctrl+a", "apply", "Apply"),
     ]
@@ -315,6 +319,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self.env = env
         self.config: JovyConfig | None = None
         self.values: ConfigEditorValues | None = None
+        self.editing_field: ConfigField | None = None
         self.selected = 0
         self.status = "Edit the selected setting, or use arrow keys to move."
 
@@ -322,7 +327,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Compose the editor layout."""
         with Vertical(id="root"):
             yield Static(id="fields")
-            yield Input(id="command")
+            yield Input(id="value")
 
     def on_mount(self) -> None:
         """Load config and initialize the editor."""
@@ -334,42 +339,12 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self.status = f"Error: {exc}"
             self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
         self._refresh()
-        self.query_one(Input).focus()
-
-    @on(Input.Submitted, "#command")
-    def on_value_submitted(self, event: Input.Submitted) -> None:
-        """Apply typed input to the selected field."""
-        if self.values is None:
-            return
-        raw = event.value.strip()
-        event.input.clear()
-        command = raw.lower()
-        if command in {"q", "quit", "cancel"}:
-            self.action_cancel()
-            return
-        if command in {"s", "save"}:
-            self.action_save()
-            return
-        if command in {"a", "apply"}:
-            self.action_apply()
-            return
-        field = EDITOR_FIELDS[self.selected]
-        try:
-            self.values = _set_textual_field_value(self.values, field, raw)
-            self.status = f"Updated {field.label}."
-            self._append(
-                f"[cyan][JovyKit][/cyan] Updated {field.label}: "
-                f"{_escape_markup(_format_field_value(self.values, field))}"
-            )
-        except JovyKitError as exc:
-            self.status = f"Error: {exc}"
-            self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
-        self._refresh()
 
     def action_previous_field(self) -> None:
         """Move to the previous editable field."""
         if self.values is None:
             return
+        self._cancel_inline_edit()
         self.selected = (self.selected - 1) % len(EDITOR_FIELDS)
         self.status = "Edit the selected setting, or use arrow keys to move."
         self._refresh()
@@ -378,6 +353,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Move to the next editable field."""
         if self.values is None:
             return
+        self._cancel_inline_edit()
         self.selected = (self.selected + 1) % len(EDITOR_FIELDS)
         self.status = "Edit the selected setting, or use arrow keys to move."
         self._refresh()
@@ -390,6 +366,28 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Cycle the selected choice forward."""
         self._cycle_selected("right")
 
+    def action_edit_selected(self) -> None:
+        """Open a prompt for typed fields."""
+        if self.values is None:
+            return
+        field = EDITOR_FIELDS[self.selected]
+        if field.kind in {"bool", "choice"}:
+            self.status = "Use left/right arrows for this setting."
+            self._refresh()
+            return
+        current = _format_field_value(self.values, field)
+        self.editing_field = field
+        value_input = self.query_one("#value", Input)
+        value_input.display = True
+        value_input.value = "" if current == "-" else current
+        value_input.placeholder = field.label
+        value_input.focus()
+
+    @on(Input.Submitted, "#value")
+    def on_value_submitted(self, event: Input.Submitted) -> None:
+        """Apply the inline edited value."""
+        self._apply_prompt_value(event.value)
+
     def action_save(self) -> None:
         """Save edited values and exit."""
         self._save(apply_now=False)
@@ -400,6 +398,11 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     def action_cancel(self) -> None:
         """Cancel editing."""
+        if self.editing_field is not None:
+            self._cancel_inline_edit()
+            self.status = "Edit cancelled."
+            self._refresh()
+            return
         self.dismiss("cancelled")
 
     def _cycle_selected(self, direction: str) -> None:
@@ -439,15 +442,30 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self.query_one("#fields", Static).update(
             _render_textual_fields(self.values, self.selected, self.status)
         )
-        command = self.query_one(Input)
-        if self.values is None:
-            command.placeholder = ""
-            return
-        field = EDITOR_FIELDS[self.selected]
-        command.placeholder = _field_placeholder(self.values, field)
 
     def _append(self, line: str) -> None:
         return None
+
+    def _apply_prompt_value(self, raw: str | None) -> None:
+        if raw is None or self.values is None or self.editing_field is None:
+            return
+        field = self.editing_field
+        try:
+            self.values = _set_textual_field_value(self.values, field, raw.strip())
+            self.status = f"Updated {field.label}."
+        except JovyKitError as exc:
+            self.status = f"Error: {exc}"
+        self._cancel_inline_edit()
+        self._refresh()
+
+    def _cancel_inline_edit(self) -> None:
+        self.editing_field = None
+        try:
+            value_input = self.query_one("#value", Input)
+        except Exception:
+            return
+        value_input.display = False
+        value_input.value = ""
 
 
 class JovyKitConfigEditor(App[str | None]):
@@ -470,34 +488,34 @@ def _render_textual_fields(
     status: str,
 ) -> Panel:
     table = Table.grid(expand=True)
-    table.add_column(width=2)
-    table.add_column(width=24)
+    table.add_column(width=2, no_wrap=True)
     table.add_column(ratio=1)
+    table.add_column(ratio=2)
     if values is None:
-        table.add_row("[bold red]![/bold red]", "Config", status)
+        table.add_row(
+            Text("!", style="bold red"),
+            Text("Config"),
+            Text(status),
+        )
     else:
         for index, field in enumerate(EDITOR_FIELDS):
             is_selected = index == selected
-            marker = "[bold cyan]>[/bold cyan]" if is_selected else " "
-            label = (
-                f"[bold cyan]{field.label}[/bold cyan]" if is_selected else field.label
+            table.add_row(
+                Text(">" if is_selected else " ", style="bold cyan"),
+                Text(field.label, style="bold cyan" if is_selected else "white"),
+                Text(
+                    _format_field_value(values, field),
+                    style="bold white" if is_selected else "bright_black",
+                ),
             )
-            value = _escape_markup(_format_field_value(values, field))
-            if is_selected:
-                value = f"[bold white]{value}[/bold white]"
-            else:
-                value = f"[bright_black]{value}[/bright_black]"
-            table.add_row(marker, label, value)
 
     body = Table.grid(expand=True)
     body.add_column(ratio=1)
-    body.add_row(
-        "[dim]Up/down move | left/right cycle | Ctrl+S save | Ctrl+A apply | Esc cancel[/dim]"
-    )
-    body.add_row("")
     body.add_row(table)
     body.add_row("")
-    body.add_row(_status_markup(status))
+    body.add_row(
+        Text(status, style="bold red" if status.startswith("Error:") else "cyan")
+    )
     return Panel(body, title="JovyKit config", border_style="bright_blue")
 
 
