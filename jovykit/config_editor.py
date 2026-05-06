@@ -274,12 +274,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     """Textual screen for core JovyKit configuration."""
 
     CSS = """
-    Screen {
+    #root {
         background: #111111;
         color: #e0e0e0;
-    }
-
-    #root {
         height: 100%;
         padding: 1;
     }
@@ -329,7 +326,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     def on_mount(self) -> None:
         """Load config and initialize the editor."""
         self.title = "JovyKit Config"
-        self.dark = True
+        self.styles.background = "#111111"
+        self.styles.color = "#e0e0e0"
         try:
             self.config = commands.load_env(self.env)
             self.values = values_from_config(self.config)
@@ -692,7 +690,7 @@ def _render_textual_fields(
         )
     )
     return Panel(
-        body, title="JovyKit config", border_style="#6c8ebf", style="on #ffffff"
+        body, title="JovyKit config", border_style="#6c8ebf", style="on #1a1a1a"
     )
 
 
