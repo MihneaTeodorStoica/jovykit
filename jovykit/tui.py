@@ -90,7 +90,7 @@ class JovyKitDashboard(App[None]):
         color: #1f1f1f;
     }
 
-    Screen.dark-theme {
+    Screen:dark {
         background: #101418;
         color: #e8eef2;
     }
@@ -111,11 +111,13 @@ class JovyKitDashboard(App[None]):
         border: round #c0c0c0;
         padding: 0 1;
         background: #ffffff;
+        scrollbar-size: 0 0;
     }
 
-    Screen.dark-theme #logs {
+    Screen:dark #logs {
         border: round #3b5666;
         background: #0b0f12;
+        scrollbar-size: 0 0;
     }
 
     #command {
@@ -135,16 +137,16 @@ class JovyKitDashboard(App[None]):
         color: #1f1f1f;
     }
 
-    Screen.dark-theme #status, Screen.dark-theme #logs, Screen.dark-theme #command {
+    Screen:dark #status, Screen:dark #logs, Screen:dark #command {
         background: #101418;
         color: #e8eef2;
     }
 
-    Screen.dark-theme #command {
+    Screen:dark #command {
         border: tall #4f7890;
     }
 
-    Screen.dark-theme #command:focus {
+    Screen:dark #command:focus {
         border: tall #f37726;
     }
     """
@@ -502,14 +504,8 @@ class JovyKitDashboard(App[None]):
             return
 
     def _apply_theme(self) -> None:
-        self.set_class(self.ui_theme == "dark", "dark-theme")
-        self.set_class(self.ui_theme == "light", "light-theme")
-        try:
-            self.screen.set_class(self.ui_theme == "dark", "dark-theme")
-            self.screen.set_class(self.ui_theme == "light", "light-theme")
-            self.screen.refresh(repaint=True, layout=True)
-        except Exception:
-            pass
+        self.dark = self.ui_theme == "dark"
+        self.refresh(repaint=True, layout=True)
 
     def _set_theme(self, args: list[str]) -> None:
         if not args:

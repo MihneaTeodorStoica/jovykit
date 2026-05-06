@@ -279,7 +279,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         color: #1f1f1f;
     }
 
-    Screen.dark-theme {
+    Screen:dark {
         background: #101418;
         color: #e8eef2;
     }
@@ -298,7 +298,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         margin-bottom: 1;
     }
 
-    Screen.dark-theme #fields {
+    Screen:dark #fields {
         border: round #3b5666;
         background: #0b0f12;
         color: #e8eef2;
@@ -340,15 +340,6 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     def on_mount(self) -> None:
         """Load config and initialize the editor."""
         self.title = "JovyKit Config"
-        try:
-            self.set_class(
-                getattr(self.app, "ui_theme", "light") == "dark", "dark-theme"
-            )
-            self.set_class(
-                getattr(self.app, "ui_theme", "light") == "light", "light-theme"
-            )
-        except Exception:
-            pass
         try:
             self.config = commands.load_env(self.env)
             self.values = values_from_config(self.config)
