@@ -102,7 +102,6 @@ SCALAR_FIELDS = (
 SCALAR_FIELD_MAP = {field.key: field for field in SCALAR_FIELDS}
 EDITOR_FIELDS = (
     *SCALAR_FIELDS,
-    ConfigField("python_packages", "Python packages", "list"),
     ConfigField("runtime_env", "Runtime env", "mapping"),
     ConfigField("runtime_volumes", "Runtime volumes", "mapping"),
 )

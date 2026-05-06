@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import pytest
+from rich.console import Console
 
 from jovykit import commands
-from jovykit.tui import JovyKitDashboard, _status_key
+from jovykit.state import EnvironmentStatus
+from jovykit.tui import JovyKitDashboard, _status_key, render_status_panel
 from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind
 
 
@@ -199,3 +202,34 @@ def test_status_key_includes_url(create_project: Any) -> None:
     status = status_from_config(create_project(token="dev-token").config)
 
     assert any("token=dev-token" in str(item) for item in _status_key(status))
+
+
+def test_status_panel_keeps_header_compact() -> None:
+    status = EnvironmentStatus(
+        initialized=True,
+        project_path=Path("/tmp/example"),
+        env_dir=Path("/tmp/example/.jovy"),
+        status="running",
+        health="healthy",
+        build="fresh",
+        image="example:local",
+        base_image="ghcr.io/example/base:latest",
+        gpu="auto",
+        port="127.0.0.1:8888",
+        url="http://127.0.0.1:8888/lab?token=jovykit",
+        package_count=3,
+        volume="example-jovykit-home",
+    )
+    console = Console(record=True, width=120)
+
+    console.print(render_status_panel(status))
+    rendered = console.export_text()
+
+    assert "JovyKit - example" in rendered
+    assert "Status:" in rendered
+    assert "Build:" in rendered
+    assert "URL:" in rendered
+    assert "Base:" not in rendered
+    assert "GPU:" not in rendered
+    assert "Packages:" not in rendered
+    assert "Volume:" not in rendered

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -8,6 +8,8 @@ from jovykit.config import JovyKitError, read_state, write_state
 from jovykit.config_editor import (
     ConfigField,
     ConfigEditorValues,
+    EDITOR_FIELDS,
+    JovyKitConfigEditor,
     format_list_lines,
     format_mapping_lines,
     parse_list_lines,
@@ -149,8 +151,6 @@ def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
             "enter",
             "down",
             "enter",
-            "down",
-            "enter",
             "s",
         ]
     )
@@ -158,7 +158,6 @@ def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
         [
             "7777",
             "base",
-            "numpy, pandas",
             "API_URL=https://example.invalid",
             "./data=/data",
         ]
@@ -177,7 +176,7 @@ def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
     assert "port = 7777" in config_text
     assert 'base = "ghcr.io/mihneateodorstoica/jovykit-base:latest"' in config_text
     assert "enabled = false" in config_text
-    assert 'packages = ["numpy", "pandas"]' in config_text
+    assert "packages = []" in config_text
     assert 'API_URL = "https://example.invalid"' in config_text
     assert '"./data" = "/data"' in config_text
     assert any("JovyKit config" in message for message in messages)
@@ -238,8 +237,14 @@ def test_keyboard_editor_reports_unknown_key(create_project: Any) -> None:
     assert any("Use up/down" in message for message in messages)
 
 
-def test_inline_empty_values_clear_lists_and_mappings(create_project: Any) -> None:
-    project = create_project()
+def test_inline_empty_values_clear_mappings(create_project: Any) -> None:
+    project = create_project(
+        config_transform=lambda text: text.replace(
+            "[runtime.env]\n\n[runtime.volumes]",
+            '[runtime.env]\nAPI_URL = "https://example.invalid"\n\n'
+            '[runtime.volumes]\n"./data" = "/data"',
+        )
+    )
     keys = iter([*["down"] * 14, "enter", "down", "enter", "s"])
     inputs = iter(["-", "-"])
 
@@ -253,6 +258,8 @@ def test_inline_empty_values_clear_lists_and_mappings(create_project: Any) -> No
     config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
     assert result == "saved"
     assert "packages = []" in config_text
+    assert "API_URL" not in config_text
+    assert '"./data"' not in config_text
 
 
 def test_cycle_field_rejects_text_and_handles_unknown_choice(
@@ -288,23 +295,226 @@ def test_edit_field_toggles_booleans(create_project: Any) -> None:
     assert edited.watch_enabled is False
 
 
+def test_editor_fields_do_not_include_package_selection() -> None:
+    assert all(field.key != "python_packages" for field in EDITOR_FIELDS)
+
+
 def test_textual_field_helpers_update_and_render_values(create_project: Any) -> None:
     values = values_from_config(create_project().config)
 
     edited = _set_textual_field_value(
         values,
-        ConfigField("python_packages", "Python packages", "list"),
-        "numpy, pandas",
+        ConfigField("runtime_env", "Runtime env", "mapping"),
+        "API_URL=https://example.invalid",
     )
 
-    assert edited.python_packages == ["numpy", "pandas"]
-    assert "comma-separated packages" in _field_placeholder(
+    assert edited.runtime_env == {"API_URL": "https://example.invalid"}
+    assert "KEY=VALUE" in _field_placeholder(
         edited,
-        ConfigField("python_packages", "Python packages", "list"),
+        ConfigField("runtime_env", "Runtime env", "mapping"),
     )
     assert _render_textual_fields(edited, 0, "Updated Project name.").title == (
         "JovyKit config"
     )
+    assert _render_textual_fields(None, 0, "Error: nope").title == "JovyKit config"
+
+
+def test_textual_editor_mount_loads_values(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    project = create_project()
+    app = JovyKitConfigEditor(env=project.env_dir)
+    focused: list[str] = []
+
+    class FakeInput:
+        def focus(self) -> None:
+            focused.append("focus")
+
+    monkeypatch.setattr(
+        "jovykit.config_editor.commands.load_env",
+        lambda env: project.config,
+    )
+    monkeypatch.setattr(app, "_refresh", lambda: focused.append("refresh"))
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: FakeInput())
+
+    app.on_mount()
+
+    assert app.config == project.config
+    assert app.values == values_from_config(project.config)
+    assert focused == ["refresh", "focus"]
+
+
+def test_textual_editor_mount_reports_load_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitConfigEditor()
+    messages: list[str] = []
+
+    class FakeInput:
+        def focus(self) -> None:
+            messages.append("focus")
+
+    def fail_load(env: object) -> object:
+        raise JovyKitError("missing config")
+
+    monkeypatch.setattr("jovykit.config_editor.commands.load_env", fail_load)
+    monkeypatch.setattr(app, "_append", messages.append)
+    monkeypatch.setattr(app, "_refresh", lambda: messages.append("refresh"))
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: FakeInput())
+
+    app.on_mount()
+
+    assert "Error: missing config" in app.status
+    assert any("missing config" in message for message in messages)
+
+
+def test_textual_editor_actions_update_selection_and_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditor()
+    app.values = values_from_config(create_project().config)
+    app.selected = 6
+    refreshed: list[str] = []
+    messages: list[str] = []
+    monkeypatch.setattr(app, "_refresh", lambda: refreshed.append(app.status))
+    monkeypatch.setattr(app, "_append", messages.append)
+
+    app.action_next_field()
+    app.action_previous_field()
+    app.action_cycle_right()
+    app.selected = 0
+    app.action_cycle_left()
+
+    assert app.selected == 0
+    assert app.values.gpus == "all"
+    assert any("Updated GPU mode" in message for message in messages)
+    assert "Error: This field is edited with Enter." in refreshed[-1]
+
+
+def test_textual_editor_actions_noop_without_values() -> None:
+    app = JovyKitConfigEditor()
+
+    app.action_next_field()
+    app.action_previous_field()
+    app.action_cycle_left()
+    app.action_cycle_right()
+    app._save(apply_now=False)
+
+    assert app.selected == 0
+
+
+def test_textual_editor_input_commands_and_value_updates(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditor()
+    app.values = values_from_config(create_project().config)
+    events: list[str] = []
+    monkeypatch.setattr(app, "action_save", lambda: events.append("save"))
+    monkeypatch.setattr(app, "action_apply", lambda: events.append("apply"))
+    monkeypatch.setattr(app, "action_cancel", lambda: events.append("cancel"))
+    monkeypatch.setattr(app, "_refresh", lambda: events.append("refresh"))
+    monkeypatch.setattr(app, "_append", events.append)
+
+    app.on_value_submitted(cast(Any, _FakeSubmitted("s")))
+    app.on_value_submitted(cast(Any, _FakeSubmitted("a")))
+    app.on_value_submitted(cast(Any, _FakeSubmitted("q")))
+    app.selected = 5
+    app.on_value_submitted(cast(Any, _FakeSubmitted("7777")))
+    app.selected = 6
+    app.on_value_submitted(cast(Any, _FakeSubmitted("sometimes")))
+
+    assert events[:3] == ["save", "apply", "cancel"]
+    assert app.values.port == 7777
+    assert "Error: GPU mode must be one of: auto, none, all." == app.status
+
+
+def test_textual_editor_input_noops_without_values() -> None:
+    app = JovyKitConfigEditor()
+    event = _FakeSubmitted("7777")
+
+    app.on_value_submitted(cast(Any, event))
+
+    assert event.input.cleared is False
+
+
+def test_textual_editor_save_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    project = create_project()
+    app = JovyKitConfigEditor()
+    app.config = project.config
+    app.values = values_from_config(project.config)
+    exits: list[str | None] = []
+    messages: list[str] = []
+    saved: list[bool] = []
+    monkeypatch.setattr(app, "exit", exits.append)
+    monkeypatch.setattr(app, "_append", messages.append)
+    monkeypatch.setattr(app, "_refresh", lambda: messages.append("refresh"))
+    monkeypatch.setattr(
+        "jovykit.config_editor.save_config_values",
+        lambda *_args, **kwargs: saved.append(kwargs["apply_now"]),
+    )
+
+    app.action_save()
+    app.action_apply()
+
+    assert exits == ["saved", "applied"]
+    assert saved == [False, True]
+
+    def fail_save(*_args: object, **_kwargs: object) -> object:
+        raise JovyKitError("bad save")
+
+    monkeypatch.setattr("jovykit.config_editor.save_config_values", fail_save)
+    app._save(apply_now=False)
+
+    assert "Error: bad save" == app.status
+    assert any("bad save" in message for message in messages)
+
+
+def test_textual_editor_refresh_updates_widgets(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditor()
+    app.values = values_from_config(create_project().config)
+    updated: list[object] = []
+
+    class FakeStatic:
+        def update(self, value: object) -> None:
+            updated.append(value)
+
+    class FakeInput:
+        placeholder = ""
+
+    command = FakeInput()
+
+    def fake_query_one(selector: object, *_args: object, **_kwargs: object) -> object:
+        return FakeStatic() if selector == "#fields" else command
+
+    monkeypatch.setattr(app, "query_one", fake_query_one)
+
+    app._refresh()
+
+    assert updated
+    assert command.placeholder.startswith("Project name:")
+
+
+class _FakeInput:
+    def __init__(self) -> None:
+        self.cleared = False
+
+    def clear(self) -> None:
+        self.cleared = True
+
+
+class _FakeSubmitted:
+    def __init__(self, value: str) -> None:
+        self.value = value
+        self.input = _FakeInput()
 
 
 def test_scalar_editor_validation_helpers(create_project: Any) -> None:

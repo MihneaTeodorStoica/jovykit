@@ -56,7 +56,7 @@ class JovyKitDashboard(App[None]):
     }
 
     #status {
-        height: 10;
+        height: 6;
         margin-bottom: 1;
     }
 
@@ -385,17 +385,15 @@ def render_status_panel(status: EnvironmentStatus) -> Panel:
     table = Table.grid(expand=True)
     table.add_column(ratio=1)
     table.add_column(ratio=1)
-    table.add_row(f"Project: {status.project_path}", f"Status: {_status_label(status)}")
-    table.add_row(f"Image: {status.image}", f"Build: {status.build}")
-    table.add_row(f"Base: {status.base_image}", f"GPU: {status.gpu}")
-    table.add_row(f"Port: {status.port}", f"URL: {status.url}")
-    table.add_row(f"Packages: {status.package_count}", f"Volume: {status.volume}")
+    table.add_row(f"Status: {_status_label(status)}", f"Build: {status.build}")
+    table.add_row(f"Image: {status.image}", f"URL: {status.url}")
     if status.last_error:
-        table.add_row(
-            f"[red]Last error:[/red] {status.last_error}",
-            "Hint: check the logs panel for details",
-        )
-    return Panel(table, title="JovyKit", border_style=_border_style(status.status))
+        table.add_row(f"[red]Error:[/red] {status.last_error}", "")
+    return Panel(
+        table,
+        title=f"JovyKit - {status.project_path.name}",
+        border_style=_border_style(status.status),
+    )
 
 
 def run_dashboard(*, env: Path | None = None) -> None:
