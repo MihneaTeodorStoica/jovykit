@@ -8,7 +8,6 @@ import webbrowser
 from pathlib import Path
 
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult, ScreenStackError
@@ -64,7 +63,8 @@ class JovyKitDashboard(App[None]):
     }
 
     #status {
-        height: 6;
+        height: auto;
+        min-height: 5;
         margin-bottom: 1;
     }
 
@@ -105,6 +105,7 @@ class JovyKitDashboard(App[None]):
                 id="logs",
                 highlight=False,
                 markup=False,
+                min_width=1,
                 wrap=True,
                 auto_scroll=True,
                 max_lines=2000,
@@ -431,15 +432,21 @@ class JovyKitDashboard(App[None]):
 
 def render_status_panel(status: EnvironmentStatus) -> Panel:
     """Render the top status panel."""
-    table = Table.grid(expand=True)
-    table.add_column(ratio=1)
-    table.add_column(ratio=1)
-    table.add_row(f"Status: {_status_label(status)}", f"Build: {status.build}")
-    table.add_row(f"Image: {status.image}", f"URL: {status.url}")
+    details = Text()
+    details.append("Status: ", style="bold")
+    details.append(_status_label(status))
+    details.append("   Build: ", style="bold")
+    details.append(status.build)
+    details.append("\nImage: ", style="bold")
+    details.append(status.image)
+    if status.url:
+        details.append("\nURL: ", style="bold")
+        details.append(status.url)
     if status.last_error:
-        table.add_row(f"[red]Error:[/red] {status.last_error}", "")
+        details.append("\nError: ", style="bold red")
+        details.append(status.last_error)
     return Panel(
-        table,
+        details,
         title=f"JovyKit - {status.project_path.name}",
         border_style=_border_style(status.status),
     )

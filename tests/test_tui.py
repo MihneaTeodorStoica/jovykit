@@ -109,10 +109,11 @@ def test_log_append_keeps_process_output_literal(
 
 
 def test_dashboard_log_allows_text_selection() -> None:
-    log = SelectableLog(id="logs")
+    log = SelectableLog(id="logs", min_width=1)
 
     assert log.allow_select is True
     assert log.focus_on_click() is True
+    assert log.min_width == 1
 
 
 def test_ctrl_c_copies_selected_dashboard_text(
@@ -310,3 +311,31 @@ def test_status_panel_keeps_header_compact() -> None:
     assert "GPU:" not in rendered
     assert "Packages:" not in rendered
     assert "Volume:" not in rendered
+
+
+def test_status_panel_wraps_cleanly_in_narrow_terminals() -> None:
+    status = EnvironmentStatus(
+        initialized=True,
+        project_path=Path("/tmp/ai"),
+        env_dir=Path("/tmp/ai/.jovy"),
+        status="healthy",
+        health="healthy",
+        build="fresh",
+        image="jovykit-ai:local",
+        base_image="ghcr.io/example/base:latest",
+        gpu="auto",
+        port="127.0.0.1:8888",
+        url="http://127.0.0.1:8888/lab?token=jovykit",
+        package_count=3,
+        volume="ai-jovykit-home",
+    )
+    console = Console(record=True, width=40)
+
+    console.print(render_status_panel(status))
+    rendered = console.export_text()
+
+    assert "JovyKit - ai" in rendered
+    assert "Status: healthy   Build: fresh" in rendered
+    assert "Image: jovykit-ai:local" in rendered
+    assert "http://127.0.0.1:8888/lab?token=" in rendered
+    assert all(len(line) <= 40 for line in rendered.splitlines())
