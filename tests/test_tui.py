@@ -10,7 +10,12 @@ from rich.text import Text
 
 from jovykit import commands
 from jovykit.state import EnvironmentStatus
-from jovykit.tui import JovyKitDashboard, _status_key, render_status_panel
+from jovykit.tui import (
+    JovyKitDashboard,
+    SelectableLog,
+    _status_key,
+    render_status_panel,
+)
 from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind
 
 
@@ -101,6 +106,47 @@ def test_log_append_keeps_process_output_literal(
         "jovy> logs [latest]",
         "[Error] bad [config]",
     ]
+
+
+def test_dashboard_log_allows_text_selection() -> None:
+    log = SelectableLog(id="logs")
+
+    assert log.allow_select is True
+    assert log.focus_on_click() is True
+
+
+def test_ctrl_c_copies_selected_dashboard_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    copied: list[str] = []
+    exited: list[bool] = []
+
+    monkeypatch.setattr(app, "_selected_text", lambda: "selected log line")
+    monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
+    monkeypatch.setattr(app, "exit", lambda: exited.append(True))
+
+    app.action_quit_or_copy()
+
+    assert copied == ["selected log line"]
+    assert exited == []
+
+
+def test_ctrl_c_quits_when_no_dashboard_text_is_selected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    copied: list[str] = []
+    exited: list[bool] = []
+
+    monkeypatch.setattr(app, "_selected_text", lambda: None)
+    monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
+    monkeypatch.setattr(app, "exit", lambda: exited.append(True))
+
+    app.action_quit_or_copy()
+
+    assert copied == []
+    assert exited == [True]
 
 
 def test_dispatch_init_uses_default_jovykit_token(

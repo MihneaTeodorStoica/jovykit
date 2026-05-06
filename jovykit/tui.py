@@ -23,6 +23,13 @@ from jovykit.state import EnvironmentStatus, discover_status
 from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind, parse_tui_command
 
 
+class SelectableLog(RichLog):
+    """Rich log with dashboard text selection kept explicit."""
+
+    ALLOW_SELECT = True
+    FOCUS_ON_CLICK = True
+
+
 def _status_key(status: EnvironmentStatus) -> tuple[object, ...]:
     return (
         status.initialized,
@@ -75,7 +82,11 @@ class JovyKitDashboard(App[None]):
     }
     """
 
-    BINDINGS = [("ctrl+c", "quit", "Quit"), ("ctrl+l", "clear_logs", "Clear logs")]
+    BINDINGS = [
+        ("ctrl+c", "quit_or_copy", "Copy/Quit"),
+        ("ctrl+q", "quit", "Quit"),
+        ("ctrl+l", "clear_logs", "Clear logs"),
+    ]
 
     def __init__(self, *, env: Path | None = None) -> None:
         super().__init__()
@@ -90,7 +101,7 @@ class JovyKitDashboard(App[None]):
         with Vertical(id="root"):
             yield Static(id="status")
             yield Input(placeholder="jovy> up", id="command")
-            yield RichLog(
+            yield SelectableLog(
                 id="logs",
                 highlight=False,
                 markup=False,
@@ -124,6 +135,14 @@ class JovyKitDashboard(App[None]):
     def action_clear_logs(self) -> None:
         """Clear visible dashboard logs."""
         self.query_one(RichLog).clear()
+
+    def action_quit_or_copy(self) -> None:
+        """Copy selected text when present, otherwise quit the dashboard."""
+        selected = self._selected_text()
+        if selected is not None:
+            self.copy_to_clipboard(selected)
+            return
+        self.exit()
 
     def refresh_status(self) -> None:
         """Refresh the top status panel."""
@@ -393,6 +412,12 @@ class JovyKitDashboard(App[None]):
         text = Text.from_markup("[bold red][Error][/bold red] ")
         text.append(message)
         self.query_one(RichLog).write(text)
+
+    def _selected_text(self) -> str | None:
+        try:
+            return self.screen.get_selected_text()
+        except Exception:
+            return None
 
     def _set_command_running(self, running: bool) -> None:
         self._command_running = running
