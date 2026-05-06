@@ -19,6 +19,7 @@ from jovykit.config_editor import (
     _edit_field,
     _parse_bool,
     _read_key,
+    _replace_editor_value,
     _set_scalar_value,
     _validate_values,
 )
@@ -280,6 +281,66 @@ def test_scalar_editor_validation_helpers(create_project: Any) -> None:
 
 
 @pytest.mark.parametrize(
+    ("key", "value", "attribute"),
+    [
+        ("project_name", "demo", "project_name"),
+        ("workdir", "workspace", "workdir"),
+        ("base_image", "python:3.11", "base_image"),
+        ("image_name", "demo-image", "image_name"),
+        ("image_tag", "dev", "image_tag"),
+        ("gpus", "none", "gpus"),
+        ("restart_policy", "always", "restart_policy"),
+        ("jupyter_token", "secret", "jupyter_token"),
+        ("jupyter_log_level", "DEBUG", "jupyter_log_level"),
+        ("work_mount", "/workspace", "work_mount"),
+        ("watch_workspace_mode", "sync", "watch_workspace_mode"),
+        ("port", 9999, "port"),
+        ("jupyter_lab", False, "jupyter_lab"),
+        ("watch_enabled", False, "watch_enabled"),
+        ("python_packages", ["numpy"], "python_packages"),
+        ("runtime_env", {"API_URL": "https://example.invalid"}, "runtime_env"),
+        ("runtime_volumes", {"./data": "/data"}, "runtime_volumes"),
+    ],
+)
+def test_replace_editor_value_updates_supported_fields(
+    create_project: Any,
+    key: str,
+    value: object,
+    attribute: str,
+) -> None:
+    values = values_from_config(create_project().config)
+
+    edited = _replace_editor_value(values, key, value)
+
+    assert getattr(edited, attribute) == value
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    [
+        ("project_name", 123, "project_name"),
+        ("port", "8888", "port"),
+        ("jupyter_lab", "true", "jupyter_lab"),
+        ("watch_enabled", "false", "watch_enabled"),
+        ("python_packages", "numpy", "python_packages"),
+        ("runtime_env", ["API_URL=value"], "runtime_env"),
+        ("runtime_volumes", ["./data=/data"], "runtime_volumes"),
+        ("missing", "value", "Unknown field"),
+    ],
+)
+def test_replace_editor_value_rejects_invalid_values(
+    create_project: Any,
+    key: str,
+    value: object,
+    message: str,
+) -> None:
+    values = values_from_config(create_project().config)
+
+    with pytest.raises(JovyKitError, match=message):
+        _replace_editor_value(values, key, value)
+
+
+@pytest.mark.parametrize(
     ("updates", "message"),
     [
         ({"project_name": ""}, "Project name"),
@@ -318,6 +379,15 @@ def test_read_key_maps_arrow_escape_and_empty_input(
 
     monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[A"]))
     assert _read_key() == "up"
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[B"]))
+    assert _read_key() == "down"
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[C"]))
+    assert _read_key() == "right"
+
+    monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[D"]))
+    assert _read_key() == "left"
 
     monkeypatch.setattr("jovykit.config_editor.sys.stdin", FakeStdin(["\x1b", "[Z"]))
     assert _read_key() == "escape"
