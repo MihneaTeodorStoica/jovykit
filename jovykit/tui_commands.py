@@ -36,7 +36,7 @@ JOVY_COMMANDS = {
     "destroy",
 }
 
-LOCAL_COMMANDS = {"help", "clear", "open", "refresh", "quit", "exit", "theme"}
+LOCAL_COMMANDS = {"help", "clear", "open", "refresh", "quit", "exit"}
 BLOCKED_COMMAND_HINTS = {
     "run": "The run command is not available inside the dashboard. Use up, or run jovy run from your shell.",
 }

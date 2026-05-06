@@ -152,30 +152,6 @@ def test_ctrl_c_quits_when_no_dashboard_text_is_selected(
     assert exited == [True]
 
 
-def test_theme_command_toggles_and_sets_explicit_modes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = JovyKitDashboard()
-    events: list[str] = []
-
-    monkeypatch.setattr(app, "refresh", lambda **_kwargs: events.append("refresh"))
-    monkeypatch.setattr(app, "_append_markup", lambda _message: events.append("log"))
-    monkeypatch.setattr(app, "_append_error", lambda _message: events.append("error"))
-    app._apply_theme()
-    assert app.ui_theme == "light"
-
-    app._set_theme([])
-    assert app.ui_theme == "dark"
-    app._set_theme(["light"])
-    assert app.ui_theme == "light"
-    app._set_theme(["dark"])
-    assert app.ui_theme == "dark"
-    app._set_theme(["sepia"])
-    assert app.ui_theme == "dark"
-    assert "refresh" in events
-    assert "error" in events
-
-
 def test_dashboard_log_hides_scrollbars() -> None:
     log = SelectableLog(id="logs")
 
@@ -183,10 +159,10 @@ def test_dashboard_log_hides_scrollbars() -> None:
     assert log.show_horizontal_scrollbar is False
 
 
-def test_theme_command_is_parsed_as_local_command() -> None:
+def test_theme_command_is_now_unknown() -> None:
     parsed = parse_tui_command("theme dark")
 
-    assert parsed.kind is TuiCommandKind.LOCAL
+    assert parsed.kind is TuiCommandKind.UNKNOWN
     assert parsed.name == "theme"
     assert parsed.args == ["dark"]
 

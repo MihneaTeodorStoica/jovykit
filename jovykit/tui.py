@@ -86,13 +86,8 @@ class JovyKitDashboard(App[None]):
 
     CSS = """
     Screen {
-        background: #f8f8f8;
-        color: #1f1f1f;
-    }
-
-    Screen:dark {
-        background: #101418;
-        color: #e8eef2;
+        background: #111111;
+        color: #e0e0e0;
     }
 
     #root {
@@ -108,45 +103,22 @@ class JovyKitDashboard(App[None]):
 
     #logs {
         height: 1fr;
-        border: round #c0c0c0;
+        border: round #333333;
         padding: 0 1;
-        background: #ffffff;
+        background: #1a1a1a;
         scrollbar-size: 0 0;
-    }
-
-    Screen:dark #logs {
-        border: round #3b5666;
-        background: #0b0f12;
-        scrollbar-size: 0 0;
+        color: #e0e0e0;
     }
 
     #command {
         height: 3;
-        border: tall #c7c7c7;
+        border: tall #333333;
         margin-bottom: 1;
-        background: #ffffff;
-        color: #1f1f1f;
+        background: #1a1a1a;
+        color: #e0e0e0;
     }
 
     #command:focus {
-        border: tall #f37726;
-    }
-
-    #status, #logs {
-        background: #ffffff;
-        color: #1f1f1f;
-    }
-
-    Screen:dark #status, Screen:dark #logs, Screen:dark #command {
-        background: #101418;
-        color: #e8eef2;
-    }
-
-    Screen:dark #command {
-        border: tall #4f7890;
-    }
-
-    Screen:dark #command:focus {
         border: tall #f37726;
     }
     """
@@ -160,7 +132,6 @@ class JovyKitDashboard(App[None]):
     def __init__(self, *, env: Path | None = None) -> None:
         super().__init__()
         self.env = env
-        self.ui_theme = "light"
         self._last_status: EnvironmentStatus | None = None
         self._last_status_key: tuple[object, ...] | None = None
         self._last_log_snapshot = ""
@@ -184,7 +155,6 @@ class JovyKitDashboard(App[None]):
     def on_mount(self) -> None:
         """Initialize dashboard state."""
         self.title = "JovyKit"
-        self._apply_theme()
         self.query_one(Input).focus()
         self._append_markup(
             "[bold cyan][JovyKit][/bold cyan] Dashboard ready. Type help."
@@ -261,9 +231,6 @@ class JovyKitDashboard(App[None]):
             return
         if parsed.name == "config":
             self._open_config_screen()
-            return
-        if parsed.name == "theme":
-            self._set_theme(parsed.args)
             return
         if parsed.name == "shell" and not parsed.args:
             await self._run_suspended(parsed)
@@ -502,23 +469,6 @@ class JovyKitDashboard(App[None]):
             self.query_one(Input).focus()
         except (NoMatches, ScreenStackError):
             return
-
-    def _apply_theme(self) -> None:
-        self.dark = self.ui_theme == "dark"
-        self.refresh(repaint=True, layout=True)
-
-    def _set_theme(self, args: list[str]) -> None:
-        if not args:
-            self.ui_theme = "dark" if self.ui_theme == "light" else "light"
-        else:
-            theme = args[0].lower()
-            if theme not in {"light", "dark"}:
-                self._append_error("Theme must be light or dark.")
-                return
-            self.ui_theme = theme
-        self._apply_theme()
-        self.refresh(repaint=True, layout=True)
-        self._append_markup(f"[cyan][JovyKit][/cyan] Theme set to {self.ui_theme}.")
 
     def _set_command_running(self, running: bool) -> None:
         self._command_running = running

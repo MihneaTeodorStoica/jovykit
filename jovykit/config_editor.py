@@ -275,13 +275,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     CSS = """
     Screen {
-        background: #f8f8f8;
-        color: #1f1f1f;
-    }
-
-    Screen:dark {
-        background: #101418;
-        color: #e8eef2;
+        background: #111111;
+        color: #e0e0e0;
     }
 
     #root {
@@ -291,17 +286,11 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     #fields {
         height: 1fr;
-        border: round #c0c0c0;
+        border: round #333333;
         padding: 0 1;
-        background: #ffffff;
-        color: #1f1f1f;
+        background: #1a1a1a;
+        color: #e0e0e0;
         margin-bottom: 1;
-    }
-
-    Screen:dark #fields {
-        border: round #3b5666;
-        background: #0b0f12;
-        color: #e8eef2;
     }
 
     """
