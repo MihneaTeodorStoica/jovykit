@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from rich.console import Console
+from rich.text import Text
 
 from jovykit import commands
 from jovykit.state import EnvironmentStatus
@@ -62,7 +63,9 @@ def test_run_jovy_records_errors_directly_after_threaded_work(
     monkeypatch.setattr(
         app, "_record_last_error", lambda message: calls.append(("error", message))
     )
-    monkeypatch.setattr(app, "_append", lambda message: calls.append(("log", message)))
+    monkeypatch.setattr(
+        app, "_append_error", lambda message: calls.append(("log", message))
+    )
     monkeypatch.setattr(app, "refresh_status", lambda: calls.append(("refresh", "")))
     monkeypatch.setattr(
         app,
@@ -75,6 +78,29 @@ def test_run_jovy_records_errors_directly_after_threaded_work(
     assert ("error", "boom") in calls
     assert any(kind == "log" and "boom" in message for kind, message in calls)
     assert calls[-1] == ("refresh", "")
+
+
+def test_log_append_keeps_process_output_literal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    written: list[Text] = []
+
+    class FakeLog:
+        def write(self, value: Text) -> None:
+            written.append(value)
+
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: FakeLog())
+
+    app._append("package[dev]\\path")
+    app._append_command("logs [latest]")
+    app._append_error("bad [config]")
+
+    assert [value.plain for value in written] == [
+        "package[dev]\\path",
+        "jovy> logs [latest]",
+        "[Error] bad [config]",
+    ]
 
 
 def test_dispatch_init_uses_default_jovykit_token(

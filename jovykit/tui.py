@@ -9,6 +9,7 @@ from pathlib import Path
 
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult, ScreenStackError
 from textual.containers import Vertical
@@ -92,7 +93,7 @@ class JovyKitDashboard(App[None]):
             yield RichLog(
                 id="logs",
                 highlight=False,
-                markup=True,
+                markup=False,
                 wrap=True,
                 auto_scroll=True,
                 max_lines=2000,
@@ -102,7 +103,9 @@ class JovyKitDashboard(App[None]):
         """Initialize dashboard state."""
         self.title = "JovyKit"
         self.query_one(Input).focus()
-        self._append("[bold cyan][JovyKit][/bold cyan] Dashboard ready. Type help.")
+        self._append_markup(
+            "[bold cyan][JovyKit][/bold cyan] Dashboard ready. Type help."
+        )
         self.refresh_status()
         self.set_interval(4, self.refresh_status)
         self.set_interval(5, self.refresh_logs)
@@ -115,7 +118,7 @@ class JovyKitDashboard(App[None]):
         parsed = parse_tui_command(raw)
         if parsed.kind is TuiCommandKind.EMPTY:
             return
-        self._append(f"[bold]jovy>[/bold] {raw.strip()}")
+        self._append_command(raw.strip())
         await self._handle_parsed_command(parsed)
 
     def action_clear_logs(self) -> None:
@@ -148,17 +151,17 @@ class JovyKitDashboard(App[None]):
         new_text = _snapshot_suffix(self._last_log_snapshot, snapshot)
         self._last_log_snapshot = snapshot
         for line in new_text.splitlines():
-            self._append(_escape_log_markup(line))
+            self._append(line)
 
     async def _handle_parsed_command(self, parsed: ParsedTuiCommand) -> None:
         if parsed.kind is TuiCommandKind.UNKNOWN:
-            self._append(f"[bold red]{parsed.message or 'Unknown command'}[/bold red]")
+            self._append_error(parsed.message or "Unknown command")
             return
         if parsed.kind is TuiCommandKind.LOCAL:
             await self._handle_local(parsed)
             return
         if self._command_running:
-            self._append(
+            self._append_markup(
                 "[bold yellow][JovyKit][/bold yellow] Command already running."
             )
             return
@@ -183,7 +186,7 @@ class JovyKitDashboard(App[None]):
         if parsed.name == "refresh":
             self.refresh_status()
             self.refresh_logs()
-            self._append("[cyan][JovyKit][/cyan] Status refreshed.")
+            self._append_markup("[cyan][JovyKit][/cyan] Status refreshed.")
             return
         if parsed.name == "open":
             self._open_url()
@@ -193,7 +196,7 @@ class JovyKitDashboard(App[None]):
 
     async def _run_host(self, args: list[str]) -> None:
         if not args:
-            self._append("[bold red]Pass a host command after !.[/bold red]")
+            self._append_error("Pass a host command after !.")
             return
         self._set_command_running(True)
         try:
@@ -201,9 +204,7 @@ class JovyKitDashboard(App[None]):
                 run_host_command,
                 args,
                 cwd=Path.cwd(),
-                log=lambda line: self.call_from_thread(
-                    self._append, _escape_log_markup(line)
-                ),
+                log=lambda line: self.call_from_thread(self._append, line),
             )
         finally:
             self._set_command_running(False)
@@ -215,7 +216,7 @@ class JovyKitDashboard(App[None]):
             self._clear_last_error()
         except Exception as exc:
             self._record_last_error(str(exc))
-            self._append(f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}")
+            self._append_error(str(exc))
         finally:
             self._set_command_running(False)
             self.refresh_status()
@@ -223,15 +224,13 @@ class JovyKitDashboard(App[None]):
     async def _run_suspended(self, parsed: ParsedTuiCommand) -> None:
         self._set_command_running(True)
         try:
-            self._append(
-                "[cyan][JovyKit][/cyan] Suspending dashboard for interactive command..."
-            )
+            self._append("Suspending dashboard for interactive command...")
             with self.suspend():
                 self._dispatch_jovy_command(parsed, suspended=True)
             self._clear_last_error()
         except Exception as exc:
             self._record_last_error(str(exc))
-            self._append(f"[bold red][Error][/bold red] {_escape_log_markup(str(exc))}")
+            self._append_error(str(exc))
         finally:
             self._set_command_running(False)
             self.refresh_status()
@@ -329,17 +328,17 @@ class JovyKitDashboard(App[None]):
     def _open_url(self) -> None:
         status = self._last_status or discover_status(self.env)
         if status.url == "unavailable":
-            self._append("[bold yellow][JovyKit][/bold yellow] URL unavailable.")
+            self._append_markup("[bold yellow][JovyKit][/bold yellow] URL unavailable.")
             return
         webbrowser.open(status.url)
-        self._append(f"[cyan][JovyKit][/cyan] Opened {status.url}")
+        self._append_markup(f"[cyan][JovyKit][/cyan] Opened {status.url}")
 
     def _open_config_screen(self) -> None:
         from jovykit.config_editor import JovyKitConfigEditorScreen
 
         def on_close(result: str | None) -> None:
             if result:
-                self._append(f"[cyan][JovyKit][/cyan] Config {result}.")
+                self._append_markup(f"[cyan][JovyKit][/cyan] Config {result}.")
             self.refresh_status()
             self.refresh_logs()
             self.query_one(Input).focus()
@@ -366,7 +365,7 @@ class JovyKitDashboard(App[None]):
             write_state(config.env_dir, state)
 
     def _show_help(self) -> None:
-        self._append(
+        self._append_markup(
             "[bold cyan]Commands[/bold cyan]\n"
             "init, add, remove, install, build, up, down, restart, logs, shell, "
             "exec, status, config, clean, destroy\n"
@@ -377,10 +376,23 @@ class JovyKitDashboard(App[None]):
         )
 
     def _threadsafe_append(self, line: str) -> None:
-        self.call_from_thread(self._append, _escape_log_markup(line))
+        self.call_from_thread(self._append, line)
 
     def _append(self, line: str) -> None:
-        self.query_one(RichLog).write(line)
+        self.query_one(RichLog).write(Text(line))
+
+    def _append_markup(self, line: str) -> None:
+        self.query_one(RichLog).write(Text.from_markup(line))
+
+    def _append_command(self, raw: str) -> None:
+        text = Text.from_markup("[bold]jovy>[/bold] ")
+        text.append(raw)
+        self.query_one(RichLog).write(text)
+
+    def _append_error(self, message: str) -> None:
+        text = Text.from_markup("[bold red][Error][/bold red] ")
+        text.append(message)
+        self.query_one(RichLog).write(text)
 
     def _set_command_running(self, running: bool) -> None:
         self._command_running = running
@@ -481,7 +493,3 @@ def _snapshot_suffix(previous: str, current: str) -> str:
     if previous and current.startswith(previous):
         return current[len(previous) :].lstrip("\n")
     return current
-
-
-def _escape_log_markup(line: str) -> str:
-    return line.replace("[", "\\[").replace("]", "\\]")
