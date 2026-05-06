@@ -404,6 +404,38 @@ def test_textual_editor_actions_update_selection_and_cycle(
     assert "Error: This field is edited with Enter." in refreshed[-1]
 
 
+def test_textual_editor_handles_option_keys_without_focus(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditorScreen()
+    app.values = values_from_config(create_project().config)
+    app.selected = 6
+    events: list[str] = []
+    monkeypatch.setattr(app, "_refresh", lambda: events.append(app.status))
+
+    key = _FakeKey("right")
+    app.on_key(cast(Any, key))
+
+    assert app.values.gpus == "all"
+    assert key.stopped is True
+    assert key.prevented is True
+    assert events[-1] == "Updated GPU mode."
+
+
+def test_textual_editor_lets_input_handle_keys_while_editing(
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditorScreen()
+    app.values = values_from_config(create_project().config)
+    app.editing_field = EDITOR_FIELDS[0]
+    key = _FakeKey("right")
+
+    app.on_key(cast(Any, key))
+
+    assert key.stopped is False
+
+
 def test_textual_editor_actions_noop_without_values() -> None:
     app = JovyKitConfigEditorScreen()
 
@@ -547,6 +579,19 @@ class _FakeInput:
 class _FakeSubmitted:
     def __init__(self, value: str) -> None:
         self.value = value
+
+
+class _FakeKey:
+    def __init__(self, key: str) -> None:
+        self.key = key
+        self.stopped = False
+        self.prevented = False
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def prevent_default(self) -> None:
+        self.prevented = True
 
 
 def test_scalar_editor_validation_helpers(create_project: Any) -> None:

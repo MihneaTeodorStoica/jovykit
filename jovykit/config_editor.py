@@ -20,6 +20,7 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
+from textual.events import Key
 from textual.screen import Screen
 from textual.widgets import Input, Static
 import tomlkit
@@ -340,6 +341,24 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
         self._refresh()
 
+    def on_key(self, event: Key) -> None:
+        """Handle navigation keys even when no field owns focus."""
+        if self.editing_field is not None:
+            return
+        actions = {
+            "up": self.action_previous_field,
+            "down": self.action_next_field,
+            "left": self.action_cycle_left,
+            "right": self.action_cycle_right,
+            "enter": self.action_edit_selected,
+        }
+        action = actions.get(event.key)
+        if action is None:
+            return
+        event.prevent_default()
+        event.stop()
+        action()
+
     def action_previous_field(self) -> None:
         """Move to the previous editable field."""
         if self.values is None:
@@ -466,6 +485,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             return
         value_input.display = False
         value_input.value = ""
+        self.set_focus(None)
 
 
 class JovyKitConfigEditor(App[str | None]):
