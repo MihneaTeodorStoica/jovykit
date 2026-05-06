@@ -24,6 +24,7 @@ from jovykit.config_editor import (
     _parse_bool,
     _read_key,
     _replace_editor_value,
+    _render_inline_edit_value,
     _render_textual_fields,
     _set_scalar_value,
     _set_textual_field_value,
@@ -425,17 +426,79 @@ def test_textual_editor_handles_option_keys_without_focus(
     assert events[-1] == "Changing GPU mode: all. Press Enter to choose."
 
 
-def test_textual_editor_lets_input_handle_keys_while_editing(
+def test_textual_editor_handles_inline_editing_keys(
+    monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
     app.editing_field = EDITOR_FIELDS[0]
+    app.editing_value = "abc"
+    app.editing_cursor = 1
+    monkeypatch.setattr(app, "_refresh", lambda: None)
     key = _FakeKey("right")
 
     app.on_key(cast(Any, key))
 
-    assert key.stopped is False
+    assert key.stopped is True
+    assert key.prevented is True
+    assert app.editing_cursor == 2
+
+    app.on_key(cast(Any, _FakeKey("x", character="x")))
+
+    assert app.editing_value == "abxc"
+    assert app.editing_cursor == 3
+
+
+def test_textual_editor_inline_edit_navigation_and_delete_keys(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditorScreen()
+    app.values = values_from_config(create_project().config)
+    app.editing_field = EDITOR_FIELDS[0]
+    app.editing_value = "abcd"
+    app.editing_cursor = 2
+    refreshes: list[str] = []
+    monkeypatch.setattr(app, "_refresh", lambda: refreshes.append(app.editing_value))
+
+    app._handle_inline_edit_key(cast(Any, _FakeKey("backspace")))
+    assert app.editing_value == "acd"
+    assert app.editing_cursor == 1
+
+    app._handle_inline_edit_key(cast(Any, _FakeKey("delete")))
+    assert app.editing_value == "ad"
+
+    app._handle_inline_edit_key(cast(Any, _FakeKey("end")))
+    assert app.editing_cursor == 2
+
+    app._handle_inline_edit_key(cast(Any, _FakeKey("home")))
+    assert app.editing_cursor == 0
+
+    app._handle_inline_edit_key(cast(Any, _FakeKey("escape")))
+    assert app.editing_field is None
+    assert app.status == "Edit cancelled."
+    assert refreshes
+
+
+def test_textual_editor_inline_edit_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+    create_project: Any,
+) -> None:
+    app = JovyKitConfigEditorScreen()
+    app.values = values_from_config(create_project().config)
+    app.editing_field = EDITOR_FIELDS[5]
+    monkeypatch.setattr(app, "_refresh", lambda: None)
+
+    app._apply_prompt_value("not-a-port")
+
+    assert app.status.startswith("Error:")
+    assert app.editing_field is None
+
+
+def test_render_inline_edit_value_places_cursor() -> None:
+    assert _render_inline_edit_value("abcd", 2).plain == "abcd"
+    assert _render_inline_edit_value("abcd", 99).plain == "abcd "
 
 
 def test_textual_editor_actions_noop_without_values() -> None:
@@ -456,15 +519,13 @@ def test_textual_editor_edit_action_and_prompt_updates(
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
-    value_input = _FakeInput()
     events: list[str] = []
-    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: value_input)
     monkeypatch.setattr(app, "_refresh", lambda: events.append(app.status))
 
     app.selected = 0
     app.action_edit_selected()
-    assert value_input.display is True
-    assert value_input.focused is True
+    assert app.editing_field == EDITOR_FIELDS[0]
+    assert app.editing_value == "My Project"
     app._apply_prompt_value("New name")
     app.selected = 5
     app.action_edit_selected()
@@ -493,17 +554,15 @@ def test_textual_editor_inline_submit_and_cancel(
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
-    value_input = _FakeInput()
-    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: value_input)
     monkeypatch.setattr(app, "_refresh", lambda: None)
 
     app.selected = 5
     app.action_edit_selected()
-    app.on_value_submitted(cast(Any, _FakeSubmitted("7777")))
+    app.editing_value = "7777"
+    app.on_key(cast(Any, _FakeKey("enter")))
 
     assert app.values.port == 7777
     assert app.editing_field is None
-    assert value_input.display is False
 
     app.action_edit_selected()
     app.action_cancel()
@@ -571,24 +630,10 @@ def test_textual_editor_refresh_updates_widgets(
     assert app.status
 
 
-class _FakeInput:
-    display = False
-    focused = False
-    placeholder = ""
-    value = ""
-
-    def focus(self) -> None:
-        self.focused = True
-
-
-class _FakeSubmitted:
-    def __init__(self, value: str) -> None:
-        self.value = value
-
-
 class _FakeKey:
-    def __init__(self, key: str) -> None:
+    def __init__(self, key: str, *, character: str | None = None) -> None:
         self.key = key
+        self.character = character
         self.stopped = False
         self.prevented = False
 

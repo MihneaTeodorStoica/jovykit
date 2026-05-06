@@ -17,12 +17,11 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.events import Key
 from textual.screen import Screen
-from textual.widgets import Input, Static
+from textual.widgets import Static
 import tomlkit
 
 from jovykit import commands
@@ -293,12 +292,6 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         margin-bottom: 1;
     }
 
-    #value {
-        display: none;
-        height: 3;
-        border: tall #4f7890;
-        margin-bottom: 1;
-    }
     """
 
     BINDINGS = [
@@ -322,6 +315,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self.values: ConfigEditorValues | None = None
         self.editing_field: ConfigField | None = None
         self.choosing_field: ConfigField | None = None
+        self.editing_value = ""
+        self.editing_cursor = 0
         self.selected = 0
         self.status = "Edit the selected setting, or use arrow keys to move."
 
@@ -329,7 +324,6 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         """Compose the editor layout."""
         with Vertical(id="root"):
             yield Static(id="fields")
-            yield Input(id="value")
 
     def on_mount(self) -> None:
         """Load config and initialize the editor."""
@@ -345,6 +339,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
     def on_key(self, event: Key) -> None:
         """Handle navigation keys even when no field owns focus."""
         if self.editing_field is not None:
+            event.prevent_default()
+            event.stop()
+            self._handle_inline_edit_key(event)
             return
         if self.choosing_field is not None:
             actions = {
@@ -424,16 +421,10 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             return
         current = _format_field_value(self.values, field)
         self.editing_field = field
-        value_input = self.query_one("#value", Input)
-        value_input.display = True
-        value_input.value = "" if current == "-" else current
-        value_input.placeholder = field.label
-        value_input.focus()
-
-    @on(Input.Submitted, "#value")
-    def on_value_submitted(self, event: Input.Submitted) -> None:
-        """Apply the inline edited value."""
-        self._apply_prompt_value(event.value)
+        self.editing_value = "" if current == "-" else current
+        self.editing_cursor = len(self.editing_value)
+        self.status = f"Editing {field.label}. Type value, Enter to choose."
+        self._refresh()
 
     def action_save(self) -> None:
         """Save edited values and exit."""
@@ -504,6 +495,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
                 self.selected,
                 self.status,
                 choosing_key=self.choosing_field.key if self.choosing_field else None,
+                editing_key=self.editing_field.key if self.editing_field else None,
+                editing_value=self.editing_value,
+                editing_cursor=self.editing_cursor,
             )
         )
 
@@ -522,19 +516,63 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         self._cancel_inline_edit()
         self._refresh()
 
+    def _handle_inline_edit_key(self, event: Key) -> None:
+        if event.key == "enter":
+            self._apply_prompt_value(self.editing_value)
+            return
+        if event.key == "escape":
+            self._cancel_inline_edit()
+            self.status = "Edit cancelled."
+            self._refresh()
+            return
+        if event.key == "left":
+            self.editing_cursor = max(0, self.editing_cursor - 1)
+            self._refresh()
+            return
+        if event.key == "right":
+            self.editing_cursor = min(len(self.editing_value), self.editing_cursor + 1)
+            self._refresh()
+            return
+        if event.key == "home":
+            self.editing_cursor = 0
+            self._refresh()
+            return
+        if event.key == "end":
+            self.editing_cursor = len(self.editing_value)
+            self._refresh()
+            return
+        if event.key == "backspace":
+            if self.editing_cursor > 0:
+                self.editing_value = (
+                    self.editing_value[: self.editing_cursor - 1]
+                    + self.editing_value[self.editing_cursor :]
+                )
+                self.editing_cursor -= 1
+            self._refresh()
+            return
+        if event.key == "delete":
+            if self.editing_cursor < len(self.editing_value):
+                self.editing_value = (
+                    self.editing_value[: self.editing_cursor]
+                    + self.editing_value[self.editing_cursor + 1 :]
+                )
+            self._refresh()
+            return
+        character = getattr(event, "character", None)
+        if character:
+            self.editing_value = (
+                self.editing_value[: self.editing_cursor]
+                + character
+                + self.editing_value[self.editing_cursor :]
+            )
+            self.editing_cursor += len(character)
+            self._refresh()
+
     def _cancel_inline_edit(self) -> None:
         self.editing_field = None
         self.choosing_field = None
-        try:
-            value_input = self.query_one("#value", Input)
-        except Exception:
-            return
-        value_input.display = False
-        value_input.value = ""
-        try:
-            self.set_focus(None)
-        except Exception:
-            return
+        self.editing_value = ""
+        self.editing_cursor = 0
 
 
 class JovyKitConfigEditor(App[str | None]):
@@ -556,6 +594,9 @@ def _render_textual_fields(
     selected: int,
     status: str,
     choosing_key: str | None = None,
+    editing_key: str | None = None,
+    editing_value: str = "",
+    editing_cursor: int = 0,
 ) -> Panel:
     table = Table.grid(expand=True)
     table.add_column(width=2, no_wrap=True)
@@ -571,27 +612,46 @@ def _render_textual_fields(
         for index, field in enumerate(EDITOR_FIELDS):
             is_selected = index == selected
             is_choosing = field.key == choosing_key
+            is_editing = field.key == editing_key
+            value = (
+                _render_inline_edit_value(editing_value, editing_cursor)
+                if is_editing
+                else Text(_format_field_value(values, field))
+            )
+            if is_editing:
+                value.stylize("bold white")
+            else:
+                value.stylize(
+                    "bold yellow"
+                    if is_choosing
+                    else "bold white" if is_selected else "bright_black"
+                )
             table.add_row(
                 Text(
-                    "*" if is_choosing else ">" if is_selected else " ",
-                    style="bold yellow" if is_choosing else "bold cyan",
+                    (
+                        "*"
+                        if is_choosing
+                        else "|" if is_editing else ">" if is_selected else " "
+                    ),
+                    style=(
+                        "bold yellow"
+                        if is_choosing
+                        else "bold white" if is_editing else "bold cyan"
+                    ),
                 ),
                 Text(
                     field.label,
                     style=(
                         "bold yellow"
                         if is_choosing
-                        else "bold cyan" if is_selected else "white"
+                        else (
+                            "bold white"
+                            if is_editing
+                            else "bold cyan" if is_selected else "white"
+                        )
                     ),
                 ),
-                Text(
-                    _format_field_value(values, field),
-                    style=(
-                        "bold yellow"
-                        if is_choosing
-                        else "bold white" if is_selected else "bright_black"
-                    ),
-                ),
+                value,
             )
 
     body = Table.grid(expand=True)
@@ -602,6 +662,18 @@ def _render_textual_fields(
         Text(status, style="bold red" if status.startswith("Error:") else "cyan")
     )
     return Panel(body, title="JovyKit config", border_style="bright_blue")
+
+
+def _render_inline_edit_value(value: str, cursor: int) -> Text:
+    cursor = max(0, min(cursor, len(value)))
+    text = Text()
+    text.append(value[:cursor])
+    if cursor < len(value):
+        text.append(value[cursor], style="reverse")
+        text.append(value[cursor + 1 :])
+    else:
+        text.append(" ", style="reverse")
+    return text
 
 
 def _set_textual_field_value(
