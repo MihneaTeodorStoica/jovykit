@@ -113,7 +113,7 @@ def test_dashboard_log_allows_text_selection() -> None:
     log = SelectableLog(id="logs", min_width=1)
 
     assert log.allow_select is True
-    assert log.focus_on_click() is True
+    assert log.focus_on_click() is False
     assert log.min_width == 1
 
 

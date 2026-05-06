@@ -23,10 +23,10 @@ from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind, parse_tui_com
 
 
 class SelectableLog(RichLog):
-    """Rich log with dashboard text selection kept explicit."""
+    """Rich log that permits selection without stealing command focus."""
 
     ALLOW_SELECT = True
-    FOCUS_ON_CLICK = True
+    FOCUS_ON_CLICK = False
 
 
 def _status_key(status: EnvironmentStatus) -> tuple[object, ...]:
