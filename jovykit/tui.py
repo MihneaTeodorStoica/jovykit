@@ -57,6 +57,8 @@ class SelectableLog(RichLog):
         )
         self.show_vertical_scrollbar = False
         self.show_horizontal_scrollbar = False
+        self.styles.overflow_y = "hidden"
+        self.styles.overflow_x = "hidden"
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -502,6 +504,8 @@ class JovyKitDashboard(App[None]):
             return
 
     def _apply_theme(self) -> None:
+        theme_map = {"light": "textual-light", "dark": "textual-dark"}
+        self.theme = theme_map.get(self.ui_theme, self.ui_theme)
         self.set_class(self.ui_theme == "dark", "dark-theme")
         self.set_class(self.ui_theme == "light", "light-theme")
         try:
