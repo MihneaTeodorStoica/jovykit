@@ -9,7 +9,7 @@ from jovykit.config_editor import (
     ConfigField,
     ConfigEditorValues,
     EDITOR_FIELDS,
-    JovyKitConfigEditor,
+    JovyKitConfigEditorScreen,
     format_list_lines,
     format_mapping_lines,
     parse_list_lines,
@@ -313,6 +313,14 @@ def test_textual_field_helpers_update_and_render_values(create_project: Any) -> 
         edited,
         ConfigField("runtime_env", "Runtime env", "mapping"),
     )
+    assert "use left/right" in _field_placeholder(
+        edited,
+        ConfigField("gpus", "GPU mode", "choice", ("auto", "none", "all")),
+    )
+    assert "use left/right" in _field_placeholder(
+        edited,
+        ConfigField("watch_enabled", "Config watch enabled", "bool"),
+    )
     assert _render_textual_fields(edited, 0, "Updated Project name.").title == (
         "JovyKit config"
     )
@@ -324,7 +332,7 @@ def test_textual_editor_mount_loads_values(
     create_project: Any,
 ) -> None:
     project = create_project()
-    app = JovyKitConfigEditor(env=project.env_dir)
+    app = JovyKitConfigEditorScreen(env=project.env_dir)
     focused: list[str] = []
 
     class FakeInput:
@@ -348,7 +356,7 @@ def test_textual_editor_mount_loads_values(
 def test_textual_editor_mount_reports_load_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
     messages: list[str] = []
 
     class FakeInput:
@@ -373,7 +381,7 @@ def test_textual_editor_actions_update_selection_and_cycle(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
     app.selected = 6
     refreshed: list[str] = []
@@ -394,7 +402,7 @@ def test_textual_editor_actions_update_selection_and_cycle(
 
 
 def test_textual_editor_actions_noop_without_values() -> None:
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
 
     app.action_next_field()
     app.action_previous_field()
@@ -409,7 +417,7 @@ def test_textual_editor_input_commands_and_value_updates(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
     events: list[str] = []
     monkeypatch.setattr(app, "action_save", lambda: events.append("save"))
@@ -428,11 +436,11 @@ def test_textual_editor_input_commands_and_value_updates(
 
     assert events[:3] == ["save", "apply", "cancel"]
     assert app.values.port == 7777
-    assert "Error: GPU mode must be one of: auto, none, all." == app.status
+    assert "Error: Use left/right arrows to choose this setting." == app.status
 
 
 def test_textual_editor_input_noops_without_values() -> None:
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
     event = _FakeSubmitted("7777")
 
     app.on_value_submitted(cast(Any, event))
@@ -445,13 +453,13 @@ def test_textual_editor_save_paths(
     create_project: Any,
 ) -> None:
     project = create_project()
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
     app.config = project.config
     app.values = values_from_config(project.config)
     exits: list[str | None] = []
     messages: list[str] = []
     saved: list[bool] = []
-    monkeypatch.setattr(app, "exit", exits.append)
+    monkeypatch.setattr(app, "dismiss", exits.append)
     monkeypatch.setattr(app, "_append", messages.append)
     monkeypatch.setattr(app, "_refresh", lambda: messages.append("refresh"))
     monkeypatch.setattr(
@@ -479,7 +487,7 @@ def test_textual_editor_refresh_updates_widgets(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
-    app = JovyKitConfigEditor()
+    app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
     updated: list[object] = []
 

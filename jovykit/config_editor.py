@@ -20,7 +20,8 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Input, RichLog, Static
+from textual.screen import Screen
+from textual.widgets import Input, Static
 import tomlkit
 
 from jovykit import commands
@@ -269,8 +270,8 @@ def run_keyboard_config_editor(
             status = f"Error: {exc}"
 
 
-class JovyKitConfigEditor(App[str | None]):
-    """Full-screen Textual editor for core JovyKit configuration."""
+class JovyKitConfigEditorScreen(Screen[str | None]):
+    """Textual screen for core JovyKit configuration."""
 
     CSS = """
     Screen {
@@ -295,13 +296,6 @@ class JovyKitConfigEditor(App[str | None]):
         height: 3;
         border: tall #4f7890;
         margin-bottom: 1;
-    }
-
-    #details {
-        height: 8;
-        border: round #3b5666;
-        padding: 0 1;
-        background: #0b0f12;
     }
     """
 
@@ -329,14 +323,6 @@ class JovyKitConfigEditor(App[str | None]):
         with Vertical(id="root"):
             yield Static(id="fields")
             yield Input(id="command")
-            yield RichLog(
-                id="details",
-                highlight=False,
-                markup=True,
-                wrap=True,
-                auto_scroll=True,
-                max_lines=200,
-            )
 
     def on_mount(self) -> None:
         """Load config and initialize the editor."""
@@ -414,7 +400,7 @@ class JovyKitConfigEditor(App[str | None]):
 
     def action_cancel(self) -> None:
         """Cancel editing."""
-        self.exit("cancelled")
+        self.dismiss("cancelled")
 
     def _cycle_selected(self, direction: str) -> None:
         if self.values is None:
@@ -447,7 +433,7 @@ class JovyKitConfigEditor(App[str | None]):
             self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
             self._refresh()
             return
-        self.exit("applied" if apply_now else "saved")
+        self.dismiss("applied" if apply_now else "saved")
 
     def _refresh(self) -> None:
         self.query_one("#fields", Static).update(
@@ -461,7 +447,21 @@ class JovyKitConfigEditor(App[str | None]):
         command.placeholder = _field_placeholder(self.values, field)
 
     def _append(self, line: str) -> None:
-        self.query_one(RichLog).write(line)
+        return None
+
+
+class JovyKitConfigEditor(App[str | None]):
+    """Standalone Textual app for core JovyKit configuration."""
+
+    CSS = JovyKitConfigEditorScreen.CSS
+
+    def __init__(self, *, env: Path | None = None) -> None:
+        super().__init__()
+        self.env = env
+
+    def on_mount(self) -> None:
+        """Open the config editor screen."""
+        self.push_screen(JovyKitConfigEditorScreen(env=self.env), self.exit)
 
 
 def _render_textual_fields(
@@ -507,11 +507,9 @@ def _set_textual_field_value(
     raw: str,
 ) -> ConfigEditorValues:
     if field.kind == "bool":
-        if not raw:
-            return _replace_editor_value(
-                values, field.key, not getattr(values, field.key)
-            )
-        return _set_scalar_value(values, field.key, raw)
+        raise JovyKitError("Use left/right arrows to toggle this setting.")
+    if field.kind == "choice":
+        raise JovyKitError("Use left/right arrows to choose this setting.")
     if field.kind == "list":
         return _replace_editor_value(values, field.key, _parse_inline_list(raw))
     if field.kind == "mapping":
@@ -528,9 +526,9 @@ def _set_textual_field_value(
 def _field_placeholder(values: ConfigEditorValues, field: ConfigField) -> str:
     current = _format_field_value(values, field)
     if field.kind == "choice":
-        return f"{field.label}: {current} ({', '.join(field.choices)})"
+        return f"{field.label}: {current} (use left/right)"
     if field.kind == "bool":
-        return f"{field.label}: {current} (enter toggles)"
+        return f"{field.label}: {current} (use left/right)"
     if field.kind == "list":
         return f"{field.label}: comma-separated packages"
     if field.kind == "mapping":

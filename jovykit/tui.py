@@ -165,7 +165,10 @@ class JovyKitDashboard(App[None]):
         if parsed.kind is TuiCommandKind.HOST:
             self.run_worker(self._run_host(parsed.args), exclusive=False)
             return
-        if parsed.name == "config" or (parsed.name == "shell" and not parsed.args):
+        if parsed.name == "config":
+            self._open_config_screen()
+            return
+        if parsed.name == "shell" and not parsed.args:
             await self._run_suspended(parsed)
             return
         self.run_worker(self._run_jovy(parsed), exclusive=False)
@@ -312,10 +315,7 @@ class JovyKitDashboard(App[None]):
         elif name == "status":
             commands.status(json_output="--json" in args, emit=emit)
         elif name == "config":
-            from jovykit.config_editor import run_config_editor
-
-            run_config_editor(env=self.env)
-            emit("Config editor closed.")
+            raise JovyKitError("Open config from the dashboard command input.")
         elif name == "clean":
             commands.clean(emit=emit)
         elif name == "destroy":
@@ -333,6 +333,18 @@ class JovyKitDashboard(App[None]):
             return
         webbrowser.open(status.url)
         self._append(f"[cyan][JovyKit][/cyan] Opened {status.url}")
+
+    def _open_config_screen(self) -> None:
+        from jovykit.config_editor import JovyKitConfigEditorScreen
+
+        def on_close(result: str | None) -> None:
+            if result:
+                self._append(f"[cyan][JovyKit][/cyan] Config {result}.")
+            self.refresh_status()
+            self.refresh_logs()
+            self.query_one(Input).focus()
+
+        self.push_screen(JovyKitConfigEditorScreen(env=self.env), on_close)
 
     def _record_last_error(self, message: str) -> None:
         try:
