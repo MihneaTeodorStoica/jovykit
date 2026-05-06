@@ -24,7 +24,6 @@ JOVY_COMMANDS = {
     "remove",
     "install",
     "build",
-    "run",
     "up",
     "down",
     "restart",
@@ -38,6 +37,9 @@ JOVY_COMMANDS = {
 }
 
 LOCAL_COMMANDS = {"help", "clear", "open", "refresh", "quit", "exit"}
+BLOCKED_COMMAND_HINTS = {
+    "run": "The run command is not available inside the dashboard. Use up, or run jovy run from your shell.",
+}
 REMOVED_COMMAND_HINTS = {
     "start": "No primary command named start. Use: up",
     "stop": "No primary command named stop. Use: down",
@@ -87,6 +89,14 @@ def parse_tui_command(raw: str) -> ParsedTuiCommand:
     args = parts[1:]
     if name in LOCAL_COMMANDS:
         return ParsedTuiCommand(TuiCommandKind.LOCAL, name, args, raw)
+    if name in BLOCKED_COMMAND_HINTS:
+        return ParsedTuiCommand(
+            TuiCommandKind.UNKNOWN,
+            name,
+            args,
+            raw,
+            BLOCKED_COMMAND_HINTS[name],
+        )
     if name in JOVY_COMMANDS:
         return ParsedTuiCommand(TuiCommandKind.JOVY, name, args, raw)
     return ParsedTuiCommand(

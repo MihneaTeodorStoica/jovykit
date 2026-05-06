@@ -130,15 +130,19 @@ def test_init_accepts_project_and_jupyter_flags(
     assert (tmp_path / "notebooks").is_dir()
 
 
-def test_init_prints_default_token(
+def test_init_prints_clean_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
     result = run_cli(["init", ".jovy"])
 
+    assert "Initialized .jovy" in result.output
     assert "Jupyter: http://127.0.0.1:8888/lab?token=jovykit" in result.output
-    assert "Token: jovykit" in result.output
+    assert "Base image:" not in result.output
+    assert "Project image:" not in result.output
+    assert "GPU:" not in result.output
+    assert "Token:" not in result.output
 
 
 def test_add_updates_toml_packages_and_clears_build_signature(
@@ -391,7 +395,7 @@ def test_up_does_not_combine_detach_with_compose_watch(
     assert calls == [("up", "-d")]
     assert started == [project.env_dir]
     assert "Jupyter: http://127.0.0.1:9999/lab?token=jovykit" in result.output
-    assert "Token: jovykit" in result.output
+    assert "Token:" not in result.output
 
 
 def test_down_stops_config_watcher_and_accepts_timeout(

@@ -71,8 +71,6 @@ def jupyter_access_url(config: JovyConfig) -> str:
 def emit_jupyter_access(config: JovyConfig, emit: Emitter) -> None:
     """Emit Jupyter access details."""
     emit(f"Jupyter: {jupyter_access_url(config)}")
-    if config.jupyter_token:
-        emit(f"Token: {config.jupyter_token}")
 
 
 def load_env(env: Path | None = None, *, emit: Emitter = noop_emit) -> JovyConfig:
@@ -313,10 +311,7 @@ def init_environment(
     write_generated_files(config)
     write_state(env_dir, {})
 
-    emit(f"JovyKit environment: {display_path(env_dir)}")
-    emit(f"Base image: {config.base_image}")
-    emit(f"Project image: {config.image_ref}")
-    emit(f"GPU: {config.gpus}")
+    emit(f"Initialized {display_path(env_dir)}")
     emit_jupyter_access(config, emit)
     return config
 

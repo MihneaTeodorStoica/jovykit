@@ -33,6 +33,15 @@ def test_config_command_maps_to_jovy_command() -> None:
     assert parsed.name == "config"
 
 
+def test_run_command_is_blocked_in_dashboard() -> None:
+    parsed = parse_tui_command("run")
+
+    assert parsed.kind is TuiCommandKind.UNKNOWN
+    assert parsed.name == "run"
+    assert parsed.message is not None
+    assert "not available inside the dashboard" in parsed.message
+
+
 def test_quit_and_exit_are_local_dashboard_commands() -> None:
     assert parse_tui_command("quit").kind is TuiCommandKind.LOCAL
     assert parse_tui_command("exit").kind is TuiCommandKind.LOCAL

@@ -159,6 +159,21 @@ def test_dispatch_config_launches_editor(
     assert "Config editor closed." in calls
 
 
+def test_dispatch_run_is_not_available_in_dashboard() -> None:
+    app = JovyKitDashboard()
+    parsed = ParsedTuiCommand(
+        kind=TuiCommandKind.JOVY,
+        name="run",
+        args=[],
+        raw="run",
+    )
+
+    with pytest.raises(
+        commands.JovyKitError, match="not available inside the dashboard"
+    ):
+        app._dispatch_jovy_command(parsed)
+
+
 def test_set_command_running_keeps_input_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

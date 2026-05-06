@@ -6,12 +6,17 @@ import sys
 import tempfile
 import termios
 import tty
+from io import StringIO
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 import tomlkit
 
 from jovykit import commands
@@ -244,15 +249,53 @@ def _render_editor(
     status: str,
     output: OutputFunc,
 ) -> None:
-    output("\x1b[2J\x1b[H")
-    output("JovyKit config")
-    output("Up/down move | left/right cycle | Enter edit | s save | a apply | q quit")
-    output("")
+    buffer = StringIO()
+    console = Console(
+        file=buffer,
+        force_terminal=True,
+        color_system="truecolor",
+        width=96,
+        legacy_windows=False,
+    )
+    console.print("\x1b[2J\x1b[H", end="")
+
+    fields = Table.grid(expand=True)
+    fields.add_column(width=2)
+    fields.add_column(width=24)
+    fields.add_column(ratio=1)
     for index, field in enumerate(EDITOR_FIELDS):
-        pointer = ">" if index == selected else " "
-        output(f"{pointer} {field.label:24} " f"{_format_field_value(values, field)}")
-    output("")
-    output(status)
+        is_selected = index == selected
+        marker = ">" if is_selected else " "
+        label_style = "bold cyan" if is_selected else "white"
+        value_style = "bold white" if is_selected else "bright_black"
+        fields.add_row(
+            Text(marker, style="bold cyan" if is_selected else "dim"),
+            Text(field.label, style=label_style),
+            Text(_format_field_value(values, field), style=value_style),
+        )
+
+    hint = Text(
+        "Up/down move | left/right cycle | Enter edit | s save | a apply | q quit",
+        style="dim",
+    )
+    status_style = "bold red" if status.startswith("Error:") else "cyan"
+    body = Group(
+        Text("JovyKit config", style="bold cyan"),
+        hint,
+        Text(""),
+        fields,
+        Text(""),
+        Text(status, style=status_style),
+    )
+    console.print(
+        Panel(
+            body,
+            title="JovyKit",
+            border_style="bright_blue",
+            padding=(1, 2),
+        )
+    )
+    output(buffer.getvalue().rstrip())
 
 
 def _format_field_value(values: ConfigEditorValues, field: ConfigField) -> str:

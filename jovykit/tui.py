@@ -165,9 +165,7 @@ class JovyKitDashboard(App[None]):
         if parsed.kind is TuiCommandKind.HOST:
             self.run_worker(self._run_host(parsed.args), exclusive=False)
             return
-        if parsed.name in {"config", "run"} or (
-            parsed.name == "shell" and not parsed.args
-        ):
+        if parsed.name == "config" or (parsed.name == "shell" and not parsed.args):
             await self._run_suspended(parsed)
             return
         self.run_worker(self._run_jovy(parsed), exclusive=False)
@@ -278,7 +276,10 @@ class JovyKitDashboard(App[None]):
                 stream=True,
             )
         elif name == "run":
-            commands.run(no_build="--no-build" in args, watch=True, emit=emit)
+            raise JovyKitError(
+                "The run command is not available inside the dashboard. "
+                "Use up, or run jovy run from your shell."
+            )
         elif name == "up":
             commands.up(no_build="--no-build" in args, emit=emit, stream=True)
         elif name == "down":
@@ -355,7 +356,7 @@ class JovyKitDashboard(App[None]):
     def _show_help(self) -> None:
         self._append(
             "[bold cyan]Commands[/bold cyan]\n"
-            "init, add, remove, install, build, run, up, down, restart, logs, shell, "
+            "init, add, remove, install, build, up, down, restart, logs, shell, "
             "exec, status, config, clean, destroy\n"
             "[bold cyan]Dashboard[/bold cyan]\n"
             "help, clear, open, refresh, quit, exit\n"
