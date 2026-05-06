@@ -53,8 +53,8 @@ class JovyKitDashboard(App[None]):
 
     CSS = """
     Screen {
-        background: #101418;
-        color: #e8eef2;
+        background: #f8f8f8;
+        color: #1f1f1f;
     }
 
     #root {
@@ -70,15 +70,26 @@ class JovyKitDashboard(App[None]):
 
     #logs {
         height: 1fr;
-        border: round #3b5666;
+        border: round #c0c0c0;
         padding: 0 1;
-        background: #0b0f12;
+        background: #ffffff;
     }
 
     #command {
         height: 3;
-        border: tall #4f7890;
+        border: tall #c7c7c7;
         margin-bottom: 1;
+        background: #ffffff;
+        color: #1f1f1f;
+    }
+
+    #command:focus {
+        border: tall #f37726;
+    }
+
+    #status, #logs {
+        background: #ffffff;
+        color: #1f1f1f;
     }
     """
 
@@ -442,22 +453,23 @@ class JovyKitDashboard(App[None]):
 def render_status_panel(status: EnvironmentStatus) -> Panel:
     """Render the top status panel."""
     details = Text()
-    details.append("Status: ", style="bold")
+    details.append("Status: ", style="bold #1f1f1f")
     details.append(_status_label(status))
-    details.append("   Build: ", style="bold")
+    details.append("   Build: ", style="bold #1f1f1f")
     details.append(status.build)
-    details.append("\nImage: ", style="bold")
+    details.append("\nImage: ", style="bold #1f1f1f")
     details.append(status.image)
     if status.url:
-        details.append("\nURL: ", style="bold")
+        details.append("\nURL: ", style="bold #1f1f1f")
         details.append(status.url)
     if status.last_error:
-        details.append("\nError: ", style="bold red")
+        details.append("\nError: ", style="bold #d33c3c")
         details.append(status.last_error)
     return Panel(
         details,
         title=f"JovyKit - {status.project_path.name}",
         border_style=_border_style(status.status),
+        style="on #ffffff",
     )
 
 
@@ -476,12 +488,12 @@ def _status_label(status: EnvironmentStatus) -> str:
 
 def _border_style(status: str) -> str:
     if status in {"healthy", "running"}:
-        return "green"
+        return "#7ab648"
     if status in {"error", "unhealthy"}:
-        return "red"
+        return "#d33c3c"
     if status in {"starting", "stale image", "unknown"}:
-        return "yellow"
-    return "blue"
+        return "#f37726"
+    return "#6c8ebf"
 
 
 def _option_value(args: list[str], name: str, default: str) -> str:

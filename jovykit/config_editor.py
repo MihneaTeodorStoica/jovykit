@@ -275,8 +275,8 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     CSS = """
     Screen {
-        background: #101418;
-        color: #e8eef2;
+        background: #f8f8f8;
+        color: #1f1f1f;
     }
 
     #root {
@@ -286,9 +286,9 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     #fields {
         height: 1fr;
-        border: round #3b5666;
+        border: round #c0c0c0;
         padding: 0 1;
-        background: #0b0f12;
+        background: #ffffff;
         margin-bottom: 1;
     }
 
@@ -683,10 +683,12 @@ def _render_textual_fields(
     body.add_row(
         Text(
             "q quit | w save | a apply | arrows move | Enter edit",
-            style="dim" if not dirty else "bold yellow",
+            style="dim #666666" if not dirty else "bold #f37726",
         )
     )
-    return Panel(body, title="JovyKit config", border_style="bright_blue")
+    return Panel(
+        body, title="JovyKit config", border_style="#6c8ebf", style="on #ffffff"
+    )
 
 
 def _render_inline_edit_value(value: str, cursor: int) -> Text:
