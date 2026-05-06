@@ -99,6 +99,7 @@ class JovyKitDashboard(App[None]):
         height: auto;
         min-height: 5;
         margin-bottom: 1;
+        color: #e0e0e0;
     }
 
     #logs {
@@ -483,14 +484,14 @@ class JovyKitDashboard(App[None]):
 def render_status_panel(status: EnvironmentStatus) -> Panel:
     """Render the top status panel."""
     details = Text()
-    details.append("Status: ", style="bold #1f1f1f")
+    details.append("Status: ", style="bold #e0e0e0")
     details.append(_status_label(status))
-    details.append("   Build: ", style="bold #1f1f1f")
+    details.append("   Build: ", style="bold #e0e0e0")
     details.append(status.build)
-    details.append("\nImage: ", style="bold #1f1f1f")
+    details.append("\nImage: ", style="bold #e0e0e0")
     details.append(status.image)
     if status.url:
-        details.append("\nURL: ", style="bold #1f1f1f")
+        details.append("\nURL: ", style="bold #e0e0e0")
         details.append(status.url)
     if status.last_error:
         details.append("\nError: ", style="bold #d33c3c")
@@ -499,7 +500,7 @@ def render_status_panel(status: EnvironmentStatus) -> Panel:
         details,
         title=f"JovyKit - {status.project_path.name}",
         border_style=_border_style(status.status),
-        style="on #ffffff",
+        style="on #1a1a1a",
     )
 
 
