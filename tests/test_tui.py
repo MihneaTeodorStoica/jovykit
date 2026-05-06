@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from rich.console import Console
 from rich.text import Text
+from textual.widgets import Input, RichLog
 
 from jovykit import commands
 from jovykit.state import EnvironmentStatus
@@ -216,15 +217,55 @@ def test_open_config_screen_pushes_editor(
 ) -> None:
     app = JovyKitDashboard()
     calls: list[Any] = []
+    callbacks: list[Any] = []
+    events: list[str] = []
 
-    monkeypatch.setattr(
-        app, "push_screen", lambda screen, callback: calls.append(screen)
-    )
+    def fake_push_screen(screen: object, callback: object) -> None:
+        calls.append(screen)
+        callbacks.append(callback)
+
+    monkeypatch.setattr(app, "push_screen", fake_push_screen)
+    monkeypatch.setattr(app, "_append_markup", lambda _message: events.append("log"))
+    monkeypatch.setattr(app, "refresh_status", lambda: events.append("status"))
+    monkeypatch.setattr(app, "refresh_logs", lambda: events.append("logs"))
+    monkeypatch.setattr(app, "_restore_dashboard_focus", lambda: events.append("focus"))
 
     app._open_config_screen()
 
     assert calls
     assert calls[0].env is None
+    callbacks[0]("saved")
+    assert events == ["log", "status", "logs", "focus"]
+
+
+def test_restore_dashboard_focus_clears_selection_and_repaints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = JovyKitDashboard()
+    events: list[str] = []
+
+    class FakeLog:
+        def refresh(self, *, repaint: bool = True, layout: bool = False) -> None:
+            events.append(f"log:{repaint}:{layout}")
+
+    class FakeInput:
+        def focus(self) -> None:
+            events.append("focus")
+
+    def fake_query_one(selector: object, *_args: object, **_kwargs: object) -> object:
+        if selector is RichLog:
+            return FakeLog()
+        if selector is Input:
+            return FakeInput()
+        raise AssertionError(selector)
+
+    monkeypatch.setattr(app, "clear_selection", lambda: events.append("clear"))
+    monkeypatch.setattr(app, "refresh", lambda **_kwargs: events.append("refresh"))
+    monkeypatch.setattr(app, "query_one", fake_query_one)
+
+    app._restore_dashboard_focus()
+
+    assert events == ["clear", "refresh", "log:True:True", "focus"]
 
 
 def test_dispatch_config_is_dashboard_only() -> None:

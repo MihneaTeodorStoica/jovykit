@@ -361,7 +361,7 @@ class JovyKitDashboard(App[None]):
                 self._append_markup(f"[cyan][JovyKit][/cyan] Config {result}.")
             self.refresh_status()
             self.refresh_logs()
-            self.query_one(Input).focus()
+            self._restore_dashboard_focus()
 
         self.push_screen(JovyKitConfigEditorScreen(env=self.env), on_close)
 
@@ -419,6 +419,15 @@ class JovyKitDashboard(App[None]):
             return self.screen.get_selected_text()
         except Exception:
             return None
+
+    def _restore_dashboard_focus(self) -> None:
+        self.clear_selection()
+        self.refresh(repaint=True, layout=True)
+        try:
+            self.query_one(RichLog).refresh(repaint=True, layout=True)
+            self.query_one(Input).focus()
+        except (NoMatches, ScreenStackError):
+            return
 
     def _set_command_running(self, running: bool) -> None:
         self._command_running = running
