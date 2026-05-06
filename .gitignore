@@ -4,4 +4,6 @@ jovy.toml
 .venv/
 __pycache__/
 .pytest_cache/
+.coverage
+jovykit.egg-info/
 *.py[cod]
