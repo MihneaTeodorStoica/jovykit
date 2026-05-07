@@ -163,7 +163,7 @@ def restart_running_container(
         "-d",
         "--no-build",
         "jovy",
-        attached=not stream,
+        attached=False,
         log=emit if stream else None,
     )
     if config.watch_enabled:
@@ -193,10 +193,11 @@ def compile_lock(
     upgrade: bool = False,
     emit: Emitter = noop_emit,
     stream: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Compile the project dependency lockfile with uv."""
     config.env_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = config.env_dir / "jovy.lock"
+    lock_path = config.lockfile_path
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -215,13 +216,17 @@ def compile_lock(
     ]
     try:
         emit("Compiling JovyKit dependency lockfile...")
+        if verbose:
+            log_callback = None  # None means attached=True, output shown
+        else:
+            log_callback = noop_emit  # noop to suppress output
         compile_requirements_lock(
             config,
             input_file=input_path,
             output_file=lock_path,
             constraints=constraints,
             upgrade=upgrade,
-            log=emit if stream else None,
+            log=log_callback if not stream else (emit if stream else None),
         )
     finally:
         input_path.unlink(missing_ok=True)
@@ -233,11 +238,12 @@ def prepare_environment(
     upgrade: bool = False,
     emit: Emitter = noop_emit,
     stream: bool = False,
+    verbose: bool = False,
 ) -> JovyConfig:
     """Migrate, regenerate, and lock generated environment files."""
     config = migrate_legacy_requirements(config, emit=emit)
     write_generated_files(config)
-    compile_lock(config, upgrade=upgrade, emit=emit, stream=stream)
+    compile_lock(config, upgrade=upgrade, emit=emit, stream=stream, verbose=verbose)
     return load_config(config.env_dir)
 
 
@@ -336,6 +342,8 @@ def add(
     )
     clear_build_state(config.env_dir)
     if update.added or update.constraints_added:
+        config = load_config(config.env_dir)
+        compile_lock(config, emit=emit)
         if update.added:
             emit(f"Added: {', '.join(update.added)}")
         if update.constraints_added:
@@ -357,6 +365,8 @@ def remove(
     update = remove_packages(config.config_path, packages)
     clear_build_state(config.env_dir)
     if update.removed:
+        config = load_config(config.env_dir)
+        compile_lock(config, emit=emit)
         emit(f"Removed: {', '.join(update.removed)}")
         emit("Run jovy install, jovy run, or jovy up to apply changes.")
     else:
@@ -370,14 +380,16 @@ def build(
     pull: bool = False,
     emit: Emitter = noop_emit,
     stream: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Build the project overlay image."""
     config = load_env(env, emit=emit)
-    config = prepare_environment(config, emit=emit, stream=stream)
+    config = prepare_environment(config, emit=emit, stream=stream, verbose=verbose)
+    emit("Building JovyKit overlay image...")
     if stream:
         build_streaming(config, log=emit, no_cache=no_cache, pull=pull)
     else:
-        build_image(config, no_cache=no_cache, pull=pull)
+        build_image(config, no_cache=no_cache, pull=pull, verbose=verbose)
 
 
 def run(
@@ -414,16 +426,18 @@ def up(
     """Build if needed and start Jupyter in the background."""
     config = load_env(env, emit=emit)
     install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
+    emit("Starting JovyKit environment...")
     compose(
         config,
         "up",
         "-d",
-        attached=not stream,
+        attached=False,
         log=emit if stream else None,
     )
     if config.watch_enabled:
         start_watcher(config.env_dir)
     emit_jupyter_access(config, emit)
+    emit("JovyKit environment started.")
 
 
 def down(
@@ -438,13 +452,15 @@ def down(
     if timeout is not None:
         args.extend(["--timeout", str(timeout)])
     config = load_env(env, emit=emit)
+    emit("Stopping JovyKit environment...")
     stop_watcher(config.env_dir)
     compose(
         config,
         *args,
-        attached=not stream,
+        attached=False,
         log=emit if stream else None,
     )
+    emit("JovyKit environment stopped.")
 
 
 def restart(
@@ -458,6 +474,7 @@ def restart(
     """Build if needed and restart Jupyter in the background."""
     config = load_env(env, emit=emit)
     install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
+    emit("Restarting JovyKit environment...")
     stop_watcher(config.env_dir)
     args = ["stop"]
     if timeout is not None:
@@ -465,19 +482,20 @@ def restart(
     compose(
         config,
         *args,
-        attached=not stream,
+        attached=False,
         log=emit if stream else None,
     )
     compose(
         config,
         "up",
         "-d",
-        attached=not stream,
+        attached=False,
         log=emit if stream else None,
     )
     if config.watch_enabled:
         start_watcher(config.env_dir)
     emit_jupyter_access(config, emit)
+    emit("JovyKit environment restarted.")
 
 
 def logs(
@@ -556,29 +574,46 @@ def exec_in_container(
 def destroy(
     *,
     env: Path | None = None,
+    purge: bool = False,
     remove_dir: bool = False,
     keep_image: bool = False,
     emit: Emitter = noop_emit,
     stream: bool = False,
 ) -> None:
-    """Remove the container, volume, and project overlay image."""
+    """Remove runtime resources while preserving home data by default."""
     config = load_env(env, emit=emit)
     if not (config.env_dir / "compose.yaml").exists():
         write_generated_files(config)
+    emit("Destroying JovyKit environment...")
+    if purge:
+        emit(f"Purging home data at {display_path(config.home_path)}")
+    else:
+        emit(f"Preserving home data at {display_path(config.home_path)}")
     stop_watcher(config.env_dir)
     destroy_environment(
         config,
         remove_image=not keep_image,
+        remove_volumes=purge,
         log=emit if stream else None,
     )
-    if remove_dir:
+    if purge and config.home_path.exists():
+        shutil.rmtree(config.home_path)
+        emit(f"Removed home data at {display_path(config.home_path)}")
+    if remove_dir and not purge:
+        emit(
+            "--remove-dir is deprecated and skipped unless --purge is also used "
+            "so home data is not deleted accidentally."
+        )
+    elif remove_dir:
         shutil.rmtree(config.env_dir)
         emit(f"Removed {config.env_dir}")
+    emit("JovyKit environment destroyed.")
 
 
 def clean(*, env: Path | None = None, emit: Emitter = noop_emit) -> None:
     """Remove generated files and local build state."""
     config = load_env(env, emit=emit)
+    emit("Cleaning generated JovyKit artifacts...")
     removed: list[Path] = []
     for name in (
         "Containerfile",
@@ -599,6 +634,7 @@ def clean(*, env: Path | None = None, emit: Emitter = noop_emit) -> None:
             emit(f"- {display_path(path)}")
     else:
         emit("No generated artifacts to remove.")
+    emit("JovyKit clean complete.")
 
 
 def status_data(
@@ -614,6 +650,10 @@ def status_data(
         "port": config.port,
         "url": jupyter_access_url(config),
         "gpus": config.gpus,
+        "work_mount": str(config.project_root),
+        "home_mount": str(config.home_path),
+        "package_count": len(config.python_packages),
+        "destroy_preserves_home": True,
         "build_stale": stale,
     }
 
@@ -632,4 +672,8 @@ def status(
     emit(f"Port: {data['port']}")
     emit(f"URL: {data['url']}")
     emit(f"GPU: {data['gpus']}")
+    emit(f"Work mount: {data['work_mount']}")
+    emit(f"Home mount: {data['home_mount']}")
+    emit(f"Packages: {data['package_count']}")
+    emit("Destroy preserves home: yes")
     emit(f"Build stale: {'yes' if data['build_stale'] else 'no'}")

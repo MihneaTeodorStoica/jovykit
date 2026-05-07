@@ -9,7 +9,7 @@ publishing.
 `.github/workflows/ci-release.yml` runs on pushes to `main`, pull requests,
 weekly schedules, and manual dispatches.
 
-Security jobs run first:
+Security jobs run first in the job graph:
 
 - CodeQL for Python.
 - Semgrep with Python and security-audit rules.
@@ -32,9 +32,11 @@ pip-audit -r requirements.txt
 python -m build
 ```
 
-On successful pushes or manual runs, the release portion reads the version from
-`pyproject.toml`, creates the matching `vX.Y.Z` tag when needed, and continues
-into the release jobs.
+On successful pushes or manual runs, the release step reads `pyproject.toml`,
+creates a matching `vX.Y.Z` tag when needed, and continues to release jobs.
+
+When release logic should not run, skip by not using version bumps/tags that need
+publishing.
 
 ## Image publishing
 
@@ -57,8 +59,8 @@ See [Images](Images) for the image layout and local build commands.
 ## Website publishing
 
 `.github/workflows/pages.yml` publishes the promotional website from `site/` to
-GitHub Pages. It runs on pushes to `main` when website files change, and it can
-also be run manually.
+GitHub Pages. It runs on pushes to `main` when website files change and can also
+run manually.
 
 ## Wiki publishing
 
@@ -75,7 +77,11 @@ wiki/_Footer.md
 ```
 
 The workflow runs when `wiki/**` or the workflow file changes on `main`, and it
-can also be run manually.
+can also run manually.
+
+If the workflow is triggered before the wiki repository exists, GitHub returns a
+`jovykit.wiki.git` clone warning. Create one page in the web UI first, then
+rerun the workflow.
 
 GitHub only exposes the backing `jovykit.wiki.git` repository after the wiki has
 been initialized. If the workflow reports that the wiki repository is not

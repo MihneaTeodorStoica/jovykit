@@ -55,6 +55,7 @@ class JovyConfig:
     jupyter_lab: bool
     jupyter_command: str | None
     work_mount: str
+    home_path: Path
     watch_enabled: bool
     watch_workspace_mode: str
     watch_ignore: list[str]
@@ -71,6 +72,16 @@ class JovyConfig:
     def compose_workdir(self) -> str:
         """Return the host workdir path relative to the Compose project."""
         return os.path.relpath(self.project_root, self.env_dir)
+
+    @property
+    def lockfile_path(self) -> Path:
+        """Return the dependency lockfile location in the project root."""
+        return self.project_dir / "jovy.lock"
+
+    @property
+    def compose_home_path(self) -> str:
+        """Return the host home path relative to the Compose project."""
+        return os.path.relpath(self.home_path, self.env_dir)
 
     def compose_project_path(self, path: str) -> str:
         """Return a project-root path relative to the Compose project."""
@@ -123,6 +134,10 @@ def load_config(env_dir: Path) -> JovyConfig:
 
     project_dir = env_dir.parent.resolve()
     project_root = (project_dir / str(project.get("workdir", "work"))).resolve()
+    home_value = str(mounts.get("home", f"{env_dir.name}/home"))
+    home_path = Path(home_value)
+    if not home_path.is_absolute():
+        home_path = project_dir / home_path
     try:
         return JovyConfig(
             env_dir=env_dir,
@@ -161,6 +176,7 @@ def load_config(env_dir: Path) -> JovyConfig:
                 str(jupyter["command"]) if jupyter.get("command") is not None else None
             ),
             work_mount=str(mounts.get("work", "/home/jovyan/work")),
+            home_path=home_path.resolve(),
             watch_enabled=bool(watch.get("enabled", True)),
             watch_workspace_mode=str(watch.get("workspace_mode", "bind")),
             watch_ignore=_str_list(
@@ -178,9 +194,9 @@ def load_config(env_dir: Path) -> JovyConfig:
                 )
             ),
             watch_rebuild=_str_list(
-                watch.get("rebuild", ["jovy.lock", "Containerfile"])
+                watch.get("rebuild", ["../jovy.lock", "Containerfile"])
             ),
-            watch_restart=_str_list(watch.get("restart", ["jovy.toml"])),
+            watch_restart=_str_list(watch.get("restart", [])),
             watch_poll_interval=float(watch.get("poll_interval_seconds", 1.0)),
         )
     except KeyError as exc:
@@ -238,13 +254,14 @@ log_level = "{log_level}"
 
 [mounts]
 work = "/home/jovyan/work"
+home = "{env_name}/home"
 
 [watch]
 enabled = true
 workspace_mode = "bind"
 ignore = [".jovy/", ".git/", ".venv/", "__pycache__/", ".mypy_cache/", ".pytest_cache/", ".ruff_cache/"]
-rebuild = ["jovy.lock", "Containerfile"]
-restart = ["jovy.toml"]
+rebuild = ["../jovy.lock", "Containerfile"]
+restart = []
 poll_interval_seconds = 1.0
 
 [python]

@@ -54,6 +54,7 @@ class ConfigEditorValues:
     jupyter_log_level: str
     jupyter_lab: bool
     work_mount: str
+    home_path: str
     watch_enabled: bool
     watch_workspace_mode: str
     python_packages: list[str]
@@ -92,6 +93,7 @@ SCALAR_FIELDS = (
     ConfigField("jupyter_log_level", "Jupyter log level", "choice", LOG_LEVEL_CHOICES),
     ConfigField("jupyter_lab", "JupyterLab enabled", "bool"),
     ConfigField("work_mount", "Container work mount"),
+    ConfigField("home_path", "Host home path"),
     ConfigField("watch_enabled", "Config watch enabled", "bool"),
     ConfigField(
         "watch_workspace_mode",
@@ -111,6 +113,7 @@ EDITOR_FIELDS = (
 def values_from_config(config: JovyConfig) -> ConfigEditorValues:
     """Return editor values from a loaded config."""
     project_environment = _read_project_environment(config.config_path)
+    home_path = _read_mount_value(config.config_path, "home")
     return ConfigEditorValues(
         project_name=config.project_name,
         workdir=project_environment or config.project_root.name,
@@ -124,6 +127,7 @@ def values_from_config(config: JovyConfig) -> ConfigEditorValues:
         jupyter_log_level=config.jupyter_log_level,
         jupyter_lab=config.jupyter_lab,
         work_mount=config.work_mount,
+        home_path=home_path or str(config.home_path),
         watch_enabled=config.watch_enabled,
         watch_workspace_mode=config.watch_workspace_mode,
         python_packages=config.python_packages,
@@ -168,10 +172,9 @@ def save_config_values(
     config: JovyConfig,
     values: ConfigEditorValues,
     *,
-    apply_now: bool,
     emit: commands.Emitter = commands.noop_emit,
 ) -> ConfigEditResult:
-    """Save edited values and optionally apply them immediately."""
+    """Save edited values."""
     _validate_values(values)
     original = config.config_path.read_text(encoding="utf-8")
     data = tomlkit.parse(original)
@@ -184,10 +187,6 @@ def save_config_values(
     saved_config = load_config(config.env_dir)
     if build_affecting_changed:
         commands.clear_build_state(saved_config.env_dir)
-
-    if apply_now:
-        commands.install(saved_config, emit=emit, stream=True)
-    elif build_affecting_changed:
         emit(
             "Saved jovy.toml. Run jovy install, jovy run, or jovy up to apply changes."
         )
@@ -234,7 +233,7 @@ def run_keyboard_config_editor(
     config = commands.load_env(env, emit=output)
     values = values_from_config(config)
     selected = 0
-    status = "Use arrow keys. Press Enter to edit, s to save, a to apply, q to quit."
+    status = "Use arrow keys. Press Enter to edit, s to save, q to quit."
     key_reader = key_func or _read_key
     while True:
         _render_editor(values, selected, status, output)
@@ -256,16 +255,13 @@ def run_keyboard_config_editor(
                 )
                 status = f"Updated {EDITOR_FIELDS[selected].key}."
             elif key == "s":
-                save_config_values(config, values, apply_now=False, emit=output)
+                save_config_values(config, values, emit=output)
                 return "saved"
-            elif key == "a":
-                save_config_values(config, values, apply_now=True, emit=output)
-                return "applied"
             elif key in {"q", "escape"}:
                 output("Cancelled.")
                 return "cancelled"
             else:
-                status = "Use up/down, left/right, Enter, s, a, or q."
+                status = "Use up/down, left/right, Enter, s, or q."
         except JovyKitError as exc:
             status = f"Error: {exc}"
 
@@ -301,7 +297,6 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
         ("right", "cycle_right", "Cycle right"),
         ("enter", "edit_selected", "Edit"),
         ("w", "save", "Save"),
-        ("a", "apply", "Apply"),
     ]
 
     def __init__(self, *, env: Path | None = None) -> None:
@@ -426,11 +421,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
 
     def action_save(self) -> None:
         """Save edited values without closing the editor."""
-        self._save(apply_now=False, close=False)
-
-    def action_apply(self) -> None:
-        """Save, apply edited values, and exit."""
-        self._save(apply_now=True, close=True)
+        self._save(close=False)
 
     def action_cancel(self) -> None:
         """Cancel editing."""
@@ -446,9 +437,7 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             return
         if self.dirty and not self.discard_prompt:
             self.discard_prompt = True
-            self.status = (
-                "Unsaved changes. Press w to save, a to apply, or q again to discard."
-            )
+            self.status = "Unsaved changes. Press w to save, or q again to discard."
             self._refresh()
             return
         self.dismiss("cancelled")
@@ -478,14 +467,13 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             self._append(f"[bold red][Error][/bold red] {_escape_markup(str(exc))}")
         self._refresh()
 
-    def _save(self, *, apply_now: bool, close: bool = True) -> None:
+    def _save(self, *, close: bool = True) -> None:
         if self.config is None or self.values is None:
             return
         try:
             save_config_values(
                 self.config,
                 self.values,
-                apply_now=apply_now,
                 emit=lambda line: self._append(_escape_markup(line)),
             )
         except JovyKitError as exc:
@@ -495,10 +483,10 @@ class JovyKitConfigEditorScreen(Screen[str | None]):
             return
         self.dirty = False
         self.discard_prompt = False
-        self.status = "Saved." if not apply_now else "Applied."
+        self.status = "Saved."
         self._refresh()
         if close:
-            self.dismiss("applied" if apply_now else "saved")
+            self.dismiss("saved")
 
     def _refresh(self) -> None:
         self.query_one("#fields", Static).update(
@@ -683,7 +671,7 @@ def _render_textual_fields(
     body.add_row("")
     body.add_row(
         Text(
-            "q quit | w save | a apply | arrows move | Enter edit",
+            "q quit | w save | arrows move | Enter edit",
             style="dim #666666" if not dirty else "bold #f37726",
         )
     )
@@ -782,7 +770,7 @@ def _render_editor(
         )
 
     hint = Text(
-        "Up/down move | left/right cycle | Enter edit | s save | a apply | q quit",
+        "Up/down move | left/right cycle | Enter edit | s save | q quit",
         style="dim",
     )
     status_style = "bold red" if status.startswith("Error:") else "cyan"
@@ -1012,6 +1000,10 @@ def _replace_editor_value(
         if not isinstance(value, str):
             raise JovyKitError("work_mount must be a string.")
         return replace(values, work_mount=value)
+    if key == "home_path":
+        if not isinstance(value, str):
+            raise JovyKitError("home_path must be a string.")
+        return replace(values, home_path=value)
     if key == "watch_workspace_mode":
         if not isinstance(value, str):
             raise JovyKitError("watch_workspace_mode must be a string.")
@@ -1095,6 +1087,8 @@ def _validate_values(values: ConfigEditorValues) -> None:
     )
     if not values.work_mount.startswith("/"):
         raise JovyKitError("Work mount must be an absolute container path.")
+    if not values.home_path:
+        raise JovyKitError("Home path cannot be empty.")
 
 
 def _validate_choice(name: str, value: str, choices: tuple[str, ...]) -> None:
@@ -1121,6 +1115,7 @@ def _apply_values(data: tomlkit.TOMLDocument, values: ConfigEditorValues) -> Non
     _table(data, "jupyter")["log_level"] = values.jupyter_log_level
     _table(data, "jupyter")["lab"] = values.jupyter_lab
     _table(data, "mounts")["work"] = values.work_mount
+    _table(data, "mounts")["home"] = values.home_path
     _table(data, "watch")["enabled"] = values.watch_enabled
     _table(data, "watch")["workspace_mode"] = values.watch_workspace_mode
     _table(data, "python")["packages"] = values.python_packages
@@ -1165,3 +1160,15 @@ def _read_project_environment(config_path: Path) -> str | None:
         return None
     environment = project.get("workdir")
     return str(environment) if environment is not None else None
+
+
+def _read_mount_value(config_path: Path, key: str) -> str | None:
+    try:
+        data = tomlkit.parse(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    mounts = data.get("mounts", {})
+    if not isinstance(mounts, dict):
+        return None
+    value = mounts.get(key)
+    return str(value) if value is not None else None

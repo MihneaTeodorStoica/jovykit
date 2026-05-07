@@ -11,6 +11,10 @@ from jovykit.templates import render_compose, render_containerfile
 def write_generated_files(config: JovyConfig) -> None:
     """Write generated files that are intentionally readable."""
     config.env_dir.mkdir(parents=True, exist_ok=True)
+    config.home_path.mkdir(parents=True, exist_ok=True)
+    ssh_dir = config.home_path / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+    ssh_dir.chmod(0o700)
     (config.env_dir / "Containerfile").write_text(
         render_containerfile(config),
         encoding="utf-8",
@@ -20,7 +24,7 @@ def write_generated_files(config: JovyConfig) -> None:
         encoding="utf-8",
     )
     (config.env_dir / ".gitignore").write_text(
-        "state.json\nwatcher.pid\nwatcher.log\n.generated/\n",
+        "state.json\nwatcher.pid\nwatcher.log\n.generated/\nhome/\n",
         encoding="utf-8",
     )
 

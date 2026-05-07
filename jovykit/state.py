@@ -28,7 +28,7 @@ class EnvironmentStatus:
     port: str
     url: str
     package_count: int
-    volume: str
+    home_mount: str
     last_error: str | None = None
 
     @property
@@ -56,7 +56,7 @@ def discover_status(env: Path | None = None) -> EnvironmentStatus:
             port="unavailable",
             url="unavailable",
             package_count=0,
-            volume="unavailable",
+            home_mount="unavailable",
             last_error=str(exc),
         )
     return status_from_config(config)
@@ -83,7 +83,7 @@ def status_from_config(config: JovyConfig) -> EnvironmentStatus:
         port=f"127.0.0.1:{config.port}",
         url=_url(config),
         package_count=len(config.python_packages),
-        volume=f"{config.project_name.lower().replace(' ', '-')}-jovykit-home",
+        home_mount=str(config.home_path),
         last_error=last_error,
     )
 

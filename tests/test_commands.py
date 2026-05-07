@@ -285,16 +285,17 @@ def test_lifecycle_commands_support_streaming_compose(
         commands, "stop_watcher", lambda env_dir: watcher_stops.append(env_dir)
     )
 
-    commands.up(stream=True, emit=lambda line: None)
-    commands.down(timeout=3, stream=True, emit=lambda line: None)
-    commands.restart(no_build=True, timeout=4, stream=True, emit=lambda line: None)
+    messages: list[str] = []
+    commands.up(stream=True, emit=messages.append)
+    commands.down(timeout=3, stream=True, emit=messages.append)
+    commands.restart(no_build=True, timeout=4, stream=True, emit=messages.append)
     commands.logs(
         tail="10",
         since="5m",
         timestamps=True,
         follow=True,
         stream=True,
-        emit=lambda line: None,
+        emit=messages.append,
     )
 
     assert compose_calls == [
@@ -304,6 +305,10 @@ def test_lifecycle_commands_support_streaming_compose(
         (("up", "-d"), False, True),
         (("logs", "--tail", "10", "--since", "5m", "--timestamps", "-f"), False, True),
     ]
+    assert "Starting JovyKit environment..." in messages
+    assert "Stopping JovyKit environment..." in messages
+    assert "JovyKit environment stopped." in messages
+    assert "Restarting JovyKit environment..." in messages
     assert watcher_starts == [project.env_dir, project.env_dir]
     assert watcher_stops == [project.env_dir, project.env_dir]
 
@@ -357,5 +362,9 @@ def test_status_emits_human_readable_lines(
         "Port: 9999",
         "URL: http://127.0.0.1:9999/lab?token=jovykit",
         "GPU: none",
+        f"Work mount: {project.config.project_root}",
+        f"Home mount: {project.config.home_path}",
+        "Packages: 0",
+        "Destroy preserves home: yes",
         "Build stale: no",
     ]

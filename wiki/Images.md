@@ -15,7 +15,7 @@ ghcr.io/mihneateodorstoica/jovykit-full:latest
 
 The image publishing workflow may also publish `nightly` and `lts` tags.
 
-The CLI maps friendly names to the `latest` tags:
+`jovy init` accepts these friendly names and maps them to the `latest` images:
 
 | CLI value | Image |
 | --- | --- |
@@ -55,7 +55,7 @@ small generated overlay image:
 
 ```text
 .jovy/Containerfile
-.jovy/jovy.lock
+jovy.lock
 ```
 
 The overlay image starts from the configured base image, copies the project
@@ -94,6 +94,9 @@ Build the current project's overlay image:
 jovy build
 jovy build --no-cache --pull
 ```
+
+Use `--no-cache` when the image cache is stale, and `--pull` to refresh base
+images before build.
 
 ## Customize project builds
 

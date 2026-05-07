@@ -40,7 +40,10 @@ WORKDIR ${{HOME}}/work
 
 def render_compose(config: JovyConfig) -> str:
     """Render the Docker Compose file for a JovyKit environment."""
-    build: dict[str, Any] = {"context": ".", "dockerfile": "Containerfile"}
+    build: dict[str, Any] = {
+        "context": config.compose_project_path("."),
+        "dockerfile": f"{config.env_dir.name}/Containerfile",
+    }
     if config.image_target:
         build["target"] = config.image_target
     if config.image_platform:
@@ -55,9 +58,9 @@ def render_compose(config: JovyConfig) -> str:
         **config.runtime_env,
     }
 
-    volumes = ["jovykit-home:/home/jovyan"]
+    volumes = [f"{_compose_bind_source(config.compose_home_path)}:/home/jovyan"]
     if config.watch_workspace_mode == "bind":
-        volumes.insert(0, f"{config.compose_workdir}:{config.work_mount}")
+        volumes.append(f"{config.compose_workdir}:{config.work_mount}")
     volumes.extend(
         f"{host_path}:{container_path}"
         for host_path, container_path in config.runtime_volumes.items()
@@ -66,7 +69,7 @@ def render_compose(config: JovyConfig) -> str:
     service: dict[str, Any] = {
         "image": config.image_ref,
         "build": build,
-        "ports": [f"127.0.0.1:{config.port}:8888"],
+        "ports": ["127.0.0.1:22:22", f"127.0.0.1:{config.port}:8888"],
         "environment": environment,
         "volumes": volumes,
         "working_dir": config.work_mount,
@@ -91,7 +94,15 @@ def render_compose(config: JovyConfig) -> str:
                 }
             )
         watch_rules.extend(
-            {"action": "rebuild", "path": path} for path in config.watch_rebuild
+            {
+                "action": "rebuild",
+                "path": (
+                    config.compose_project_path("jovy.lock")
+                    if path == "jovy.lock"
+                    else path
+                ),
+            }
+            for path in config.watch_rebuild
         )
         watch_rules.extend(
             {
@@ -118,5 +129,12 @@ def render_compose(config: JovyConfig) -> str:
             }
         }
 
-    compose = {"services": {"jovy": service}, "volumes": {"jovykit-home": None}}
+    compose = {"services": {"jovy": service}}
     return yaml.safe_dump(compose, sort_keys=False)
+
+
+def _compose_bind_source(path: str) -> str:
+    """Return a Compose bind source that cannot be parsed as a named volume."""
+    if path.startswith(("/", "./", "../", "~")):
+        return path
+    return f"./{path}"

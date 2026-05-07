@@ -57,7 +57,6 @@ def test_save_config_values_preserves_advanced_toml_and_clears_build_state(
     result = save_config_values(
         project.config,
         edited,
-        apply_now=False,
         emit=messages.append,
     )
 
@@ -72,24 +71,6 @@ def test_save_config_values_preserves_advanced_toml_and_clears_build_state(
     assert "jovy install" in messages[-1]
 
 
-def test_save_config_values_can_apply_immediately(
-    monkeypatch: pytest.MonkeyPatch,
-    create_project: Any,
-) -> None:
-    project = create_project()
-    values = values_from_config(project.config)
-    calls: list[str] = []
-
-    monkeypatch.setattr(
-        "jovykit.config_editor.commands.install",
-        lambda config, **kwargs: calls.append(config.image_ref),
-    )
-
-    save_config_values(project.config, values, apply_now=True)
-
-    assert calls == [project.config.image_ref]
-
-
 def test_save_config_values_rejects_invalid_restricted_choice(
     create_project: Any,
 ) -> None:
@@ -98,7 +79,7 @@ def test_save_config_values_rejects_invalid_restricted_choice(
     edited = ConfigEditorValues(**{**values.__dict__, "gpus": "sometimes"})
 
     with pytest.raises(JovyKitError, match="GPU mode"):
-        save_config_values(project.config, edited, apply_now=False)
+        save_config_values(project.config, edited)
 
 
 def test_parse_mapping_lines_requires_key_value_syntax() -> None:
@@ -147,7 +128,7 @@ def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
             "enter",
             *["up"] * 3,
             "enter",
-            *["down"] * 10,
+            *["down"] * 11,
             "right",
             *["down"] * 2,
             "enter",
@@ -201,18 +182,13 @@ def test_keyboard_editor_reports_errors_and_can_cancel(create_project: Any) -> N
     assert any("GPU mode" in message for message in messages)
 
 
-def test_keyboard_editor_cycles_choice_and_applies(
+def test_keyboard_editor_cycles_choice_and_saves(
     monkeypatch: pytest.MonkeyPatch,
     create_project: Any,
 ) -> None:
     project = create_project()
-    keys = iter([*["down"] * 6, "right", "a"])
+    keys = iter([*["down"] * 6, "right", "s"])
     messages: list[str] = []
-    installed: list[str] = []
-    monkeypatch.setattr(
-        "jovykit.config_editor.commands.install",
-        lambda config, **kwargs: installed.append(config.gpus),
-    )
 
     result = run_config_editor(
         env=project.env_dir,
@@ -220,8 +196,7 @@ def test_keyboard_editor_cycles_choice_and_applies(
         output=messages.append,
     )
 
-    assert result == "applied"
-    assert installed == ["all"]
+    assert result == "saved"
 
 
 def test_keyboard_editor_reports_unknown_key(create_project: Any) -> None:
@@ -247,7 +222,7 @@ def test_inline_empty_values_clear_mappings(create_project: Any) -> None:
             '[runtime.volumes]\n"./data" = "/data"',
         )
     )
-    keys = iter([*["down"] * 14, "enter", "down", "enter", "s"])
+    keys = iter([*["down"] * 15, "enter", "down", "enter", "s"])
     inputs = iter(["-", "-"])
 
     result = run_config_editor(
@@ -508,7 +483,7 @@ def test_textual_editor_actions_noop_without_values() -> None:
     app.action_previous_field()
     app.action_cycle_left()
     app.action_cycle_right()
-    app._save(apply_now=False)
+    app._save()
 
     assert app.selected == 0
 
@@ -589,6 +564,7 @@ def test_textual_editor_quit_prompts_to_save_when_dirty(
         jupyter_log_level="ERROR",
         jupyter_lab=True,
         work_mount="/work",
+        home_path=".jovy/home",
         watch_enabled=True,
         watch_workspace_mode="bind",
         python_packages=[],
@@ -631,21 +607,20 @@ def test_textual_editor_save_paths(
     monkeypatch.setattr(app, "_refresh", lambda: messages.append("refresh"))
     monkeypatch.setattr(
         "jovykit.config_editor.save_config_values",
-        lambda *_args, **kwargs: saved.append(kwargs["apply_now"]),
+        lambda *_args, **kwargs: saved.append(True),
     )
 
     app.action_save()
-    app.action_apply()
 
-    assert exits == ["applied"]
-    assert saved == [False, True]
-    assert app.status == "Applied."
+    assert exits == []
+    assert saved == [True]
+    assert app.status == "Saved."
 
     def fail_save(*_args: object, **_kwargs: object) -> object:
         raise JovyKitError("bad save")
 
     monkeypatch.setattr("jovykit.config_editor.save_config_values", fail_save)
-    app._save(apply_now=False)
+    app._save()
 
     assert "Error: bad save" == app.status
     assert any("bad save" in message for message in messages)
@@ -701,7 +676,18 @@ def test_render_textual_fields_shows_keybind_legend(create_project: Any) -> None
     console.print(rendered)
 
     text = console.export_text()
-    assert "q quit | w save | a apply | arrows move | Enter edit" in text
+    assert "q quit | w save | arrows move | Enter edit" in text
+
+
+def test_textual_config_editor_has_no_dead_apply_binding() -> None:
+    bindings = {
+        cast(tuple[str, str, str], binding)[0]: cast(tuple[str, str, str], binding)[1]
+        for binding in JovyKitConfigEditorScreen.BINDINGS
+    }
+
+    assert bindings["w"] == "save"
+    assert "a" not in bindings
+    assert not hasattr(JovyKitConfigEditorScreen, "action_apply")
 
 
 def test_render_textual_fields_adopts_dark_theme_styles(
@@ -753,6 +739,7 @@ def test_scalar_editor_validation_helpers(create_project: Any) -> None:
         ("jupyter_token", "secret", "jupyter_token"),
         ("jupyter_log_level", "DEBUG", "jupyter_log_level"),
         ("work_mount", "/workspace", "work_mount"),
+        ("home_path", ".jovy/custom-home", "home_path"),
         ("watch_workspace_mode", "sync", "watch_workspace_mode"),
         ("port", 9999, "port"),
         ("jupyter_lab", False, "jupyter_lab"),
@@ -782,6 +769,7 @@ def test_replace_editor_value_updates_supported_fields(
         ("port", "8888", "port"),
         ("jupyter_lab", "true", "jupyter_lab"),
         ("watch_enabled", "false", "watch_enabled"),
+        ("home_path", 123, "home_path"),
         ("python_packages", "numpy", "python_packages"),
         ("runtime_env", ["API_URL=value"], "runtime_env"),
         ("runtime_volumes", ["./data=/data"], "runtime_volumes"),
@@ -810,6 +798,7 @@ def test_replace_editor_value_rejects_invalid_values(
         ({"image_tag": ""}, "Image tag"),
         ({"port": 0}, "Port"),
         ({"work_mount": "relative"}, "Work mount"),
+        ({"home_path": ""}, "Home path"),
     ],
 )
 def test_validate_values_rejects_invalid_required_fields(

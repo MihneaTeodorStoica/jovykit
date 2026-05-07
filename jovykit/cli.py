@@ -168,9 +168,14 @@ def build(
     pull: bool = typer.Option(
         False, "--pull", help="Always attempt to pull base image."
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show subprocess output."
+    ),
 ) -> None:
     """Build the project overlay image."""
-    command_ops.build(env=env, no_cache=no_cache, pull=pull, emit=console.print)
+    command_ops.build(
+        env=env, no_cache=no_cache, pull=pull, emit=console.print, verbose=verbose
+    )
 
 
 @app.command()
@@ -200,6 +205,17 @@ def up(
     command_ops.up(env=env, no_build=no_build, emit=console.print)
 
 
+@app.command("start")
+def start(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+    no_build: bool = typer.Option(False, "--no-build", help="Skip stale build check."),
+) -> None:
+    """Alias for up."""
+    command_ops.up(env=env, no_build=no_build, emit=console.print)
+
+
 @app.command()
 def down(
     env: Path | None = typer.Option(
@@ -210,6 +226,19 @@ def down(
     ),
 ) -> None:
     """Stop the JovyKit environment."""
+    command_ops.down(env=env, timeout=timeout, emit=console.print)
+
+
+@app.command("stop")
+def stop(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+    timeout: int | None = typer.Option(
+        None, "--timeout", help="Seconds to wait before killing containers."
+    ),
+) -> None:
+    """Alias for down."""
     command_ops.down(env=env, timeout=timeout, emit=console.print)
 
 
@@ -292,16 +321,41 @@ def destroy(
     env: Path | None = typer.Option(
         None, "--env", help="JovyKit environment directory."
     ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the confirmation prompt."
+    ),
+    purge: bool = typer.Option(
+        False, "--purge", help="Also delete persisted home data."
+    ),
     remove_dir: bool = typer.Option(
-        False, "--remove-dir", help="Also delete the environment directory."
+        False,
+        "--remove-dir",
+        help="Deprecated. With --purge, also delete the environment directory.",
     ),
     keep_image: bool = typer.Option(
         False, "--keep-image", help="Keep the project overlay image."
     ),
 ) -> None:
-    """Remove the container, volume, and project overlay image."""
+    """Remove runtime resources while preserving home data by default."""
+    config = command_ops.load_env(env, emit=console.print)
+    if not yes:
+        if purge:
+            prompt = (
+                f"Destroy this JovyKit environment and permanently delete "
+                f"home data at {config.home_path}?"
+            )
+        else:
+            prompt = (
+                f"Destroy this JovyKit environment? "
+                f"Home data at {config.home_path} will be preserved."
+            )
+        confirmed = typer.confirm(prompt)
+        if not confirmed:
+            console.print("Destroy cancelled.")
+            raise typer.Exit()
     command_ops.destroy(
-        env=env,
+        env=config.env_dir,
+        purge=purge,
         remove_dir=remove_dir,
         keep_image=keep_image,
         emit=console.print,

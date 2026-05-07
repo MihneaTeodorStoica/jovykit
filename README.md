@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
-  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-4.3.0-ff5a00"></a>
+  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-5.0.0-ff5a00"></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-0a9e9a">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f3133"></a>
   <a href="https://mihneateodorstoica.github.io/jovykit/"><img alt="Website" src="https://img.shields.io/badge/site-live-ff5a00"></a>
@@ -39,7 +39,14 @@ debugging.
 - Choose notebook image layers from `minimal`, `base`, `extended`, and `full`.
 - Use a terminal dashboard for interactive project operations.
 
-## Quick Start
+## Install
+
+### Requirements
+
+- Docker Engine and Docker Compose support
+- Python 3.11+
+
+### Local install
 
 Install from a local checkout:
 
@@ -47,7 +54,16 @@ Install from a local checkout:
 python -m pip install -e .
 ```
 
-Create an environment, add packages, and run JupyterLab:
+Verify the CLI is available:
+
+```bash
+python -m pip install -e .
+jovy --version
+```
+
+## Quick Start
+
+These commands are enough for your first environment:
 
 ```bash
 jovy init .jovy --image base --gpus auto
@@ -56,29 +72,50 @@ jovy install
 jovy run
 ```
 
-JovyKit prints the local JupyterLab URL. The default token is `jovykit`.
+JovyKit prints the local JupyterLab URL. By default the token is `jovykit`.
 
-## Daily Commands
+## Common workflows
+
+Use these command groups when moving day-to-day:
+
+### Initialize + dependencies
 
 ```bash
-jovy                  # open the terminal dashboard
-jovy status
-jovy status --json
-jovy add -r requirements.txt
-jovy install --upgrade
-jovy up
+jovy init .jovy --image base --gpus auto --port 8888
+jovy add pandas scikit-learn
+jovy remove plotly
+jovy install
+```
+
+`jovy add` and `jovy remove` only update `jovy.toml`. `jovy install` is what
+applies the manifest change to the generated overlay image.
+
+### Start, stop, and iterate
+
+```bash
+jovy run       # foreground, logs streamed
+jovy up        # detached/background
+jovy down      # stop detached environment
+jovy restart   # rebuild if needed and restart
+jovy status    # quick health check
+```
+
+`jovy start` and `jovy stop` are aliases for `jovy up` and `jovy down`.
+
+### Work inside and clean up
+
+```bash
 jovy logs --tail 100 --since 10m --timestamps
-jovy shell -c "python --version"
+jovy shell --command "python --version"
 jovy exec python --version
-jovy down --timeout 10
-jovy clean
+jovy clean              # remove generated state
 jovy destroy --keep-image
 ```
 
-Most commands accept `--env PATH` when you want to operate on a project outside
-the current directory tree.
+When working outside the project directory, most commands accept `--env PATH` to
+target a specific environment directory.
 
-## What It Creates
+## What JovyKit creates
 
 ```text
 jovy.toml
@@ -92,6 +129,19 @@ work/
 
 `jovy.toml` is the project manifest. `.jovy/` contains generated local
 environment files and should stay out of version control.
+
+## Dashboard mode
+
+Run `jovy` with no subcommand to open the terminal dashboard:
+
+```bash
+jovy
+```
+
+The dashboard is great for local, interactive operations. It supports command
+entry, status refresh, log snapshots, and host shell escape (`!pwd`) commands.
+`jovy run` and `jovy logs` are intentionally unavailable in the dashboard so
+you can keep long-running sessions predictable.
 
 ## Image Layers
 
@@ -126,9 +176,16 @@ docker build --target full -t jovykit-full ./image
 
 ## Configuration
 
-`jovy.toml` can customize runtime environment variables, extra volumes, restart
-policy, Jupyter command/logging, Compose Watch behavior, image build arguments,
-build target/platform, apt packages, and uv/pip install options.
+`jovy.toml` can customize runtime environment variables, extra volumes, home and
+work mounts, restart policy, Jupyter command/logging, Compose Watch behavior,
+image build arguments, build target/platform, apt packages, and uv/pip install
+options.
+
+JovyKit mounts `.jovy/home/` as `/home/jovyan` by default. Normal `clean` and
+`destroy` runs preserve that folder, so SSH config, Jupyter config, shell
+history, and other dotfiles are not thrown away by routine lifecycle commands.
+Use `jovy destroy --purge` when you intentionally want to delete the persisted
+home data.
 
 Use the arrow-key editor:
 
@@ -142,7 +199,32 @@ or open the dashboard and run:
 config
 ```
 
-## Repository Layout
+Textual config editor keys:
+
+- `up` / `down` move between fields
+- `left` / `right` cycle boolean and choice values
+- `enter` edits or confirms a field
+- `w` save in place and keep the editor open
+- `q` / `escape` cancel (with discard confirmation when unsaved)
+
+## Testing and contribution checks
+
+Stable check commands:
+
+```bash
+ruff check .
+black --check .
+mypy jovykit tests main.py
+pytest --cov=jovykit --cov-report=term-missing --cov-fail-under=90
+```
+
+Docker-oriented checks are intentionally opt-in:
+
+```bash
+pytest -m docker --run-docker
+```
+
+## Repository layout
 
 ```text
 jovykit/              Python CLI package
@@ -159,19 +241,14 @@ documentation lives in the
 [GitHub Wiki](https://github.com/MihneaTeodorStoica/jovykit/wiki), with source
 pages in `wiki/`.
 
-## Testing
+## Troubleshooting
 
-Run the deterministic test suite with coverage:
-
-```bash
-pytest --cov=jovykit --cov-report=term-missing --cov-fail-under=90
-```
-
-Docker-facing smoke tests are opt-in:
-
-```bash
-pytest -m docker --run-docker
-```
+- If `jovy` says "not a JovyKit project", run `jovy init` in the project root
+  or pass `--env` to point at an existing `.jovy` path.
+- If Jupyter URL does not open, verify Docker is running and `jovy status` shows
+  `running: true`.
+- If dependency changes do not take effect, rerun `jovy install` after editing
+  `jovy.toml`.
 
 ## Contributing
 

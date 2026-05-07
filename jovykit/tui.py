@@ -20,14 +20,19 @@ from jovykit import commands
 from jovykit.config import JovyKitError, read_state, write_state
 from jovykit.runtime import compose_logs, run_host_command
 from jovykit.state import EnvironmentStatus, discover_status
-from jovykit.tui_commands import ParsedTuiCommand, TuiCommandKind, parse_tui_command
+from jovykit.tui_commands import (
+    COMMAND_SPECS,
+    ParsedTuiCommand,
+    TuiCommandKind,
+    parse_tui_command,
+)
 
 
 class SelectableLog(RichLog):
     """Rich log that permits selection without stealing command focus."""
 
     ALLOW_SELECT = True
-    FOCUS_ON_CLICK = False
+    FOCUS_ON_CLICK = True
 
     def __init__(
         self,
@@ -76,7 +81,7 @@ def _status_key(status: EnvironmentStatus) -> tuple[object, ...]:
         status.port,
         status.url,
         status.package_count,
-        status.volume,
+        status.home_mount,
         status.last_error,
     )
 
@@ -125,9 +130,10 @@ class JovyKitDashboard(App[None]):
     """
 
     BINDINGS = [
-        ("ctrl+c", "quit_or_copy", "Copy/Quit"),
+        ("ctrl+c", "clear_or_quit", "Clear/Quit"),
         ("ctrl+q", "quit", "Quit"),
         ("ctrl+l", "clear_logs", "Clear logs"),
+        ("tab", "toggle_log_focus", "Toggle log/input focus"),
     ]
 
     def __init__(self, *, env: Path | None = None) -> None:
@@ -162,7 +168,6 @@ class JovyKitDashboard(App[None]):
         )
         self.refresh_status()
         self.set_interval(4, self.refresh_status)
-        self.set_interval(5, self.refresh_logs)
 
     @on(Input.Submitted, "#command")
     async def on_command_submitted(self, event: Input.Submitted) -> None:
@@ -179,12 +184,24 @@ class JovyKitDashboard(App[None]):
         """Clear visible dashboard logs."""
         self.query_one(RichLog).clear()
 
-    def action_quit_or_copy(self) -> None:
-        """Copy selected text when present, otherwise quit the dashboard."""
-        selected = self._selected_text()
-        if selected is not None:
-            self.copy_to_clipboard(selected)
+    def action_clear_or_quit(self) -> None:
+        """Clear command text when present, otherwise quit the dashboard."""
+        command = self.query_one(Input)
+        if command.value:
+            command.clear()
             return
+        self.exit()
+
+    def action_toggle_log_focus(self) -> None:
+        """Toggle focus between command input and log panel."""
+        if self.focused is self.query_one(RichLog):
+            self.query_one(Input).focus()
+            return
+        self.query_one(RichLog).focus()
+
+    async def action_quit(self) -> None:
+        """Exit quickly by cancelling background work first."""
+        self.workers.cancel_all()
         self.exit()
 
     def refresh_status(self) -> None:
@@ -201,7 +218,12 @@ class JovyKitDashboard(App[None]):
         status = self._last_status
         if self._command_running:
             return
-        if status is None or not status.is_running or status.env_dir is None:
+        if status is None:
+            return
+        if not status.is_running:
+            self._last_log_snapshot = ""
+            return
+        if status.env_dir is None:
             return
         try:
             config = commands.load_env(self.env)
@@ -219,6 +241,9 @@ class JovyKitDashboard(App[None]):
         if parsed.kind is TuiCommandKind.UNKNOWN:
             self._append_error(parsed.message or "Unknown command")
             return
+        if parsed.kind is TuiCommandKind.BLOCKED:
+            self._append_error(parsed.message or "Command is not available here.")
+            return
         if parsed.kind is TuiCommandKind.LOCAL:
             await self._handle_local(parsed)
             return
@@ -230,13 +255,16 @@ class JovyKitDashboard(App[None]):
         if parsed.kind is TuiCommandKind.HOST:
             self.run_worker(self._run_host(parsed.args), exclusive=False)
             return
-        if parsed.name == "config":
+        if parsed.spec is not None and parsed.spec.opens_screen:
             self._open_config_screen()
             return
-        if parsed.name == "shell" and not parsed.args:
+        if parsed.spec is not None and parsed.spec.suspend_app and not parsed.args:
             await self._run_suspended(parsed)
             return
-        self.run_worker(self._run_jovy(parsed), exclusive=False)
+        if parsed.spec is not None and parsed.spec.run_in_worker:
+            self.run_worker(self._run_jovy(parsed), exclusive=False)
+            return
+        await self._run_jovy(parsed)
 
     async def _handle_local(self, parsed: ParsedTuiCommand) -> None:
         if parsed.name in {"quit", "exit"}:
@@ -268,8 +296,13 @@ class JovyKitDashboard(App[None]):
                 cwd=Path.cwd(),
                 log=lambda line: self.call_from_thread(self._append, line),
             )
+            self._clear_last_error()
+        except Exception as exc:
+            self._record_last_error(str(exc))
+            self._append_error(str(exc))
         finally:
             self._set_command_running(False)
+            self.refresh_status()
 
     async def _run_jovy(self, parsed: ParsedTuiCommand) -> None:
         self._set_command_running(True)
@@ -312,6 +345,7 @@ class JovyKitDashboard(App[None]):
                 gpus=_option_value(args, "--gpus", "auto"),
                 port=_option_int(args, "--port") or 8888,
                 token=_option_value(args, "--token", commands.DEFAULT_JUPYTER_TOKEN),
+                log_level=_option_value(args, "--log-level", "ERROR"),
                 project_name=_option_value(args, "--name", "") or None,
                 image_name=_option_value(args, "--image-name", "") or None,
                 image_tag=_option_value(args, "--tag", "local"),
@@ -333,39 +367,29 @@ class JovyKitDashboard(App[None]):
                 stream=True,
             )
         elif name == "build":
+            verbose = "--verbose" in args or "-v" in args
             commands.build(
                 no_cache="--no-cache" in args,
                 pull="--pull" in args,
                 emit=emit,
-                stream=True,
-            )
-        elif name == "run":
-            raise JovyKitError(
-                "The run command is not available inside the dashboard. "
-                "Use up, or run jovy run from your shell."
+                stream=verbose,
+                verbose=verbose,
             )
         elif name == "up":
-            commands.up(no_build="--no-build" in args, emit=emit, stream=True)
+            commands.up(no_build="--no-build" in args, emit=emit, stream=False)
         elif name == "down":
             commands.down(
-                timeout=_option_int(args, "--timeout"), emit=emit, stream=True
+                timeout=_option_int(args, "--timeout"), emit=emit, stream=False
             )
         elif name == "restart":
             commands.restart(
                 no_build="--no-build" in args,
                 timeout=_option_int(args, "--timeout"),
                 emit=emit,
-                stream=True,
-            )
-        elif name == "logs":
-            commands.logs(
-                follow=False,
-                tail=_option_value(args, "--tail", "100"),
-                emit=emit,
-                stream=True,
+                stream=False,
             )
         elif name == "shell":
-            command = " ".join(shlex.quote(arg) for arg in args) if args else None
+            command = _shell_command(args)
             commands.shell(
                 command=command,
                 emit=emit,
@@ -386,6 +410,8 @@ class JovyKitDashboard(App[None]):
                 emit=emit,
                 stream=True,
             )
+        else:
+            raise JovyKitError(f"Unsupported dashboard command: {name}")
 
     def _open_url(self) -> None:
         status = self._last_status or discover_status(self.env)
@@ -402,7 +428,6 @@ class JovyKitDashboard(App[None]):
             if result:
                 self._append_markup(f"[cyan][JovyKit][/cyan] Config {result}.")
             self.refresh_status()
-            self.refresh_logs()
             self._restore_dashboard_focus()
 
         self.push_screen(JovyKitConfigEditorScreen(env=self.env), on_close)
@@ -427,21 +452,60 @@ class JovyKitDashboard(App[None]):
             write_state(config.env_dir, state)
 
     def _show_help(self) -> None:
+        local_commands = [
+            spec
+            for spec in COMMAND_SPECS
+            if spec.category == "local" and spec.available_in_dashboard
+        ]
+        jovy_commands = [
+            spec
+            for spec in COMMAND_SPECS
+            if spec.category == "jovy" and spec.available_in_dashboard
+        ]
+        blocked_commands = [
+            spec
+            for spec in COMMAND_SPECS
+            if not spec.available_in_dashboard and spec.blocked_hint
+        ]
+        local_line = ", ".join(
+            (
+                spec.name
+                if not spec.aliases
+                else f"{spec.name} ({', '.join(spec.aliases)})"
+            )
+            for spec in local_commands
+        )
+        jovy_line = ", ".join(
+            (
+                spec.name
+                if not spec.aliases
+                else f"{spec.name} ({', '.join(spec.aliases)})"
+            )
+            for spec in jovy_commands
+        )
+        blocked_lines = "\n".join(
+            f"- {spec.name}: {spec.blocked_hint}" for spec in blocked_commands
+        )
         self._append_markup(
-            "[bold cyan]Commands[/bold cyan]\n"
-            "init, add, remove, install, build, up, down, restart, logs, shell, "
-            "exec, status, config, clean, destroy\n"
-            "[bold cyan]Dashboard[/bold cyan]\n"
-            "help, clear, open, refresh, theme, quit, exit\n"
-            "[bold cyan]Host shell[/bold cyan]\n"
-            "!pwd, !ls, !docker ps"
+            "[bold cyan]Dashboard Commands[/bold cyan]\n"
+            f"{jovy_line}\n"
+            "[bold cyan]Local Commands[/bold cyan]\n"
+            f"{local_line}\n"
+            "[bold cyan]Host Commands[/bold cyan]\n"
+            "!<command> e.g. !pwd, !docker ps\n"
+            "[bold cyan]Blocked in Dashboard[/bold cyan]\n"
+            f"{blocked_lines}\n"
+            "[bold cyan]Examples[/bold cyan]\n"
+            "up\nadd numpy pandas\nexec python --version\nconfig\n"
+            "[bold cyan]Keybindings[/bold cyan]\n"
+            "ctrl+c copy selection or quit | ctrl+l clear logs | ctrl+q quit | tab toggle log/input focus"
         )
 
     def _threadsafe_append(self, line: str) -> None:
         self.call_from_thread(self._append, line)
 
     def _append(self, line: str) -> None:
-        self.query_one(RichLog).write(Text(_strip_ansi(line)))
+        self.query_one(RichLog).write(Text.from_ansi(line))
 
     def _append_markup(self, line: str) -> None:
         self.query_one(RichLog).write(Text.from_markup(line))
@@ -493,6 +557,9 @@ def render_status_panel(status: EnvironmentStatus) -> Panel:
     if status.url:
         details.append("\nURL: ", style="bold #e0e0e0")
         details.append(status.url)
+    if status.home_mount:
+        details.append("\nHome: ", style="bold #e0e0e0")
+        details.append(status.home_mount)
     if status.last_error:
         details.append("\nError: ", style="bold #d33c3c")
         details.append(status.last_error)
@@ -528,6 +595,10 @@ def _border_style(status: str) -> str:
 
 
 def _option_value(args: list[str], name: str, default: str) -> str:
+    prefix = f"{name}="
+    for arg in args:
+        if arg.startswith(prefix):
+            return arg[len(prefix) :]
     try:
         index = args.index(name)
     except ValueError:
@@ -571,6 +642,18 @@ def _add_args(args: list[str]) -> tuple[list[str], list[Path]]:
         packages.append(arg)
         index += 1
     return packages, requirement_files
+
+
+def _shell_command(args: list[str]) -> str | None:
+    option_value = _option_value(args, "--command", "")
+    if option_value:
+        return option_value
+    option_value = _option_value(args, "-c", "")
+    if option_value:
+        return option_value
+    if not args:
+        return None
+    return " ".join(shlex.quote(arg) for arg in args)
 
 
 def _snapshot_suffix(previous: str, current: str) -> str:

@@ -1,4 +1,4 @@
-"""Small parser for commands entered in the JovyKit dashboard."""
+"""Command model and parser for the JovyKit dashboard."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import shlex
 from dataclasses import dataclass
 from difflib import get_close_matches
 from enum import Enum
+from typing import Literal
 
 
 class TuiCommandKind(str, Enum):
@@ -15,36 +16,164 @@ class TuiCommandKind(str, Enum):
     HOST = "host"
     JOVY = "jovy"
     LOCAL = "local"
+    BLOCKED = "blocked"
     UNKNOWN = "unknown"
 
 
-JOVY_COMMANDS = {
-    "init",
-    "add",
-    "remove",
-    "install",
-    "build",
-    "up",
-    "down",
-    "restart",
-    "logs",
-    "shell",
-    "exec",
-    "status",
-    "config",
-    "clean",
-    "destroy",
-}
+CommandNamespace = Literal["local", "jovy"]
 
-LOCAL_COMMANDS = {"help", "clear", "open", "refresh", "quit", "exit"}
-BLOCKED_COMMAND_HINTS = {
-    "run": "The run command is not available inside the dashboard. Use up, or run jovy run from your shell.",
-}
-REMOVED_COMMAND_HINTS = {
-    "start": "No primary command named start. Use: up",
-    "stop": "No primary command named stop. Use: down",
-    "sync": "No primary command named sync. Use: install",
-}
+
+@dataclass(frozen=True)
+class DashboardCommandSpec:
+    """Authoritative metadata for a dashboard command."""
+
+    name: str
+    category: CommandNamespace
+    help_text: str
+    usage: str | None = None
+    aliases: tuple[str, ...] = ()
+    available_in_dashboard: bool = True
+    local_only: bool = False
+    run_in_worker: bool = True
+    suspend_app: bool = False
+    opens_screen: bool = False
+    refresh_status_after: bool = True
+    refresh_logs_after: bool = False
+    blocked_hint: str | None = None
+
+
+COMMAND_SPECS: tuple[DashboardCommandSpec, ...] = (
+    DashboardCommandSpec(
+        "help",
+        "local",
+        "Show dashboard command help.",
+        usage="help",
+        local_only=True,
+        run_in_worker=False,
+        refresh_status_after=False,
+    ),
+    DashboardCommandSpec(
+        "clear",
+        "local",
+        "Clear dashboard logs.",
+        usage="clear",
+        local_only=True,
+        run_in_worker=False,
+        refresh_status_after=False,
+    ),
+    DashboardCommandSpec(
+        "open",
+        "local",
+        "Open the current Jupyter URL in a browser.",
+        usage="open",
+        local_only=True,
+        run_in_worker=False,
+        refresh_status_after=False,
+    ),
+    DashboardCommandSpec(
+        "refresh",
+        "local",
+        "Refresh environment status and recent logs now.",
+        usage="refresh",
+        local_only=True,
+        run_in_worker=False,
+        refresh_status_after=True,
+        refresh_logs_after=True,
+    ),
+    DashboardCommandSpec(
+        "quit",
+        "local",
+        "Exit the dashboard.",
+        usage="quit",
+        aliases=("exit",),
+        local_only=True,
+        run_in_worker=False,
+        refresh_status_after=False,
+    ),
+    DashboardCommandSpec("init", "jovy", "Create a JovyKit environment."),
+    DashboardCommandSpec("add", "jovy", "Add Python packages to jovy.toml."),
+    DashboardCommandSpec("remove", "jovy", "Remove Python packages from jovy.toml."),
+    DashboardCommandSpec(
+        "install",
+        "jovy",
+        "Regenerate files and install/build as needed.",
+    ),
+    DashboardCommandSpec("build", "jovy", "Build the project overlay image."),
+    DashboardCommandSpec(
+        "up",
+        "jovy",
+        "Start Jupyter in the background.",
+        aliases=("start",),
+    ),
+    DashboardCommandSpec(
+        "down",
+        "jovy",
+        "Stop the background environment.",
+        aliases=("stop",),
+    ),
+    DashboardCommandSpec("restart", "jovy", "Restart the background environment."),
+    DashboardCommandSpec(
+        "shell",
+        "jovy",
+        "Open a shell in the container, or run a shell command.",
+        usage="shell OR shell <command...>",
+        suspend_app=True,
+        refresh_logs_after=True,
+    ),
+    DashboardCommandSpec("exec", "jovy", "Run a command in the container."),
+    DashboardCommandSpec("status", "jovy", "Show environment status."),
+    DashboardCommandSpec(
+        "config",
+        "jovy",
+        "Open the config editor screen.",
+        run_in_worker=False,
+        opens_screen=True,
+        refresh_logs_after=True,
+    ),
+    DashboardCommandSpec(
+        "clean",
+        "jovy",
+        "Remove generated files and build state.",
+    ),
+    DashboardCommandSpec(
+        "destroy",
+        "jovy",
+        "Use the CLI for destructive cleanup.",
+        available_in_dashboard=False,
+        blocked_hint="Destroy is destructive. Run jovy destroy from your shell so the confirmation prompt is visible.",
+        refresh_logs_after=True,
+    ),
+    DashboardCommandSpec(
+        "run",
+        "jovy",
+        "Not available in dashboard.",
+        available_in_dashboard=False,
+        blocked_hint="The run command is not available inside the dashboard. Use up, or run jovy run from your shell.",
+    ),
+    DashboardCommandSpec(
+        "logs",
+        "jovy",
+        "Not available in dashboard.",
+        available_in_dashboard=False,
+        blocked_hint="The logs command is not available inside the dashboard. Use jovy logs from your shell.",
+    ),
+    DashboardCommandSpec(
+        "sync",
+        "jovy",
+        "Legacy alias for install.",
+        available_in_dashboard=False,
+        blocked_hint="No primary command named sync. Use: install",
+    ),
+)
+
+COMMAND_BY_NAME: dict[str, DashboardCommandSpec] = {}
+for _spec in COMMAND_SPECS:
+    COMMAND_BY_NAME[_spec.name] = _spec
+    for _alias in _spec.aliases:
+        COMMAND_BY_NAME[_alias] = _spec
+
+LOCAL_COMMANDS = {spec.name for spec in COMMAND_SPECS if spec.category == "local"}
+JOVY_COMMANDS = {spec.name for spec in COMMAND_SPECS if spec.category == "jovy"}
 
 
 @dataclass(frozen=True)
@@ -56,6 +185,7 @@ class ParsedTuiCommand:
     args: list[str]
     raw: str
     message: str | None = None
+    spec: DashboardCommandSpec | None = None
 
 
 def parse_tui_command(raw: str) -> ParsedTuiCommand:
@@ -63,8 +193,6 @@ def parse_tui_command(raw: str) -> ParsedTuiCommand:
     stripped = raw.strip()
     if not stripped:
         return ParsedTuiCommand(TuiCommandKind.EMPTY, "", [], raw)
-    if stripped.startswith("/"):
-        stripped = stripped[1:].strip()
     if stripped.startswith("!"):
         host_command = stripped[1:].strip()
         if not host_command:
@@ -87,33 +215,32 @@ def parse_tui_command(raw: str) -> ParsedTuiCommand:
         return ParsedTuiCommand(TuiCommandKind.UNKNOWN, stripped, [], raw, str(exc))
     if not parts:
         return ParsedTuiCommand(TuiCommandKind.EMPTY, "", [], raw)
-    name = parts[0]
+    name = parts[0].strip()
     args = parts[1:]
-    if name in LOCAL_COMMANDS:
-        return ParsedTuiCommand(TuiCommandKind.LOCAL, name, args, raw)
-    if name in BLOCKED_COMMAND_HINTS:
+    spec = COMMAND_BY_NAME.get(name)
+    if spec is None:
         return ParsedTuiCommand(
             TuiCommandKind.UNKNOWN,
             name,
             args,
             raw,
-            BLOCKED_COMMAND_HINTS[name],
+            unknown_command_message(name),
         )
-    if name in JOVY_COMMANDS:
-        return ParsedTuiCommand(TuiCommandKind.JOVY, name, args, raw)
-    return ParsedTuiCommand(
-        TuiCommandKind.UNKNOWN,
-        name,
-        args,
-        raw,
-        unknown_command_message(name),
-    )
+    if not spec.available_in_dashboard:
+        return ParsedTuiCommand(
+            TuiCommandKind.BLOCKED,
+            spec.name,
+            args,
+            raw,
+            spec.blocked_hint,
+            spec=spec,
+        )
+    kind = TuiCommandKind.LOCAL if spec.category == "local" else TuiCommandKind.JOVY
+    return ParsedTuiCommand(kind, spec.name, args, raw, spec=spec)
 
 
 def unknown_command_message(name: str) -> str:
     """Return a helpful message for an unknown dashboard command."""
-    if name in REMOVED_COMMAND_HINTS:
-        return REMOVED_COMMAND_HINTS[name]
     suggestion = suggest_command(name)
     if suggestion:
         return f"Unknown command: {name}\nDid you mean: {suggestion}?"
@@ -122,6 +249,6 @@ def unknown_command_message(name: str) -> str:
 
 def suggest_command(name: str) -> str | None:
     """Suggest the closest supported dashboard command."""
-    candidates = sorted(JOVY_COMMANDS | LOCAL_COMMANDS)
+    candidates = sorted(COMMAND_BY_NAME)
     matches = get_close_matches(name, candidates, n=1, cutoff=0.5)
     return matches[0] if matches else None

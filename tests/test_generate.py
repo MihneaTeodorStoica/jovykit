@@ -20,8 +20,9 @@ def test_write_generated_files_creates_expected_readable_files(
     assert (project.env_dir / "compose.yaml").exists()
     assert not (project.env_dir / "requirements.txt").exists()
     assert (project.env_dir / ".gitignore").read_text(encoding="utf-8") == (
-        "state.json\nwatcher.pid\nwatcher.log\n.generated/\n"
+        "state.json\nwatcher.pid\nwatcher.log\n.generated/\nhome/\n"
     )
+    assert (project.config.home_path / ".ssh").is_dir()
 
 
 def test_ensure_empty_or_jovy_env_allows_missing_directory(tmp_path: Path) -> None:

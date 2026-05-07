@@ -32,7 +32,7 @@ def test_build_uses_image_tuning_flags(
     monkeypatch.setattr(
         runtime,
         "run_command",
-        lambda args, *, cwd, attached=False, check=True: calls.append(args),
+        lambda args, *, cwd, attached=False, check=True, log=None: calls.append(args),
     )
 
     runtime.build(config)
@@ -67,10 +67,11 @@ def test_run_command_captures_output_and_raises_on_failure(
 
     monkeypatch.setattr(runtime.subprocess, "run", fake_run)
 
-    with pytest.raises(runtime.DockerError, match="exit code 7"):
+    with pytest.raises(runtime.DockerError, match="exit code 7") as exc:
         runtime.run_command(["docker", "bad"], cwd=tmp_path)
 
-    assert capsys.readouterr().out == "out\nerr\n"
+    assert "err" in str(exc.value)
+    assert capsys.readouterr().out == ""
 
 
 def test_run_command_attached_skips_capture(
@@ -169,7 +170,7 @@ def test_run_command_uses_streaming_callback(
 
 def test_build_signature_tracks_config_and_lock(create_project: Any) -> None:
     project = create_project()
-    lock_path = project.env_dir / "jovy.lock"
+    lock_path = project.root / "jovy.lock"
     lock_path.write_text("numpy==1.26.0\n", encoding="utf-8")
     original = runtime.build_signature(project.config)
 
@@ -190,7 +191,7 @@ def test_compile_requirements_lock_invokes_uv(
 ) -> None:
     project = create_project()
     input_file = project.root / "requirements.in"
-    output_file = project.env_dir / "jovy.lock"
+    output_file = project.root / "jovy.lock"
     constraint = project.root / "constraints.txt"
     calls: list[tuple[list[str], Path, bool, runtime.LogCallback | None]] = []
 
@@ -244,12 +245,12 @@ def test_build_writes_state_after_success(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:
     project = create_project()
-    (project.env_dir / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
+    (project.root / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
     calls: list[list[str]] = []
     monkeypatch.setattr(
         runtime,
         "run_command",
-        lambda args, *, cwd, attached=False, check=True: calls.append(args),
+        lambda args, *, cwd, attached=False, check=True, log=None: calls.append(args),
     )
 
     runtime.build(project.config, no_cache=True, pull=True)
@@ -271,7 +272,7 @@ def test_build_streaming_writes_state_and_streams_output(
             'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
         )
     )
-    (project.env_dir / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
+    (project.root / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
     calls: list[tuple[list[str], runtime.LogCallback]] = []
 
     def fake_run_command(
@@ -415,7 +416,7 @@ def test_destroy_removes_compose_resources_and_optionally_image(
         },
     )
     compose_calls: list[tuple[tuple[str, ...], bool, bool]] = []
-    command_calls: list[tuple[list[str], runtime.LogCallback | None]] = []
+    run_calls: list[list[str]] = []
     monkeypatch.setattr(
         runtime,
         "compose",
@@ -423,20 +424,25 @@ def test_destroy_removes_compose_resources_and_optionally_image(
             (args, attached, log is not None)
         ),
     )
+
+    def fake_run(
+        args: list[str], **_kwargs: Any
+    ) -> runtime.subprocess.CompletedProcess[str]:
+        run_calls.append(args)
+        return runtime.subprocess.CompletedProcess(
+            args=args, returncode=0, stdout="", stderr=""
+        )
+
     monkeypatch.setattr(
-        runtime,
-        "run_command",
-        lambda args, *, cwd, attached=False, check=True, log=None: command_calls.append(
-            (args, log)
-        ),
+        runtime.subprocess,
+        "run",
+        fake_run,
     )
 
     runtime.destroy(project.config)
 
-    assert compose_calls == [(("down", "--volumes", "--remove-orphans"), True, False)]
-    assert command_calls == [
-        (["docker", "image", "rm", "-f", project.config.image_ref], None)
-    ]
+    assert compose_calls == [(("down", "--remove-orphans"), False, True)]
+    assert run_calls == [["docker", "image", "rm", "-f", project.config.image_ref]]
     assert read_state(project.env_dir) == {"other": "kept"}
 
 
@@ -445,7 +451,7 @@ def test_destroy_streams_output_to_log(
 ) -> None:
     project = create_project()
     compose_calls: list[tuple[tuple[str, ...], bool, bool]] = []
-    command_calls: list[tuple[list[str], runtime.LogCallback | None]] = []
+    run_calls: list[list[str]] = []
 
     def log(_line: str) -> None:
         return None
@@ -457,20 +463,76 @@ def test_destroy_streams_output_to_log(
             (args, attached, log is not None)
         ),
     )
+
+    def fake_run(
+        args: list[str], **_kwargs: Any
+    ) -> runtime.subprocess.CompletedProcess[str]:
+        run_calls.append(args)
+        return runtime.subprocess.CompletedProcess(
+            args=args, returncode=0, stdout="", stderr=""
+        )
+
     monkeypatch.setattr(
-        runtime,
-        "run_command",
-        lambda args, *, cwd, attached=False, check=True, log=None: command_calls.append(
-            (args, log)
-        ),
+        runtime.subprocess,
+        "run",
+        fake_run,
     )
 
     runtime.destroy(project.config, log=log)
 
-    assert compose_calls == [(("down", "--volumes", "--remove-orphans"), False, True)]
-    assert command_calls == [
-        (["docker", "image", "rm", "-f", project.config.image_ref], log)
-    ]
+    assert compose_calls == [(("down", "--remove-orphans"), False, True)]
+    assert run_calls == [["docker", "image", "rm", "-f", project.config.image_ref]]
+
+
+def test_destroy_can_remove_legacy_named_volumes_when_requested(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    compose_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        runtime,
+        "compose",
+        lambda config, *args, attached=False, check=True, log=None: compose_calls.append(
+            args
+        ),
+    )
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda args, **kwargs: runtime.subprocess.CompletedProcess(
+            args=args, returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    runtime.destroy(project.config, remove_volumes=True)
+
+    assert compose_calls == [("down", "--remove-orphans", "--volumes")]
+
+
+def test_destroy_missing_image_is_not_fatal_and_logs_friendly_message(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    lines: list[str] = []
+    monkeypatch.setattr(
+        runtime,
+        "compose",
+        lambda config, *args, attached=False, check=True, log=None: None,
+    )
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda args, **kwargs: runtime.subprocess.CompletedProcess(
+            args=args,
+            returncode=1,
+            stdout="",
+            stderr=f"Error response from daemon: No such image: {project.config.image_ref}\n",
+        ),
+    )
+
+    runtime.destroy(project.config, log=lines.append)
+
+    assert any("Image already absent" in line for line in lines)
 
 
 def test_destroy_keep_image_preserves_build_state(

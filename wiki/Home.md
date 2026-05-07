@@ -1,7 +1,7 @@
 # JovyKit
 
-JovyKit is a small CLI for running a JupyterLab environment beside a project,
-with Docker Compose doing the container work behind the scenes.
+JovyKit is a small CLI for running a project-local JupyterLab environment, with
+Docker Compose doing the container work behind the scenes.
 
 The intended mental model is close to a Python virtual environment:
 
@@ -40,12 +40,25 @@ Build the overlay image and start JupyterLab:
 jovy run
 ```
 
-JovyKit prints the local Jupyter URL. By default it uses port `8888` and token
-`jovykit`, so the browser URL is:
+JovyKit prints the local Jupyter URL. By default it also exposes SSH on
+`127.0.0.1:22` and uses port `8888` plus token `jovykit` for Jupyter, so the
+browser URL is:
 
 ```text
 http://127.0.0.1:8888/lab?token=jovykit
 ```
+
+## Recommended workflow
+
+```bash
+jovy init .jovy --image base --gpus auto
+jovy add pandas scikit-learn plotly
+jovy install
+jovy run
+```
+
+`jovy add` and `jovy remove` edit `jovy.toml` only; `jovy install` applies
+dependency changes to the overlay image.
 
 ## What gets created
 
@@ -57,15 +70,20 @@ work/
 .jovy/
   Containerfile
   compose.yaml
+  home/
   state.json
 ```
 
-After the first install or run, `.jovy/jovy.lock` is added.
+After the first install or run, `jovy.lock` is added at the project root.
 
 Keep `jovy.toml` in version control when you want the environment definition to
 travel with the project. Keep `.jovy/` out of version control; it contains
-generated files, local build state, logs, and lock/build artifacts for this
-machine.
+generated files, local build state, logs, and machine-local home data.
+
+`.jovy/home/` is mounted as `/home/jovyan` in the container. It preserves
+notebook/user configuration such as `.ssh`, Jupyter config, shell history, and
+dotfiles across normal `clean` and `destroy` runs. Use `jovy destroy --purge`
+only when you intentionally want to delete that home data.
 
 ## Pick an image level
 
@@ -101,6 +119,15 @@ jovy install
 jovy up
 jovy logs --tail 100
 jovy shell
+jovy down
+```
+
+Need a faster cycle? Try:
+
+```bash
+jovy up
+jovy status --json
+jovy logs --tail 200
 jovy down
 ```
 

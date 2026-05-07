@@ -56,6 +56,7 @@ def test_render_compose_sync_workspace_has_initial_sync_and_ignores(
     service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
 
     assert f"../work:{project.config.work_mount}" not in service["volumes"]
+    assert "./home:/home/jovyan" in service["volumes"]
     assert service["develop"]["watch"][0] == {
         "action": "sync",
         "path": "../work",
@@ -63,6 +64,14 @@ def test_render_compose_sync_workspace_has_initial_sync_and_ignores(
         "initial_sync": True,
         "ignore": project.config.watch_ignore,
     }
+
+
+def test_render_compose_marks_relative_home_as_bind_mount(create_project: Any) -> None:
+    project = create_project()
+
+    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
+
+    assert service["volumes"][0] == "./home:/home/jovyan"
 
 
 def test_render_containerfile_shell_quotes_apt_packages_and_pip_args(

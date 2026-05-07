@@ -20,6 +20,43 @@ class DockerError(JovyKitError):
 LogCallback = Callable[[str], None]
 
 
+def _extract_error_detail(output: str) -> str | None:
+    """Return the most useful error detail from command output."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None
+    for line in reversed(lines):
+        if "error" in line.lower():
+            return line.removeprefix("Error response from daemon: ").strip()
+    return lines[-1]
+
+
+def _format_command_error(args: list[str], returncode: int, output: str) -> str:
+    """Build a concise command failure message."""
+    base = f"Command failed with exit code {returncode}: {' '.join(args)}"
+    detail = _extract_error_detail(output)
+    if detail:
+        return f"{base}\n{detail}"
+    return base
+
+
+def _completed_output(result: subprocess.CompletedProcess[Any]) -> str:
+    """Return completed process output as text."""
+    stdout = (
+        result.stdout.decode() if isinstance(result.stdout, bytes) else result.stdout
+    )
+    stderr = (
+        result.stderr.decode() if isinstance(result.stderr, bytes) else result.stderr
+    )
+    return f"{stdout or ''}{stderr or ''}"
+
+
+def _is_missing_image_error(output: str) -> bool:
+    """Return True when Docker reports that an image does not exist."""
+    detail = (_extract_error_detail(output) or "").lower()
+    return "no such image" in detail
+
+
 def require_docker() -> None:
     """Ensure Docker is available on PATH."""
     if shutil.which("docker") is None:
@@ -46,13 +83,14 @@ def stream_command(
         bufsize=1,
     )
     assert process.stdout is not None
+    captured: list[str] = []
     for line in process.stdout:
-        log(line.rstrip("\n"))
+        text = line.rstrip("\n")
+        captured.append(text)
+        log(text)
     return_code = process.wait()
     if check and return_code != 0:
-        raise DockerError(
-            f"Command failed with exit code {return_code}: {' '.join(args)}"
-        )
+        raise DockerError(_format_command_error(args, return_code, "\n".join(captured)))
     return return_code
 
 
@@ -84,20 +122,15 @@ def run_command(
         result = subprocess.run(
             args, cwd=cwd, check=False, capture_output=True, text=True
         )
-        if result.stdout:
-            print(result.stdout, end="")
-        if result.stderr:
-            print(result.stderr, end="")
     if check and result.returncode != 0:
-        raise DockerError(
-            f"Command failed with exit code {result.returncode}: {' '.join(args)}"
-        )
+        output = _completed_output(result)
+        raise DockerError(_format_command_error(args, result.returncode, output))
 
 
 def build_signature(config: JovyConfig) -> str:
     """Hash the inputs that affect the overlay image."""
     hasher = hashlib.sha256()
-    for path in (config.config_path, config.env_dir / "jovy.lock"):
+    for path in (config.config_path, config.lockfile_path):
         hasher.update(path.name.encode("utf-8"))
         if path.exists():
             hasher.update(path.read_bytes())
@@ -117,7 +150,7 @@ def build_signature(config: JovyConfig) -> str:
 
 def is_build_stale(config: JovyConfig) -> bool:
     """Return whether the overlay image should be rebuilt."""
-    if not (config.env_dir / "jovy.lock").exists():
+    if not config.lockfile_path.exists():
         return True
     state = read_state(config.env_dir)
     return state.get("build_signature") != build_signature(config)
@@ -158,7 +191,18 @@ def compile_requirements_lock(
     )
 
 
-def build(config: JovyConfig, *, no_cache: bool = False, pull: bool = False) -> None:
+def _noop_log(line: str) -> None:
+    """No-op log callback for suppressing output."""
+    pass
+
+
+def build(
+    config: JovyConfig,
+    *,
+    no_cache: bool = False,
+    pull: bool = False,
+    verbose: bool = False,
+) -> None:
     """Build the project overlay image."""
     args = [
         "docker",
@@ -166,7 +210,7 @@ def build(config: JovyConfig, *, no_cache: bool = False, pull: bool = False) -> 
         "build",
         "--load",
         "-f",
-        "Containerfile",
+        f"{config.env_dir.name}/Containerfile",
         "-t",
         config.image_ref,
     ]
@@ -181,7 +225,10 @@ def build(config: JovyConfig, *, no_cache: bool = False, pull: bool = False) -> 
     if pull or config.image_pull:
         args.append("--pull")
     args.append(".")
-    run_command(args, cwd=config.env_dir, attached=True)
+    if verbose:
+        run_command(args, cwd=config.project_dir, attached=True)
+    else:
+        run_command(args, cwd=config.project_dir, log=_noop_log)
     mark_built(config)
 
 
@@ -199,7 +246,7 @@ def build_streaming(
         "build",
         "--load",
         "-f",
-        "Containerfile",
+        f"{config.env_dir.name}/Containerfile",
         "-t",
         config.image_ref,
     ]
@@ -214,7 +261,7 @@ def build_streaming(
     if pull or config.image_pull:
         args.append("--pull")
     args.append(".")
-    run_command(args, cwd=config.env_dir, log=log)
+    run_command(args, cwd=config.project_dir, log=log)
     mark_built(config)
 
 
@@ -264,9 +311,8 @@ def compose_capture(config: JovyConfig, *args: str, check: bool = False) -> str:
     )
     output = f"{result.stdout}{result.stderr}"
     if check and result.returncode != 0:
-        raise DockerError(
-            f"Command failed with exit code {result.returncode}: docker compose -f compose.yaml {' '.join(args)}"
-        )
+        command = ["docker", "compose", "-f", "compose.yaml", *args]
+        raise DockerError(_format_command_error(command, result.returncode, output))
     return output
 
 
@@ -295,25 +341,34 @@ def destroy(
     config: JovyConfig,
     *,
     remove_image: bool = True,
+    remove_volumes: bool = False,
     log: LogCallback | None = None,
 ) -> None:
     """Remove compose resources and optionally the project image."""
+    args = ["down", "--remove-orphans"]
+    if remove_volumes:
+        args.append("--volumes")
     compose(
         config,
-        "down",
-        "--volumes",
-        "--remove-orphans",
-        attached=log is None,
-        log=log,
+        *args,
+        log=log if log is not None else _noop_log,
     )
     if remove_image:
-        run_command(
-            ["docker", "image", "rm", "-f", config.image_ref],
+        image_rm_args = ["docker", "image", "rm", "-f", config.image_ref]
+        result = subprocess.run(
+            image_rm_args,
             cwd=config.env_dir,
-            attached=False,
             check=False,
-            log=log,
+            capture_output=True,
+            text=True,
         )
+        output = f"{result.stdout}{result.stderr}"
+        if result.returncode != 0 and not _is_missing_image_error(output):
+            raise DockerError(
+                _format_command_error(image_rm_args, result.returncode, output)
+            )
+        if log is not None and _is_missing_image_error(output):
+            log(f"Image already absent: {config.image_ref}")
         state = read_state(config.env_dir)
         for key in ("build_signature", "image", "built_at"):
             state.pop(key, None)

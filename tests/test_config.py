@@ -65,8 +65,14 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     compose = (env_dir / "compose.yaml").read_text()
     data = yaml.safe_load(compose)
     service = data["services"]["jovy"]
-    assert service["ports"] == ["127.0.0.1:9999:8888"]
-    assert service["volumes"][0] == f"../work:{config.work_mount}"
+    assert service["ports"] == ["127.0.0.1:22:22", "127.0.0.1:9999:8888"]
+    assert config.home_path == env_dir / "home"
+    assert service["volumes"][0] == "./home:/home/jovyan"
+    assert service["volumes"][1] == f"../work:{config.work_mount}"
+    assert "volumes" not in data
+    assert (env_dir / "home").is_dir()
+    assert (env_dir / "home" / ".ssh").is_dir()
+    assert "home/" in (env_dir / ".gitignore").read_text(encoding="utf-8")
     assert service["environment"] == {
         "JUPYTER_ENABLE_LAB": "yes",
         "JUPYTER_LOG_LEVEL": "ERROR",
@@ -74,15 +80,11 @@ def test_generated_environment_files(tmp_path: Path) -> None:
     }
     assert config.jupyter_token == DEFAULT_JUPYTER_TOKEN
     assert service["command"] == ["start-notebook.py"]
+    assert service["build"]["context"] == ".."
+    assert service["build"]["dockerfile"] == ".jovy/Containerfile"
     assert service["develop"]["watch"] == [
-        {"action": "rebuild", "path": "jovy.lock"},
+        {"action": "rebuild", "path": "../jovy.lock"},
         {"action": "rebuild", "path": "Containerfile"},
-        {
-            "action": "sync+restart",
-            "path": "../jovy.toml",
-            "target": "/tmp/jovykit-watch/jovy.toml",
-            "initial_sync": True,
-        },
     ]
     assert "deploy" not in service
 
@@ -109,11 +111,33 @@ def test_jupyter_token_and_workdir_affect_generated_compose(tmp_path: Path) -> N
     assert config.project_root == notebooks_dir
     assert service["environment"]["JUPYTER_TOKEN"] == "secret-token"
     assert service["command"] == ["start-notebook.py"]
-    assert service["volumes"][0] == f"../notebooks:{config.work_mount}"
+    assert service["volumes"][0] == "./home:/home/jovyan"
+    assert service["volumes"][1] == f"../notebooks:{config.work_mount}"
     assert all(
         watch_rule.get("path") != "../notebooks"
         for watch_rule in service["develop"]["watch"]
     )
+
+
+def test_custom_home_path_affects_generated_compose(tmp_path: Path) -> None:
+    env_dir = tmp_path / ".jovy"
+    env_dir.mkdir()
+    config_text = initial_config_text(
+        project_name="My Project",
+        env_name=".jovy",
+        image="minimal",
+        gpus="none",
+        port=9999,
+    ).replace('home = ".jovy/home"', 'home = ".jovy/custom-home"')
+    (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
+
+    config = load_config(env_dir)
+    write_generated_files(config)
+
+    service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
+    assert config.home_path == env_dir / "custom-home"
+    assert service["volumes"][0] == "./custom-home:/home/jovyan"
+    assert (env_dir / "custom-home").is_dir()
 
 
 def test_empty_jupyter_token_disables_token_auth(tmp_path: Path) -> None:
@@ -185,7 +209,7 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
         'workspace_mode = "sync"',
     )
     config_text = config_text.replace(
-        'restart = ["jovy.toml"]',
+        "restart = []",
         'restart = ["jovy.toml", "runtime.toml"]',
     )
     config_text = config_text.replace(
@@ -214,6 +238,7 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
     assert service["user"] == "1000:1000"
     assert service["command"][0] == "start-notebook.py"
     assert f"../work:{config.work_mount}" not in service["volumes"]
+    assert "./home:/home/jovyan" in service["volumes"]
     assert "./data:/data" in service["volumes"]
     assert service["develop"]["watch"][0]["action"] == "sync"
     assert service["develop"]["watch"][-1]["action"] == "sync+restart"
