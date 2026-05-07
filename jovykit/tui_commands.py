@@ -118,7 +118,7 @@ COMMAND_SPECS: tuple[DashboardCommandSpec, ...] = (
         "Open a shell in the container, or run a shell command.",
         usage="shell OR shell <command...>",
         suspend_app=True,
-        refresh_logs_after=True,
+        refresh_logs_after=False,
     ),
     DashboardCommandSpec("exec", "jovy", "Run a command in the container."),
     DashboardCommandSpec("status", "jovy", "Show environment status."),

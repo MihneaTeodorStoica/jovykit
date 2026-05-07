@@ -13,6 +13,9 @@ def test_write_generated_files_creates_expected_readable_files(
     create_project: Any,
 ) -> None:
     project = create_project(generate=False)
+    home_path = project.config.home_path
+    if (home_path / ".bashrc").exists():
+        (home_path / ".bashrc").unlink()
 
     write_generated_files(project.config)
 
@@ -23,6 +26,9 @@ def test_write_generated_files_creates_expected_readable_files(
         "state.json\nwatcher.pid\nwatcher.log\n.generated/\nhome/\n"
     )
     assert (project.config.home_path / ".ssh").is_dir()
+    bashrc_text = (home_path / ".bashrc").read_text(encoding="utf-8")
+    assert "JovyKit shell bootstrap." in bashrc_text
+    assert "/etc/skel/.bashrc" in bashrc_text
 
 
 def test_ensure_empty_or_jovy_env_allows_missing_directory(tmp_path: Path) -> None:

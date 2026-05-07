@@ -329,7 +329,8 @@ class JovyKitDashboard(App[None]):
         finally:
             self._set_command_running(False)
             self.refresh_status()
-            self.refresh_logs()
+            if parsed.spec is not None and parsed.spec.refresh_logs_after:
+                self.refresh_logs()
             self.query_one(Input).focus()
 
     def _dispatch_jovy_command(

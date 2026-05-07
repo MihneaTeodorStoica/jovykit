@@ -101,6 +101,7 @@ USER root
 RUN --mount=type=cache,target=/root/.cache/uv \
     export UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy UV_SYSTEM_PYTHON=1 && \
     uv pip install --system -r requirements-full.txt && \
+    jupyter lab build --dev-build=False --minimize=False && \
     fix-permissions "${CONDA_DIR}" && \
     fix-permissions "/home/${NB_USER}"
 

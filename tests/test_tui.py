@@ -271,6 +271,40 @@ def test_dispatch_shell_command_streams_inside_dashboard(
     assert calls[0]["stream"] is True
 
 
+def test_suspended_shell_does_not_refresh_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = JovyKitDashboard()
+    parsed = parse_tui_command("shell")
+    assert parsed.spec is not None
+    calls: list[str] = []
+
+    class FakeInput:
+        def focus(self) -> None:
+            calls.append("focus")
+
+    monkeypatch.setattr(app, "_append", lambda _line: calls.append("append"))
+    monkeypatch.setattr(commands, "shell", lambda **_kwargs: calls.append("shell"))
+    monkeypatch.setattr(app, "_dispatch_jovy_command", lambda _parsed, **_kwargs: None)
+    monkeypatch.setattr(app, "_clear_last_error", lambda: calls.append("clear"))
+    monkeypatch.setattr(app, "refresh_status", lambda: calls.append("status"))
+
+    def fail_refresh_logs() -> None:
+        pytest.fail("refresh_logs should not run")
+
+    def track_running(running: bool) -> None:
+        calls.append(f"running={running}")
+
+    monkeypatch.setattr(app, "refresh_logs", fail_refresh_logs)
+    monkeypatch.setattr(app, "_set_command_running", track_running)
+    monkeypatch.setattr(app, "query_one", lambda *_args, **_kwargs: FakeInput())
+
+    asyncio.run(app._run_suspended(parsed))
+
+    assert parsed.spec.refresh_logs_after is False
+    assert "status" in calls
+    assert "refresh_logs" not in calls
+    assert "focus" in calls
+
+
 def test_dispatch_shell_command_supports_cli_style_c_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
