@@ -499,7 +499,8 @@ class JovyKitDashboard(App[None]):
             "[bold cyan]Examples[/bold cyan]\n"
             "up\nadd numpy pandas\nexec python --version\nconfig\n"
             "[bold cyan]Keybindings[/bold cyan]\n"
-            "ctrl+c clear or quit"
+            "ctrl+c clear or quit\n"
+            "ctrl+l clear logs"
         )
 
     def _threadsafe_append(self, line: str) -> None:
