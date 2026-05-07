@@ -11,6 +11,9 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
@@ -28,6 +31,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
 
     strategy:
       fail-fast: false
@@ -69,6 +75,7 @@ jobs:
             type=ref,event=pr
 
       - name: Build and publish ${{ matrix.type }}
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: ./image
@@ -81,3 +88,12 @@ jobs:
           sbom: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=${{ matrix.type }}
           cache-to: type=gha,mode=max,scope=${{ matrix.type }}
+
+      - name: Attest image provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-${{ matrix.type }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false

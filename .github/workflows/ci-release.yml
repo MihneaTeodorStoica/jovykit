@@ -290,6 +290,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      id-token: write
+      attestations: write
 
     steps:
       - name: Checkout tag
@@ -309,6 +311,11 @@ jobs:
           python -m pip install build twine
           python -m build
           python -m twine check dist/*
+
+      - name: Attest package artifacts
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*
 
       - name: Upload distributions
         uses: actions/upload-artifact@v6
