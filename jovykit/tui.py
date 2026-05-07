@@ -506,20 +506,30 @@ class JovyKitDashboard(App[None]):
         self.call_from_thread(self._append, line)
 
     def _append(self, line: str) -> None:
-        self.query_one(RichLog).write(Text.from_ansi(line))
+        self._write_log(Text.from_ansi(line))
 
     def _append_markup(self, line: str) -> None:
-        self.query_one(RichLog).write(Text.from_markup(line))
+        self._write_log(Text.from_markup(line))
 
     def _append_command(self, raw: str) -> None:
         text = Text.from_markup("[bold]jovy>[/bold] ")
         text.append(raw)
-        self.query_one(RichLog).write(text)
+        self._write_log(text)
 
     def _append_error(self, message: str) -> None:
         text = Text.from_markup("[bold red][Error][/bold red] ")
         text.append(message)
-        self.query_one(RichLog).write(text)
+        self._write_log(text)
+
+    def _write_log(self, text: Text) -> None:
+        try:
+            log = self.query_one(RichLog)
+        except (NoMatches, ScreenStackError):
+            return
+        try:
+            log.write(text)
+        except AttributeError:
+            return
 
     def _selected_text(self) -> str | None:
         try:
