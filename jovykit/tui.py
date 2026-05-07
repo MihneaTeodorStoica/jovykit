@@ -499,7 +499,7 @@ class JovyKitDashboard(App[None]):
             "[bold cyan]Examples[/bold cyan]\n"
             "up\nadd numpy pandas\nexec python --version\nconfig\n"
             "[bold cyan]Keybindings[/bold cyan]\n"
-            "ctrl+c copy selection or quit | ctrl+l clear logs | ctrl+q quit | tab toggle log/input focus"
+            "ctrl+c clear or quit"
         )
 
     def _threadsafe_append(self, line: str) -> None:
@@ -584,7 +584,7 @@ def render_status_panel(status: EnvironmentStatus) -> Panel:
 
 def run_dashboard(*, env: Path | None = None) -> None:
     """Run the JovyKit Textual dashboard."""
-    JovyKitDashboard(env=env).run()
+    JovyKitDashboard(env=env).run(mouse=False)
 
 
 def _status_label(status: EnvironmentStatus) -> str:
