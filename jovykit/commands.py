@@ -534,6 +534,11 @@ def shell(
     """Open a bash shell in the running JovyKit container."""
     if stream and command is None:
         raise JovyKitError("Streaming shell mode requires a command.")
+    config = load_env(env, emit=emit)
+    if not is_container_running(config):
+        raise JovyKitError(
+            "JovyKit environment is not running. Start it with `jovy up` before using shell."
+        )
     args = ["exec", "jovy", "bash"]
     if command:
         if stream:
@@ -541,7 +546,7 @@ def shell(
         else:
             args.extend(["-lc", command])
     compose(
-        load_env(env, emit=emit),
+        config,
         *args,
         attached=not stream,
         log=emit if stream else None,

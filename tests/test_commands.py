@@ -152,12 +152,29 @@ def test_shell_command_can_stream_without_tty(
             (args, attached, log is not None)
         ),
     )
+    monkeypatch.setattr(commands, "is_container_running", lambda config: True)
 
     commands.shell(command="python --version", stream=True, emit=lambda line: None)
 
     assert compose_calls == [
         (("exec", "-T", "jovy", "bash", "-lc", "python --version"), False, True)
     ]
+
+
+def test_shell_requires_running_container(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    monkeypatch.chdir(project.root)
+    monkeypatch.setattr(commands, "is_container_running", lambda config: False)
+    monkeypatch.setattr(
+        commands,
+        "compose",
+        lambda *args, **kwargs: pytest.fail("shell should not compose when stopped"),
+    )
+
+    with pytest.raises(JovyKitError, match="not running"):
+        commands.shell(command="python --version")
 
 
 def test_install_restarts_running_container_after_build(
