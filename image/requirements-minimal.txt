@@ -2,8 +2,8 @@
 
 # Project tools
 jupyterlab==4.5.7
-jupyterlab-nitro-ai-judge==0.1.11
-nitro-ai-judge-cli==0.2.0
+jupyterlab-nitro-ai-judge==1.0.0
+nitro-ai-judge-cli==1.0.0
 
 # Notebook basics
 ipykernel==7.2.0
