@@ -566,6 +566,7 @@ def test_shell_and_exec_construct_compose_commands(
     project = create_project()
     monkeypatch.chdir(project.root)
     calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(command_ops, "is_container_running", lambda config: True)
     monkeypatch.setattr(
         command_ops,
         "compose",
