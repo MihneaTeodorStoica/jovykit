@@ -80,7 +80,12 @@ RUN sed -i \
     apt-get install -y --no-install-recommends \
         git \
         openssh-client \
-        rsync && \
+        rsync \
+        software-properties-common && \
+    add-apt-repository -y ppa:quentiumyt/nvtop && \
+    apt-get update -o Acquire::Retries=3 && \
+    apt-get install -y --no-install-recommends \
+        nvtop-nightly && \
     rm -rf /var/lib/apt/lists/* && \
     install -d -m 0700 -o "${NB_UID}" -g "${NB_GID}" "/home/${NB_USER}/.ssh"
 
