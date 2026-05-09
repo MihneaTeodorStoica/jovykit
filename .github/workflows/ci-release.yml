@@ -129,7 +129,7 @@ jobs:
 
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
 
       - name: Skip outside pull requests
         if: github.event_name != 'pull_request'
@@ -318,7 +318,7 @@ jobs:
           subject-path: dist/*
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: python-distributions
           path: dist/*
@@ -338,7 +338,7 @@ jobs:
 
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: python-distributions
           path: dist
