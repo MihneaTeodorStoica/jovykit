@@ -3,6 +3,8 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"
       day: "monday"
@@ -21,6 +23,8 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/image"
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"
       day: "monday"
@@ -39,6 +43,8 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/"
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"
       day: "monday"
@@ -57,6 +63,8 @@ updates:
 
   - package-ecosystem: "pip"
     directory: "/image"
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"
       day: "monday"
