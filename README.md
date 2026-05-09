@@ -179,8 +179,8 @@ docker build --target full -t jovykit-full ./image
 
 `jovy.toml` can customize runtime environment variables, extra volumes, home and
 work mounts, restart policy, Jupyter command/logging, Compose Watch behavior,
-image build arguments, build target/platform, apt packages, and uv/pip install
-options.
+image username/UID/GID, pull policy, labels, build arguments, build
+target/platform, apt packages, and uv/pip install options.
 
 JovyKit mounts `.jovy/home/` as `/home/jovyan` by default. Normal `clean` and
 `destroy` runs preserve that folder, so SSH config, Jupyter config, shell

@@ -32,6 +32,7 @@ GPU_CHOICES = ("auto", "none", "all")
 LOG_LEVEL_CHOICES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 RESTART_POLICY_CHOICES = ("no", "always", "unless-stopped", "on-failure")
 WORKSPACE_MODE_CHOICES = ("bind", "sync")
+PULL_POLICY_CHOICES = ("unset", "always", "never", "missing", "build")
 
 InputFunc = Callable[[str], str]
 KeyFunc = Callable[[], str]
@@ -47,6 +48,10 @@ class ConfigEditorValues:
     base_image: str
     image_name: str
     image_tag: str
+    image_pull_policy: str
+    image_username: str
+    image_uid: int
+    image_gid: int
     port: int
     gpus: str
     restart_policy: str
@@ -58,6 +63,7 @@ class ConfigEditorValues:
     watch_enabled: bool
     watch_workspace_mode: str
     python_packages: list[str]
+    image_labels: dict[str, str]
     runtime_env: dict[str, str]
     runtime_volumes: dict[str, str]
 
@@ -86,6 +92,15 @@ SCALAR_FIELDS = (
     ConfigField("base_image", "Base image"),
     ConfigField("image_name", "Image name"),
     ConfigField("image_tag", "Image tag"),
+    ConfigField(
+        "image_pull_policy",
+        "Image pull policy",
+        "choice",
+        PULL_POLICY_CHOICES,
+    ),
+    ConfigField("image_username", "Image username"),
+    ConfigField("image_uid", "Image UID", "number"),
+    ConfigField("image_gid", "Image GID", "number"),
     ConfigField("port", "Port", "number"),
     ConfigField("gpus", "GPU mode", "choice", GPU_CHOICES),
     ConfigField("restart_policy", "Restart policy", "choice", RESTART_POLICY_CHOICES),
@@ -105,6 +120,7 @@ SCALAR_FIELDS = (
 SCALAR_FIELD_MAP = {field.key: field for field in SCALAR_FIELDS}
 EDITOR_FIELDS = (
     *SCALAR_FIELDS,
+    ConfigField("image_labels", "Image labels", "mapping"),
     ConfigField("runtime_env", "Runtime env", "mapping"),
     ConfigField("runtime_volumes", "Runtime volumes", "mapping"),
 )
@@ -120,6 +136,14 @@ def values_from_config(config: JovyConfig) -> ConfigEditorValues:
         base_image=config.base_image,
         image_name=config.image_name,
         image_tag=config.image_tag,
+        image_pull_policy=(
+            config.image_pull_policy
+            if config.image_pull_policy in PULL_POLICY_CHOICES
+            else "unset"
+        ),
+        image_username=config.image_username,
+        image_uid=config.image_uid,
+        image_gid=config.image_gid,
         port=config.port,
         gpus=config.gpus,
         restart_policy=config.restart_policy,
@@ -131,6 +155,7 @@ def values_from_config(config: JovyConfig) -> ConfigEditorValues:
         watch_enabled=config.watch_enabled,
         watch_workspace_mode=config.watch_workspace_mode,
         python_packages=config.python_packages,
+        image_labels=config.image_labels,
         runtime_env=config.runtime_env,
         runtime_volumes=config.runtime_volumes,
     )
@@ -939,11 +964,11 @@ def _set_scalar_value(
     field = SCALAR_FIELD_MAP.get(key)
     if field is None:
         raise JovyKitError(f"Unknown field: {key}. Type list to see fields.")
-    if key == "port":
+    if key in {"port", "image_uid", "image_gid"}:
         try:
             value: object = int(raw_value)
         except ValueError as exc:
-            raise JovyKitError("Port must be an integer.") from exc
+            raise JovyKitError(f"{field.label} must be an integer.") from exc
     elif key in {"jupyter_lab", "watch_enabled"}:
         value = _parse_bool(raw_value)
     elif key == "base_image":
@@ -980,6 +1005,14 @@ def _replace_editor_value(
         if not isinstance(value, str):
             raise JovyKitError("image_tag must be a string.")
         return replace(values, image_tag=value)
+    if key == "image_pull_policy":
+        if not isinstance(value, str):
+            raise JovyKitError("image_pull_policy must be a string.")
+        return replace(values, image_pull_policy=value)
+    if key == "image_username":
+        if not isinstance(value, str):
+            raise JovyKitError("image_username must be a string.")
+        return replace(values, image_username=value)
     if key == "gpus":
         if not isinstance(value, str):
             raise JovyKitError("gpus must be a string.")
@@ -1012,6 +1045,14 @@ def _replace_editor_value(
         if not isinstance(value, int):
             raise JovyKitError("port must be an integer.")
         return replace(values, port=value)
+    if key == "image_uid":
+        if not isinstance(value, int):
+            raise JovyKitError("image_uid must be an integer.")
+        return replace(values, image_uid=value)
+    if key == "image_gid":
+        if not isinstance(value, int):
+            raise JovyKitError("image_gid must be an integer.")
+        return replace(values, image_gid=value)
     if key == "jupyter_lab":
         if not isinstance(value, bool):
             raise JovyKitError("jupyter_lab must be a boolean.")
@@ -1024,6 +1065,10 @@ def _replace_editor_value(
         if not isinstance(value, list):
             raise JovyKitError("python_packages must be a list.")
         return replace(values, python_packages=value)
+    if key == "image_labels":
+        if not isinstance(value, dict):
+            raise JovyKitError("image_labels must be a mapping.")
+        return replace(values, image_labels=value)
     if key == "runtime_env":
         if not isinstance(value, dict):
             raise JovyKitError("runtime_env must be a mapping.")
@@ -1075,10 +1120,17 @@ def _validate_values(values: ConfigEditorValues) -> None:
         raise JovyKitError("Image name cannot be empty.")
     if not values.image_tag:
         raise JovyKitError("Image tag cannot be empty.")
+    if not values.image_username:
+        raise JovyKitError("Image username cannot be empty.")
+    if values.image_uid < 0:
+        raise JovyKitError("Image UID must be zero or greater.")
+    if values.image_gid < 0:
+        raise JovyKitError("Image GID must be zero or greater.")
     if values.port < 1 or values.port > 65535:
         raise JovyKitError("Port must be between 1 and 65535.")
     _validate_choice("GPU mode", values.gpus, GPU_CHOICES)
     _validate_choice("Restart policy", values.restart_policy, RESTART_POLICY_CHOICES)
+    _validate_choice("Image pull policy", values.image_pull_policy, PULL_POLICY_CHOICES)
     _validate_choice("Jupyter log level", values.jupyter_log_level, LOG_LEVEL_CHOICES)
     _validate_choice(
         "Watch workspace mode",
@@ -1099,9 +1151,20 @@ def _validate_choice(name: str, value: str, choices: tuple[str, ...]) -> None:
 def _apply_values(data: tomlkit.TOMLDocument, values: ConfigEditorValues) -> None:
     _table(data, "project")["name"] = values.project_name
     _table(data, "project")["workdir"] = values.workdir
-    _table(data, "image")["base"] = values.base_image
-    _table(data, "image")["name"] = values.image_name
-    _table(data, "image")["tag"] = values.image_tag
+    image = _table(data, "image")
+    image["base"] = values.base_image
+    image["name"] = values.image_name
+    image["tag"] = values.image_tag
+    if values.image_pull_policy != "unset":
+        image["pull_policy"] = values.image_pull_policy
+    else:
+        image.pop("pull_policy", None)
+    image["username"] = values.image_username
+    image["uid"] = values.image_uid
+    image["gid"] = values.image_gid
+    image_labels = _table(data, "image", "labels")
+    image_labels.clear()
+    image_labels.update(values.image_labels)
     _table(data, "runtime")["port"] = values.port
     _table(data, "runtime")["gpus"] = values.gpus
     _table(data, "runtime")["restart"] = values.restart_policy
@@ -1135,6 +1198,10 @@ def _build_affecting_changed(config: JovyConfig, values: ConfigEditorValues) -> 
         config.base_image != values.base_image
         or config.image_name != values.image_name
         or config.image_tag != values.image_tag
+        or config.image_username != values.image_username
+        or config.image_uid != values.image_uid
+        or config.image_gid != values.image_gid
+        or config.image_labels != values.image_labels
         or config.python_packages != values.python_packages
     )
 

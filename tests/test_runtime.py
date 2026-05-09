@@ -21,8 +21,16 @@ def test_build_uses_image_tuning_flags(
         port=9999,
     )
     config_text = config_text.replace(
-        "pull = false\n\n[image.build_args]",
-        'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
+        "pull = false",
+        'pull = true\ntarget = "base"\nplatform = "linux/amd64"',
+    )
+    config_text = config_text.replace(
+        "[image.build_args]",
+        '[image.build_args]\nEXAMPLE = "1"',
+    )
+    config_text = config_text.replace(
+        "[image.labels]",
+        '[image.labels]\n"org.example.project" = "demo"',
     )
     (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
     config = load_config(env_dir)
@@ -40,6 +48,7 @@ def test_build_uses_image_tuning_flags(
     assert "--target" in calls[0]
     assert "--platform" in calls[0]
     assert "--build-arg" in calls[0]
+    assert "--label" in calls[0]
     assert "--pull" in calls[0]
 
 
@@ -268,8 +277,16 @@ def test_build_streaming_writes_state_and_streams_output(
 ) -> None:
     project = create_project(
         config_transform=lambda text: text.replace(
-            "pull = false\n\n[image.build_args]",
-            'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
+            "pull = false",
+            'pull = true\ntarget = "base"\nplatform = "linux/amd64"',
+        )
+        .replace(
+            "[image.build_args]",
+            '[image.build_args]\nEXAMPLE = "1"',
+        )
+        .replace(
+            "[image.labels]",
+            '[image.labels]\n"org.example.project" = "demo"',
         )
     )
     (project.root / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
@@ -296,6 +313,7 @@ def test_build_streaming_writes_state_and_streams_output(
     assert "--target" in calls[0][0]
     assert "--platform" in calls[0][0]
     assert "--build-arg" in calls[0][0]
+    assert "--label" in calls[0][0]
     assert "--no-cache" in calls[0][0]
     assert lines == ["building"]
     assert read_state(project.env_dir)["image"] == project.config.image_ref

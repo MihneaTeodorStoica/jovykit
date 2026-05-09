@@ -218,8 +218,10 @@ def build(
         args.extend(["--target", config.image_target])
     if config.image_platform:
         args.extend(["--platform", config.image_platform])
-    for key, value in config.image_build_args.items():
+    for key, value in config.effective_image_build_args.items():
         args.extend(["--build-arg", f"{key}={value}"])
+    for key, value in config.image_labels.items():
+        args.extend(["--label", f"{key}={value}"])
     if no_cache:
         args.append("--no-cache")
     if pull or config.image_pull:
@@ -254,8 +256,10 @@ def build_streaming(
         args.extend(["--target", config.image_target])
     if config.image_platform:
         args.extend(["--platform", config.image_platform])
-    for key, value in config.image_build_args.items():
+    for key, value in config.effective_image_build_args.items():
         args.extend(["--build-arg", f"{key}={value}"])
+    for key, value in config.image_labels.items():
+        args.extend(["--label", f"{key}={value}"])
     if no_cache:
         args.append("--no-cache")
     if pull or config.image_pull:

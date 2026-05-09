@@ -77,6 +77,9 @@ def test_generated_environment_files(tmp_path: Path) -> None:
         "JUPYTER_ENABLE_LAB": "yes",
         "JUPYTER_LOG_LEVEL": "ERROR",
         "JUPYTER_TOKEN": DEFAULT_JUPYTER_TOKEN,
+        "NB_USER": "jovyan",
+        "NB_UID": "1000",
+        "NB_GID": "100",
     }
     assert config.jupyter_token == DEFAULT_JUPYTER_TOKEN
     assert service["command"] == ["start-notebook.py"]
@@ -213,8 +216,16 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
         'restart = ["jovy.toml", "runtime.toml"]',
     )
     config_text = config_text.replace(
-        "pull = false\n\n[image.build_args]",
-        'pull = true\ntarget = "base"\nplatform = "linux/amd64"\n\n[image.build_args]\nEXAMPLE = "1"',
+        'pull = false\nusername = "jovyan"\nuid = 1000\ngid = 100',
+        'pull = true\ntarget = "base"\nplatform = "linux/amd64"\npull_policy = "always"\nusername = "alice"\nuid = 1001\ngid = 1001',
+    )
+    config_text = config_text.replace(
+        "[image.build_args]",
+        '[image.build_args]\nEXAMPLE = "1"',
+    )
+    config_text = config_text.replace(
+        "[image.labels]",
+        '[image.labels]\n"org.example.project" = "demo"',
     )
     config_text = config_text.replace(
         "packages = []",
@@ -232,23 +243,64 @@ def test_customization_tables_render_into_generated_files(tmp_path: Path) -> Non
     service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
     assert service["build"]["target"] == "base"
     assert service["build"]["platform"] == "linux/amd64"
-    assert service["build"]["args"] == {"EXAMPLE": "1"}
+    assert service["build"]["args"] == {
+        "EXAMPLE": "1",
+        "NB_USER": "alice",
+        "NB_UID": "1001",
+        "NB_GID": "1001",
+    }
+    assert service["pull_policy"] == "always"
+    assert service["labels"] == {"org.example.project": "demo"}
     assert service["environment"]["EXTRA_FLAG"] == "yes"
     assert service["restart"] == "always"
     assert service["user"] == "1000:1000"
     assert service["command"][0] == "start-notebook.py"
     assert f"../work:{config.work_mount}" not in service["volumes"]
-    assert "./home:/home/jovyan" in service["volumes"]
+    assert "./home:/home/alice" in service["volumes"]
     assert "./data:/data" in service["volumes"]
     assert service["develop"]["watch"][0]["action"] == "sync"
     assert service["develop"]["watch"][-1]["action"] == "sync+restart"
     assert service["develop"]["watch"][-1]["path"] == "../runtime.toml"
 
     containerfile = (env_dir / "Containerfile").read_text(encoding="utf-8")
+    assert "ARG NB_USER=alice" in containerfile
+    assert "ARG NB_UID=1001" in containerfile
+    assert "ARG NB_GID=1001" in containerfile
+    assert 'usermod --login "${NB_USER}"' not in containerfile
     assert "apt-get install -y --no-install-recommends curl" in containerfile
     assert "uv pip install --upgrade --system" in containerfile
     assert config.python_packages == ["numpy"]
     assert config.python_constraints == ["pins.txt"]
+    assert config.image_username == "alice"
+    assert config.image_uid == 1001
+    assert config.image_gid == 1001
+
+
+def test_custom_username_rewrites_legacy_work_mount_in_generated_files(
+    tmp_path: Path,
+) -> None:
+    env_dir = tmp_path / ".jovy"
+    env_dir.mkdir()
+    config_text = initial_config_text(
+        project_name="My Project",
+        env_name=".jovy",
+        image="minimal",
+        gpus="none",
+        port=9999,
+    ).replace(
+        'username = "jovyan"',
+        'username = "alice"',
+    )
+    (tmp_path / "jovy.toml").write_text(config_text, encoding="utf-8")
+
+    config = load_config(env_dir)
+    write_generated_files(config)
+
+    service = yaml.safe_load((env_dir / "compose.yaml").read_text())["services"]["jovy"]
+    assert service["volumes"][1] == "../work:/home/alice/work"
+    assert service["working_dir"] == "/home/alice/work"
+    containerfile = (env_dir / "Containerfile").read_text(encoding="utf-8")
+    assert "WORKDIR /home/alice/work" in containerfile
 
 
 def test_load_config_reports_missing_config(tmp_path: Path) -> None:

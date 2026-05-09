@@ -22,7 +22,16 @@ def render_containerfile(config: JovyConfig) -> str:
     pip_args = " ".join(shlex.quote(arg) for arg in config.pip_args)
     pip_args_prefix = f"{pip_args} " if pip_args else ""
     uv_link_mode = shlex.quote(config.uv_link_mode)
+    workdir = shlex.quote(config.effective_work_mount)
     return f"""FROM {config.base_image}
+
+ARG NB_USER={config.image_username}
+ARG NB_UID={config.image_uid}
+ARG NB_GID={config.image_gid}
+ENV NB_USER=${{NB_USER}} \\
+    NB_UID=${{NB_UID}} \\
+    NB_GID=${{NB_GID}} \\
+    HOME=/home/${{NB_USER}}
 
 USER root
 {apt_block}\
@@ -34,7 +43,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \\
     fix-permissions "/home/${{NB_USER}}"
 
 USER ${{NB_UID}}
-WORKDIR ${{HOME}}/work
+WORKDIR {workdir}
 """
 
 
@@ -48,19 +57,24 @@ def render_compose(config: JovyConfig) -> str:
         build["target"] = config.image_target
     if config.image_platform:
         build["platform"] = config.image_platform
-    if config.image_build_args:
-        build["args"] = config.image_build_args
+    if config.effective_image_build_args:
+        build["args"] = config.effective_image_build_args
 
     environment = {
         "JUPYTER_ENABLE_LAB": "yes" if config.jupyter_lab else "no",
         "JUPYTER_LOG_LEVEL": config.jupyter_log_level,
         "JUPYTER_TOKEN": config.jupyter_token,
+        "NB_USER": config.image_username,
+        "NB_UID": str(config.image_uid),
+        "NB_GID": str(config.image_gid),
         **config.runtime_env,
     }
 
-    volumes = [f"{_compose_bind_source(config.compose_home_path)}:/home/jovyan"]
+    volumes = [
+        f"{_compose_bind_source(config.compose_home_path)}:{config.notebook_home}"
+    ]
     if config.watch_workspace_mode == "bind":
-        volumes.append(f"{config.compose_workdir}:{config.work_mount}")
+        volumes.append(f"{config.compose_workdir}:{config.effective_work_mount}")
     volumes.extend(
         f"{host_path}:{container_path}"
         for host_path, container_path in config.runtime_volumes.items()
@@ -72,14 +86,25 @@ def render_compose(config: JovyConfig) -> str:
         "ports": ["127.0.0.1:22:22", f"127.0.0.1:{config.port}:8888"],
         "environment": environment,
         "volumes": volumes,
-        "working_dir": config.work_mount,
+        "working_dir": config.effective_work_mount,
         "stdin_open": True,
         "tty": True,
     }
     if config.restart_policy:
         service["restart"] = config.restart_policy
+    if config.image_pull_policy:
+        service["pull_policy"] = config.image_pull_policy
+    if config.image_labels:
+        service["labels"] = config.image_labels
     if config.runtime_user:
         service["user"] = config.runtime_user
+    elif (
+        config.image_username != "jovyan"
+        or config.image_uid != 1000
+        or config.image_gid != 100
+    ):
+        # start.sh must run as root to apply NB_USER/NB_UID/NB_GID safely
+        service["user"] = "root"
     service["command"] = shlex.split(config.jupyter_command or "start-notebook.py")
     if config.watch_enabled:
         watch_rules: list[dict[str, Any]] = []
@@ -88,7 +113,7 @@ def render_compose(config: JovyConfig) -> str:
                 {
                     "action": "sync",
                     "path": config.compose_workdir,
-                    "target": config.work_mount,
+                    "target": config.effective_work_mount,
                     "initial_sync": True,
                     "ignore": config.watch_ignore,
                 }

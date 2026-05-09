@@ -70,6 +70,9 @@ The overlay image name and tag come from `jovy.toml`:
 base = "ghcr.io/mihneateodorstoica/jovykit-base:latest"
 name = "jovykit-my-project"
 tag = "local"
+username = "jovyan"
+uid = 1000
+gid = 100
 ```
 
 The resulting image reference is:
@@ -101,10 +104,20 @@ images before build.
 
 ## Customize project builds
 
-Edit `jovy.toml` when a project needs extra operating-system packages, build
-arguments, or pip options:
+Edit `jovy.toml` when a project needs a custom notebook user, Compose pull
+policy, labels, extra operating-system packages, build arguments, or pip
+options:
 
 ```toml
+[image]
+pull_policy = "always"
+username = "alice"
+uid = 1001
+gid = 1001
+
+[image.labels]
+"org.example.project" = "analytics"
+
 [image.apt]
 packages = ["libpq-dev"]
 

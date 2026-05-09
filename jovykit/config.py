@@ -13,6 +13,7 @@ from typing import Any
 from jovykit.images import resolve_image
 
 DEFAULT_JUPYTER_TOKEN = "jovykit"
+LEGACY_WORK_MOUNT = "/home/jovyan/work"
 
 
 class JovyKitError(RuntimeError):
@@ -38,7 +39,12 @@ class JovyConfig:
     image_target: str | None
     image_platform: str | None
     image_pull: bool
+    image_pull_policy: str | None
+    image_username: str
+    image_uid: int
+    image_gid: int
     image_build_args: dict[str, str]
+    image_labels: dict[str, str]
     apt_packages: list[str]
     python_packages: list[str]
     python_constraints: list[str]
@@ -67,6 +73,32 @@ class JovyConfig:
     def image_ref(self) -> str:
         """Return the project overlay image reference."""
         return f"{self.image_name}:{self.image_tag}"
+
+    @property
+    def image_user_build_args(self) -> dict[str, str]:
+        """Return notebook user build args derived from image settings."""
+        return {
+            "NB_USER": self.image_username,
+            "NB_UID": str(self.image_uid),
+            "NB_GID": str(self.image_gid),
+        }
+
+    @property
+    def effective_image_build_args(self) -> dict[str, str]:
+        """Return all Docker build args for the overlay image."""
+        return {**self.image_build_args, **self.image_user_build_args}
+
+    @property
+    def notebook_home(self) -> str:
+        """Return the notebook user's home path inside the container."""
+        return f"/home/{self.image_username}"
+
+    @property
+    def effective_work_mount(self) -> str:
+        """Return the effective work mount path for the active notebook user."""
+        if self.work_mount == LEGACY_WORK_MOUNT:
+            return f"{self.notebook_home}/work"
+        return self.work_mount
 
     @property
     def compose_workdir(self) -> str:
@@ -155,7 +187,16 @@ def load_config(env_dir: Path) -> JovyConfig:
                 str(image["platform"]) if image.get("platform") is not None else None
             ),
             image_pull=bool(image.get("pull", False)),
+            image_pull_policy=(
+                str(image["pull_policy"])
+                if image.get("pull_policy") is not None
+                else None
+            ),
+            image_username=str(image.get("username", "jovyan")),
+            image_uid=int(image.get("uid", 1000)),
+            image_gid=int(image.get("gid", 100)),
             image_build_args=_str_dict(image.get("build_args", {})),
+            image_labels=_str_dict(image.get("labels", {})),
             apt_packages=_str_list(image.get("apt", {}).get("packages", [])),
             python_packages=_str_list(python.get("packages", [])),
             python_constraints=_str_list(python.get("constraints", [])),
@@ -231,8 +272,13 @@ base = "{base_image}"
 name = "{resolved_image_name}"
 tag = "{image_tag}"
 pull = false
+username = "jovyan"
+uid = 1000
+gid = 100
 
 [image.build_args]
+
+[image.labels]
 
 [image.apt]
 packages = []

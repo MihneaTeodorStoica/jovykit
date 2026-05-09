@@ -47,6 +47,11 @@ def test_save_config_values_preserves_advanced_toml_and_clears_build_state(
         **{
             **values.__dict__,
             "port": 7777,
+            "image_pull_policy": "always",
+            "image_username": "alice",
+            "image_uid": 1001,
+            "image_gid": 1001,
+            "image_labels": {"org.example.project": "demo"},
             "python_packages": ["numpy", "pandas"],
             "runtime_env": {"EXTRA_FLAG": "yes"},
             "runtime_volumes": {"./data": "/data"},
@@ -63,12 +68,33 @@ def test_save_config_values_preserves_advanced_toml_and_clears_build_state(
     config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
     assert 'command = "start-notebook.py"' in config_text
     assert "port = 7777" in config_text
+    assert 'pull_policy = "always"' in config_text
+    assert 'username = "alice"' in config_text
+    assert "uid = 1001" in config_text
+    assert "gid = 1001" in config_text
+    assert '"org.example.project" = "demo"' in config_text
     assert 'packages = ["numpy", "pandas"]' in config_text
     assert 'EXTRA_FLAG = "yes"' in config_text
     assert '"./data" = "/data"' in config_text
     assert read_state(project.env_dir) == {"other": "kept"}
     assert result.build_state_cleared is True
     assert "jovy install" in messages[-1]
+
+
+def test_save_config_values_unset_pull_policy_removes_key(create_project: Any) -> None:
+    project = create_project(
+        config_transform=lambda text: text.replace(
+            "pull = false",
+            'pull = false\npull_policy = "always"',
+        )
+    )
+    values = values_from_config(project.config)
+    edited = ConfigEditorValues(**{**values.__dict__, "image_pull_policy": "unset"})
+
+    save_config_values(project.config, edited)
+
+    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
+    assert "pull_policy" not in config_text
 
 
 def test_save_config_values_rejects_invalid_restricted_choice(
@@ -124,13 +150,13 @@ def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
     project = create_project()
     keys = iter(
         [
-            *["down"] * 5,
+            *["down"] * 9,
             "enter",
-            *["up"] * 3,
+            *["up"] * 7,
             "enter",
-            *["down"] * 11,
+            *["down"] * 15,
             "right",
-            *["down"] * 2,
+            *["down"] * 3,
             "enter",
             "down",
             "enter",
@@ -167,7 +193,7 @@ def test_keyboard_editor_updates_values_and_saves(create_project: Any) -> None:
 
 def test_keyboard_editor_reports_errors_and_can_cancel(create_project: Any) -> None:
     project = create_project()
-    keys = iter([*["down"] * 6, "enter", "q"])
+    keys = iter([*["down"] * 10, "enter", "q"])
     inputs = iter(["sometimes"])
     messages: list[str] = []
 
@@ -187,7 +213,7 @@ def test_keyboard_editor_cycles_choice_and_saves(
     create_project: Any,
 ) -> None:
     project = create_project()
-    keys = iter([*["down"] * 6, "right", "s"])
+    keys = iter([*["down"] * 10, "right", "s"])
     messages: list[str] = []
 
     result = run_config_editor(
@@ -197,6 +223,24 @@ def test_keyboard_editor_cycles_choice_and_saves(
     )
 
     assert result == "saved"
+
+
+def test_keyboard_editor_cycles_pull_policy_choice_and_saves(
+    create_project: Any,
+) -> None:
+    project = create_project()
+    keys = iter([*["down"] * 5, "right", "s"])
+
+    result = run_config_editor(
+        env=project.env_dir,
+        key_func=lambda: next(keys),
+        output=lambda _message: None,
+    )
+
+    assert result == "saved"
+    assert 'pull_policy = "always"' in (project.root / "jovy.toml").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_keyboard_editor_reports_unknown_key(create_project: Any) -> None:
@@ -222,7 +266,7 @@ def test_inline_empty_values_clear_mappings(create_project: Any) -> None:
             '[runtime.volumes]\n"./data" = "/data"',
         )
     )
-    keys = iter([*["down"] * 15, "enter", "down", "enter", "s"])
+    keys = iter([*["down"] * 20, "enter", "down", "enter", "s"])
     inputs = iter(["-", "-"])
 
     result = run_config_editor(
@@ -362,7 +406,7 @@ def test_textual_editor_actions_update_selection_and_cycle(
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
-    app.selected = 6
+    app.selected = 10
     refreshed: list[str] = []
     messages: list[str] = []
     monkeypatch.setattr(app, "_refresh", lambda: refreshed.append(app.status))
@@ -375,7 +419,7 @@ def test_textual_editor_actions_update_selection_and_cycle(
     app.action_edit_selected()
     app.action_cycle_left()
 
-    assert app.selected == 6
+    assert app.selected == 10
     assert app.values.gpus == "all"
     assert any("Updated GPU mode" in message for message in messages)
     assert refreshed[-1] == "Press Enter to change this setting."
@@ -387,7 +431,7 @@ def test_textual_editor_handles_option_keys_without_focus(
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
-    app.selected = 6
+    app.selected = 10
     events: list[str] = []
     monkeypatch.setattr(app, "_refresh", lambda: events.append(app.status))
 
@@ -462,7 +506,7 @@ def test_textual_editor_inline_edit_validation_error(
 ) -> None:
     app = JovyKitConfigEditorScreen()
     app.values = values_from_config(create_project().config)
-    app.editing_field = EDITOR_FIELDS[5]
+    app.editing_field = EDITOR_FIELDS[9]
     monkeypatch.setattr(app, "_refresh", lambda: None)
 
     app._apply_prompt_value("not-a-port")
@@ -502,10 +546,10 @@ def test_textual_editor_edit_action_and_prompt_updates(
     assert app.editing_field == EDITOR_FIELDS[0]
     assert app.editing_value == "My Project"
     app._apply_prompt_value("New name")
-    app.selected = 5
+    app.selected = 9
     app.action_edit_selected()
     app._apply_prompt_value("7777")
-    app.selected = 6
+    app.selected = 10
     app.action_edit_selected()
 
     assert app.values.port == 7777
@@ -531,7 +575,7 @@ def test_textual_editor_inline_submit_and_cancel(
     app.values = values_from_config(create_project().config)
     monkeypatch.setattr(app, "_refresh", lambda: None)
 
-    app.selected = 5
+    app.selected = 9
     app.action_edit_selected()
     app.editing_value = "7777"
     app.on_key(cast(Any, _FakeKey("enter")))
@@ -557,6 +601,10 @@ def test_textual_editor_quit_prompts_to_save_when_dirty(
         base_image="base",
         image_name="image",
         image_tag="latest",
+        image_pull_policy="missing",
+        image_username="jovyan",
+        image_uid=1000,
+        image_gid=100,
         port=8888,
         gpus="auto",
         restart_policy="no",
@@ -568,6 +616,7 @@ def test_textual_editor_quit_prompts_to_save_when_dirty(
         watch_enabled=True,
         watch_workspace_mode="bind",
         python_packages=[],
+        image_labels={},
         runtime_env={},
         runtime_volumes={},
     )
@@ -734,6 +783,10 @@ def test_scalar_editor_validation_helpers(create_project: Any) -> None:
         ("base_image", "python:3.11", "base_image"),
         ("image_name", "demo-image", "image_name"),
         ("image_tag", "dev", "image_tag"),
+        ("image_pull_policy", "always", "image_pull_policy"),
+        ("image_username", "alice", "image_username"),
+        ("image_uid", 1001, "image_uid"),
+        ("image_gid", 1001, "image_gid"),
         ("gpus", "none", "gpus"),
         ("restart_policy", "always", "restart_policy"),
         ("jupyter_token", "secret", "jupyter_token"),
@@ -745,6 +798,7 @@ def test_scalar_editor_validation_helpers(create_project: Any) -> None:
         ("jupyter_lab", False, "jupyter_lab"),
         ("watch_enabled", False, "watch_enabled"),
         ("python_packages", ["numpy"], "python_packages"),
+        ("image_labels", {"org.example.project": "demo"}, "image_labels"),
         ("runtime_env", {"API_URL": "https://example.invalid"}, "runtime_env"),
         ("runtime_volumes", {"./data": "/data"}, "runtime_volumes"),
     ],
@@ -767,10 +821,13 @@ def test_replace_editor_value_updates_supported_fields(
     [
         ("project_name", 123, "project_name"),
         ("port", "8888", "port"),
+        ("image_uid", "1000", "image_uid"),
+        ("image_gid", "100", "image_gid"),
         ("jupyter_lab", "true", "jupyter_lab"),
         ("watch_enabled", "false", "watch_enabled"),
         ("home_path", 123, "home_path"),
         ("python_packages", "numpy", "python_packages"),
+        ("image_labels", ["org.example.project=demo"], "image_labels"),
         ("runtime_env", ["API_URL=value"], "runtime_env"),
         ("runtime_volumes", ["./data=/data"], "runtime_volumes"),
         ("missing", "value", "Unknown field"),
@@ -796,6 +853,9 @@ def test_replace_editor_value_rejects_invalid_values(
         ({"base_image": ""}, "Base image"),
         ({"image_name": ""}, "Image name"),
         ({"image_tag": ""}, "Image tag"),
+        ({"image_username": ""}, "Image username"),
+        ({"image_uid": -1}, "Image UID"),
+        ({"image_gid": -1}, "Image GID"),
         ({"port": 0}, "Port"),
         ({"work_mount": "relative"}, "Work mount"),
         ({"home_path": ""}, "Home path"),
