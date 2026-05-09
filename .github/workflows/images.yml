@@ -3,8 +3,12 @@ name: Images
 on:
   push:
     branches: [main]
+    paths:
+      - "image/**"
   pull_request:
     branches: [main]
+    paths:
+      - "image/**"
   schedule:
     - cron: "30 6 * * 1"
   workflow_dispatch:
