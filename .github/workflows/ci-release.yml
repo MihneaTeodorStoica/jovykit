@@ -31,14 +31,14 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@v4.35.3
         with:
           languages: python
           build-mode: none
           queries: security-extended
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@v4.35.3
         with:
           category: "/language:python"
 
@@ -75,7 +75,7 @@ jobs:
 
       - name: Upload Semgrep SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.35.3
         with:
           sarif_file: semgrep.sarif
 
@@ -110,7 +110,7 @@ jobs:
 
       - name: Upload zizmor SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.35.3
         with:
           sarif_file: zizmor.sarif
 
