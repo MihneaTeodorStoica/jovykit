@@ -11,6 +11,8 @@ on:
       - "image/**"
   schedule:
     - cron: "30 6 * * 1"
+    - cron: "30 6 * * *"
+    - cron: "30 6 1 * *"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +22,7 @@ permissions:
   artifact-metadata: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.schedule || 'none' }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
@@ -73,10 +75,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-${{ matrix.type }}
           tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' }}
-            type=raw,value=manual,enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=ref,event=pr
+            type=raw,value=latest,enable=${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
+            type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
+            type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
 
       - name: Build and publish ${{ matrix.type }}
         id: build

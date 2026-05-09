@@ -150,7 +150,8 @@ Published images use this pattern:
 ```text
 ghcr.io/mihneateodorstoica/jovykit-TYPE:latest
 ghcr.io/mihneateodorstoica/jovykit-TYPE:nightly
-ghcr.io/mihneateodorstoica/jovykit-TYPE:lts
+ghcr.io/mihneateodorstoica/jovykit-TYPE:weekly
+ghcr.io/mihneateodorstoica/jovykit-TYPE:monthly
 ```
 
 `TYPE` is one of:

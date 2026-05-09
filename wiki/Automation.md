@@ -54,6 +54,8 @@ Images are published to GitHub Container Registry under:
 ghcr.io/mihneateodorstoica/jovykit-TYPE:TAG
 ```
 
+Published tags are `latest`, `nightly`, `weekly`, and `monthly`.
+
 See [Images](Images) for the image layout and local build commands.
 
 ## Website publishing

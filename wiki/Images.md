@@ -13,7 +13,8 @@ ghcr.io/mihneateodorstoica/jovykit-extended:latest
 ghcr.io/mihneateodorstoica/jovykit-full:latest
 ```
 
-The image publishing workflow may also publish `nightly` and `lts` tags.
+The image publishing workflow also publishes rolling `nightly`, `weekly`, and
+`monthly` tags.
 
 `jovy init` accepts these friendly names and maps them to the `latest` images:
 
