@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ghcr.io/astral-sh/uv:0.11.8@sha256:3b7b60a81d3c57ef471703e5c83fd4aaa33abcd403596fb22ab07db85ae91347 AS uv-bin
+FROM ghcr.io/astral-sh/uv:0.11.12@sha256:3a59a3cdd5f7c217faa36e32dbc7fddbb0412889c2a0a5229f6d790e5a019dd7 AS uv-bin
 
-FROM quay.io/jupyter/minimal-notebook:python-3.11@sha256:1f1fab5b452289aff0ed9c6d85a58f555a4682b773f1dad08c2fdb35273e9ea4 AS minimal
+FROM quay.io/jupyter/minimal-notebook:python-3.13@sha256:ed76b2d29fed80a73146efbf164d77e1f7e102e7481f4cd4a378311f01f7657b AS minimal
 
 COPY --from=uv-bin /uv /uvx /usr/local/bin/
 
@@ -58,7 +58,7 @@ USER ${NB_UID}
 WORKDIR "${HOME}"
 
 
-FROM quay.io/jupyter/base-notebook:python-3.11@sha256:c4da10f3c70b5f29c8d0ac08a88554918ae6294f57ce61693b781252d634ce92 AS extended
+FROM quay.io/jupyter/base-notebook:python-3.13@sha256:3171810d80d421edb7bfb93422d5587a763bfee505a603a91cb4f8babdac37ff AS extended
 
 COPY --from=uv-bin /uv /uvx /usr/local/bin/
 
