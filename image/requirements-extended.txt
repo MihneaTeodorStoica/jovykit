@@ -22,7 +22,8 @@ einops==0.8.2
 # NLP and embeddings
 transformers==5.8.0
 datasets==4.8.5
-tokenizers==0.23.1
+# transformers 5.8.0 requires tokenizers<=0.23.0
+tokenizers==0.22.2
 sentence-transformers==5.4.1
 evaluate==0.4.6
 accelerate==1.13.0
