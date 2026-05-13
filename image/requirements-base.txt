@@ -27,7 +27,8 @@ yellowbrick==1.5
 scikit-plot==0.3.7
 
 # Visualization
-plotly==6.7.0
+# evidently 0.7.21 requires plotly<6
+plotly==5.24.1
 bokeh==3.9.0
 altair==6.1.0
 missingno==0.5.2
@@ -47,8 +48,8 @@ great-expectations==1.17.1
 beautifulsoup4==4.14.3
 lxml==6.1.0
 html5lib==1.1
-# gcsfs 2026.5.0 requires fsspec!=2026.4.0
-fsspec==2026.3.0
-s3fs==2026.3.0
-gcsfs==2026.5.0
-adlfs==2026.5.0
+# datasets 4.8.5 requires fsspec<=2026.2.0
+fsspec==2026.2.0
+s3fs==2026.2.0
+gcsfs==2026.2.0
+adlfs==2026.2.0
