@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import webbrowser
 from pathlib import Path
 
 import typer
@@ -11,16 +12,19 @@ from jovykit import __version__
 from jovykit import commands as command_ops
 from jovykit.config import DEFAULT_JUPYTER_TOKEN, JovyKitError
 from jovykit.paths import DEFAULT_ENV_DIR
+from jovykit.state import discover_status
 
-app = typer.Typer(help="Manage project-local JovyKit Jupyter container environments.")
+app = typer.Typer(
+    help="Manage project-local JovyKit environments. Run bare `jovy` for the dashboard."
+)
 console = Console()
 
 
-def launch_dashboard() -> None:
+def launch_dashboard(env: Path | None = None) -> None:
     """Launch the default interactive dashboard."""
     from jovykit.tui import run_dashboard
 
-    run_dashboard()
+    run_dashboard(env=env)
 
 
 def _version_callback(show_version: bool) -> None:
@@ -44,6 +48,36 @@ def callback(
     if ctx.invoked_subcommand is None:
         launch_dashboard()
         raise typer.Exit()
+
+
+@app.command()
+def dashboard(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Open the interactive JovyKit dashboard."""
+    launch_dashboard(env=env)
+
+
+@app.command("ui", hidden=True)
+def ui(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Alias for dashboard."""
+    launch_dashboard(env=env)
+
+
+@app.command("dash", hidden=True)
+def dash(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Alias for dashboard."""
+    launch_dashboard(env=env)
 
 
 @app.command()
@@ -97,6 +131,7 @@ def init(
         force=force,
         emit=console.print,
     )
+    console.print("Next: jovy up")
 
 
 @app.command()
@@ -384,6 +419,20 @@ def config(
     run_config_editor(env=env)
 
 
+@app.command("open")
+def open_browser(
+    env: Path | None = typer.Option(
+        None, "--env", help="JovyKit environment directory."
+    ),
+) -> None:
+    """Open the current Jupyter URL in a browser."""
+    status = discover_status(env)
+    if status.url == "unavailable":
+        raise JovyKitError("No Jupyter URL available. Start it with: jovy up")
+    webbrowser.open(status.url)
+    console.print(f"Opened {status.url}")
+
+
 @app.command()
 def status(
     env: Path | None = typer.Option(
@@ -402,5 +451,5 @@ def main() -> None:
     try:
         app()
     except JovyKitError as exc:
-        console.print(f"[bold red]Error:[/bold red] {exc}")
+        console.print(f"[bold red][Error][/bold red] {exc}")
         raise SystemExit(1) from None

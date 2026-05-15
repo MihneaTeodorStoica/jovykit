@@ -44,6 +44,10 @@ from jovykit.watcher import start_watcher, stop_watcher
 
 Emitter = Callable[[str], None]
 
+SHELL_REQUIRES_RUNNING_MESSAGE = (
+    "JovyKit environment is not running. Start it with `jovy up` before using shell."
+)
+
 
 def noop_emit(_: str) -> None:
     """Ignore emitted command output."""
@@ -536,9 +540,7 @@ def shell(
         raise JovyKitError("Streaming shell mode requires a command.")
     config = load_env(env, emit=emit)
     if not is_container_running(config):
-        raise JovyKitError(
-            "JovyKit environment is not running. Start it with `jovy up` before using shell."
-        )
+        raise JovyKitError(SHELL_REQUIRES_RUNNING_MESSAGE)
     args = ["exec", "jovy", "bash"]
     if command:
         if stream:

@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from tqdm import tqdm
 
 from jovykit.config import JovyConfig, JovyKitError, read_state, write_state
 
@@ -196,6 +199,44 @@ def _noop_log(line: str) -> None:
     pass
 
 
+def _supports_tqdm_progress() -> bool:
+    """Return whether stderr is a plain terminal suitable for tqdm."""
+    stderr = sys.stderr
+    if stderr is None:
+        return False
+    real_stderr = sys.__stderr__
+    if real_stderr is None or stderr is not real_stderr:
+        return False
+    try:
+        return stderr.isatty() and stderr.fileno() >= 0
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _run_command_with_progress(args: list[str], *, cwd: Path, description: str) -> None:
+    """Run a streamed command and tick tqdm once per output line."""
+    if not _supports_tqdm_progress():
+        run_command(args, cwd=cwd)
+        return
+    with tqdm(
+        total=None,
+        desc=description,
+        unit="line",
+        dynamic_ncols=True,
+        leave=False,
+    ) as progress:
+
+        def advance(_line: str) -> None:
+            progress.update(1)
+
+        try:
+            run_command(args, cwd=cwd, log=advance)
+        except ValueError as exc:
+            if "fds_to_keep" not in str(exc):
+                raise
+            run_command(args, cwd=cwd)
+
+
 def build(
     config: JovyConfig,
     *,
@@ -230,7 +271,11 @@ def build(
     if verbose:
         run_command(args, cwd=config.project_dir, attached=True)
     else:
-        run_command(args, cwd=config.project_dir, log=_noop_log)
+        _run_command_with_progress(
+            args,
+            cwd=config.project_dir,
+            description="Building JovyKit image",
+        )
     mark_built(config)
 
 

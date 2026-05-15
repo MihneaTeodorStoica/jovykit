@@ -6,6 +6,8 @@ import asyncio
 import re
 import shlex
 import webbrowser
+from collections import deque
+from collections.abc import Sequence
 from pathlib import Path
 
 from rich.panel import Panel
@@ -65,6 +67,7 @@ class SelectableLog(RichLog):
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+STATUS_PANEL_HEIGHT = 6
 
 
 def _status_key(status: EnvironmentStatus) -> tuple[object, ...]:
@@ -101,9 +104,10 @@ class JovyKitDashboard(App[None]):
     }
 
     #status {
-        height: auto;
-        min-height: 5;
-        margin-bottom: 1;
+        height: 6;
+        min-height: 6;
+        max-height: 6;
+        margin-bottom: 0;
         color: #e0e0e0;
     }
 
@@ -111,6 +115,7 @@ class JovyKitDashboard(App[None]):
         height: 1fr;
         border: round #333333;
         padding: 0 1;
+        margin-bottom: 1;
         background: #1a1a1a;
         scrollbar-size: 0 0;
         color: #e0e0e0;
@@ -119,7 +124,8 @@ class JovyKitDashboard(App[None]):
     #command {
         height: 3;
         border: tall #333333;
-        margin-bottom: 1;
+        margin-top: 0;
+        margin-bottom: 0;
         background: #1a1a1a;
         color: #e0e0e0;
     }
@@ -143,12 +149,15 @@ class JovyKitDashboard(App[None]):
         self._last_status_key: tuple[object, ...] | None = None
         self._last_log_snapshot = ""
         self._command_running = False
+        self._command_queue: deque[ParsedTuiCommand] = deque()
+        self._active_command: ParsedTuiCommand | None = None
+        self._progress_label: str | None = None
+        self._progress_steps = 0
 
     def compose(self) -> ComposeResult:
         """Compose the dashboard layout."""
         with Vertical(id="root"):
             yield Static(id="status")
-            yield Input(placeholder="jovy> up", id="command")
             yield SelectableLog(
                 id="logs",
                 highlight=False,
@@ -158,14 +167,16 @@ class JovyKitDashboard(App[None]):
                 auto_scroll=True,
                 max_lines=2000,
             )
+            yield Input(
+                placeholder="up, build --pull, config, open, help", id="command"
+            )
 
     def on_mount(self) -> None:
         """Initialize dashboard state."""
         self.title = "JovyKit"
         self.query_one(Input).focus()
-        self._append_markup(
-            "[bold cyan][JovyKit][/bold cyan] Dashboard ready. Type help."
-        )
+        self._append_markup("[bold cyan][JovyKit][/bold cyan] Ready")
+        self._append("Try: init | up | build --pull | config | open | help")
         self.refresh_status()
         self.set_interval(4, self.refresh_status)
 
@@ -190,7 +201,7 @@ class JovyKitDashboard(App[None]):
         if command.value:
             command.clear()
             return
-        self.exit()
+        self._quit_now()
 
     def action_toggle_log_focus(self) -> None:
         """Toggle focus between command input and log panel."""
@@ -201,17 +212,38 @@ class JovyKitDashboard(App[None]):
 
     async def action_quit(self) -> None:
         """Exit quickly by cancelling background work first."""
-        self.workers.cancel_all()
+        self._quit_now()
+
+    def _quit_now(self) -> None:
+        try:
+            self.workers.cancel_all()
+        except Exception:
+            pass
         self.exit()
 
     def refresh_status(self) -> None:
         """Refresh the top status panel."""
         status = discover_status(self.env)
         self._last_status = status
-        status_key = _status_key(status)
+        queued_labels = tuple(self._queued_command_labels())
+        status_key = (
+            *_status_key(status),
+            self._active_command_label(),
+            queued_labels,
+            self._progress_label,
+            self._progress_steps,
+        )
         if status_key != self._last_status_key:
             self._last_status_key = status_key
-            self.query_one("#status", Static).update(render_status_panel(status))
+            self.query_one("#status", Static).update(
+                render_status_panel(
+                    status,
+                    active_command=self._active_command_label(),
+                    queued_count=len(self._command_queue),
+                    queued_labels=queued_labels,
+                    progress_text=self._progress_text(),
+                )
+            )
 
     def refresh_logs(self) -> None:
         """Poll recent container logs while the environment is running."""
@@ -248,27 +280,92 @@ class JovyKitDashboard(App[None]):
             await self._handle_local(parsed)
             return
         if self._command_running:
-            self._append_markup(
-                "[bold yellow][JovyKit][/bold yellow] Command already running."
-            )
+            self._queue_command(parsed)
+            return
+        await self._start_parsed_command(parsed)
+
+    async def _start_parsed_command(self, parsed: ParsedTuiCommand) -> None:
+        if self._shell_blocked_while_down(parsed):
+            await self._start_next_queued_command()
             return
         if parsed.kind is TuiCommandKind.HOST:
+            self._begin_command(parsed)
             self.run_worker(self._run_host(parsed.args), exclusive=False)
             return
         if parsed.spec is not None and parsed.spec.opens_screen:
-            self._open_config_screen()
+            self._begin_command(parsed)
+            self._open_config_screen(run_next_on_close=True)
             return
         if parsed.spec is not None and parsed.spec.suspend_app and not parsed.args:
             await self._run_suspended(parsed)
             return
         if parsed.spec is not None and parsed.spec.run_in_worker:
+            self._begin_command(parsed)
             self.run_worker(self._run_jovy(parsed), exclusive=False)
             return
         await self._run_jovy(parsed)
 
+    def _shell_blocked_while_down(self, parsed: ParsedTuiCommand) -> bool:
+        if parsed.kind is not TuiCommandKind.JOVY or parsed.name != "shell":
+            return False
+        status = self._last_status
+        if status is None or status.is_running:
+            return False
+        self._append_error(commands.SHELL_REQUIRES_RUNNING_MESSAGE)
+        return True
+
+    def _queue_command(self, parsed: ParsedTuiCommand) -> None:
+        label = _command_label(parsed)
+        if self._active_command is not None and _same_command(
+            parsed, self._active_command
+        ):
+            self._append_markup(
+                "[bold yellow][JovyKit][/bold yellow] " f"Already running: {label}."
+            )
+            return
+        if any(_same_command(parsed, command) for command in self._command_queue):
+            position = self._queue_position(parsed) or len(self._command_queue)
+            self._append_markup(
+                "[bold yellow][JovyKit][/bold yellow] "
+                f"Already queued #{position}: {label}."
+            )
+            return
+        self._command_queue.append(parsed)
+        self._append_markup(
+            "[bold yellow][JovyKit][/bold yellow] "
+            f"Queued #{len(self._command_queue)}: {label}."
+        )
+        self._refresh_status_if_mounted()
+
+    async def _start_next_queued_command(self) -> None:
+        if self._command_running:
+            return
+        if not self._command_queue:
+            return
+        parsed = self._command_queue.popleft()
+        label = _command_label(parsed)
+        self._append_markup(f"[cyan][JovyKit][/cyan] Starting: {label}")
+        self._refresh_status_if_mounted()
+        await self._start_parsed_command(parsed)
+
+    async def _finish_command(
+        self,
+        *,
+        refresh_logs_after: bool = False,
+        focus_command: bool = False,
+    ) -> None:
+        self._active_command = None
+        self._set_command_running(False)
+        self.refresh_status()
+        if refresh_logs_after:
+            self.refresh_logs()
+        if focus_command:
+            self.query_one(Input).focus()
+        await self._start_next_queued_command()
+
     async def _handle_local(self, parsed: ParsedTuiCommand) -> None:
         if parsed.name in {"quit", "exit"}:
-            self.exit()
+            self._quit_now()
             return
         if parsed.name == "clear":
             self.action_clear_logs()
@@ -285,11 +382,11 @@ class JovyKitDashboard(App[None]):
             self._show_help()
 
     async def _run_host(self, args: list[str]) -> None:
-        if not args:
-            self._append_error("Pass a host command after !.")
-            return
         self._set_command_running(True)
         try:
+            if not args:
+                self._append_error("Pass a host command after !.")
+                return
             await asyncio.to_thread(
                 run_host_command,
                 args,
@@ -301,10 +398,11 @@ class JovyKitDashboard(App[None]):
             self._record_last_error(str(exc))
             self._append_error(str(exc))
         finally:
-            self._set_command_running(False)
-            self.refresh_status()
+            await self._finish_command()
 
     async def _run_jovy(self, parsed: ParsedTuiCommand) -> None:
+        if self._active_command is None:
+            self._active_command = parsed
         self._set_command_running(True)
         try:
             await asyncio.to_thread(self._dispatch_jovy_command, parsed)
@@ -313,10 +411,11 @@ class JovyKitDashboard(App[None]):
             self._record_last_error(str(exc))
             self._append_error(str(exc))
         finally:
-            self._set_command_running(False)
-            self.refresh_status()
+            await self._finish_command()
 
     async def _run_suspended(self, parsed: ParsedTuiCommand) -> None:
+        if self._active_command is None:
+            self._active_command = parsed
         self._set_command_running(True)
         try:
             self._append("Suspending dashboard for interactive command...")
@@ -327,11 +426,12 @@ class JovyKitDashboard(App[None]):
             self._record_last_error(str(exc))
             self._append_error(str(exc))
         finally:
-            self._set_command_running(False)
-            self.refresh_status()
-            if parsed.spec is not None and parsed.spec.refresh_logs_after:
-                self.refresh_logs()
-            self.query_one(Input).focus()
+            await self._finish_command(
+                refresh_logs_after=(
+                    parsed.spec is not None and parsed.spec.refresh_logs_after
+                ),
+                focus_command=True,
+            )
 
     def _dispatch_jovy_command(
         self, parsed: ParsedTuiCommand, *, suspended: bool = False
@@ -340,6 +440,12 @@ class JovyKitDashboard(App[None]):
         name = parsed.name
         args = parsed.args
         if name == "init":
+
+            def emit_init_line(line: str) -> None:
+                if line.startswith("Jupyter: "):
+                    return
+                emit(line)
+
             commands.init_environment(
                 path=_init_path(args),
                 image=_option_value(args, "--image", "base"),
@@ -352,8 +458,9 @@ class JovyKitDashboard(App[None]):
                 image_tag=_option_value(args, "--tag", "local"),
                 workdir=_option_value(args, "--workdir", "work"),
                 force="--force" in args,
-                emit=emit,
+                emit=emit_init_line,
             )
+            emit("Ready. Start Jupyter with: up")
         elif name == "add":
             packages, requirement_files = _add_args(args)
             commands.add(packages, requirement_files=requirement_files, emit=emit)
@@ -369,13 +476,16 @@ class JovyKitDashboard(App[None]):
             )
         elif name == "build":
             verbose = "--verbose" in args or "-v" in args
-            commands.build(
-                no_cache="--no-cache" in args,
-                pull="--pull" in args,
-                emit=emit,
-                stream=verbose,
-                verbose=verbose,
-            )
+            if verbose:
+                commands.build(
+                    no_cache="--no-cache" in args,
+                    pull="--pull" in args,
+                    emit=emit,
+                    stream=True,
+                    verbose=True,
+                )
+            else:
+                self._build_with_dashboard_progress(args=args, emit=emit)
         elif name == "up":
             commands.up(no_build="--no-build" in args, emit=emit, stream=False)
         elif name == "down":
@@ -417,17 +527,27 @@ class JovyKitDashboard(App[None]):
     def _open_url(self) -> None:
         status = self._last_status or discover_status(self.env)
         if status.url == "unavailable":
-            self._append_markup("[bold yellow][JovyKit][/bold yellow] URL unavailable.")
+            self._append_markup(
+                "[bold yellow][JovyKit][/bold yellow] "
+                "No Jupyter URL yet. Start it with: up"
+            )
             return
         webbrowser.open(status.url)
         self._append_markup(f"[cyan][JovyKit][/cyan] Opened {status.url}")
 
-    def _open_config_screen(self) -> None:
+    def _open_config_screen(self, *, run_next_on_close: bool = False) -> None:
         from jovykit.config_editor import JovyKitConfigEditorScreen
 
         def on_close(result: str | None) -> None:
-            if result:
+            if result and result != "cancelled":
                 self._append_markup(f"[cyan][JovyKit][/cyan] Config {result}.")
+            if run_next_on_close:
+                self._active_command = None
+                self._set_command_running(False)
+                self.refresh_status()
+                self._restore_dashboard_focus()
+                self.run_worker(self._start_next_queued_command(), exclusive=False)
+                return
             self.refresh_status()
             self._restore_dashboard_focus()
 
@@ -453,58 +573,86 @@ class JovyKitDashboard(App[None]):
             write_state(config.env_dir, state)
 
     def _show_help(self) -> None:
-        local_commands = [
-            spec
-            for spec in COMMAND_SPECS
-            if spec.category == "local" and spec.available_in_dashboard
-        ]
-        jovy_commands = [
-            spec
-            for spec in COMMAND_SPECS
-            if spec.category == "jovy" and spec.available_in_dashboard
-        ]
         blocked_commands = [
             spec
             for spec in COMMAND_SPECS
             if not spec.available_in_dashboard and spec.blocked_hint
         ]
-        local_line = ", ".join(
-            (
-                spec.name
-                if not spec.aliases
-                else f"{spec.name} ({', '.join(spec.aliases)})"
-            )
-            for spec in local_commands
-        )
-        jovy_line = ", ".join(
-            (
-                spec.name
-                if not spec.aliases
-                else f"{spec.name} ({', '.join(spec.aliases)})"
-            )
-            for spec in jovy_commands
-        )
         blocked_lines = "\n".join(
             f"- {spec.name}: {spec.blocked_hint}" for spec in blocked_commands
         )
         self._append_markup(
-            "[bold cyan]Dashboard Commands[/bold cyan]\n"
-            f"{jovy_line}\n"
-            "[bold cyan]Local Commands[/bold cyan]\n"
-            f"{local_line}\n"
+            "[bold cyan]JovyKit Commands[/bold cyan]\n"
+            "  init              create .jovy\n"
+            "  up/start/u        start Jupyter\n"
+            "  down/stop/d       stop Jupyter\n"
+            "  build/b           build image\n"
+            "  install/apply     refresh lockfile and image\n"
+            "  add/remove        edit packages\n"
+            "  status/s/ps       show state\n"
+            "  config/c          edit settings\n"
+            "  shell/sh          open container shell\n"
+            "  exec/x            run in container\n"
+            "[bold cyan]Dashboard[/bold cyan]\n"
+            "  help/?            show this help\n"
+            "  open/url          open Jupyter\n"
+            "  refresh/reload    refresh state\n"
+            "  clear/cls         clear logs\n"
+            "  quit/q            exit\n"
+            "[bold cyan]Queue[/bold cyan]\n"
+            "  Commands entered during a long task wait their turn.\n"
             "[bold cyan]Host Commands[/bold cyan]\n"
-            "!<command> e.g. !pwd, !docker ps\n"
+            "  !pwd\n"
             "[bold cyan]Blocked in Dashboard[/bold cyan]\n"
             f"{blocked_lines}\n"
-            "[bold cyan]Examples[/bold cyan]\n"
-            "up\nadd numpy pandas\nexec python --version\nconfig\n"
-            "[bold cyan]Keybindings[/bold cyan]\n"
-            "ctrl+c clear or quit\n"
-            "ctrl+l clear logs"
+            "[bold cyan]Keys[/bold cyan]\n"
+            "  ctrl+c clear or quit\n"
+            "  ctrl+l clear logs"
         )
 
     def _threadsafe_append(self, line: str) -> None:
         self.call_from_thread(self._append, line)
+
+    def _build_with_dashboard_progress(
+        self,
+        *,
+        args: list[str],
+        emit: commands.Emitter,
+    ) -> None:
+        config = commands.load_env(self.env, emit=emit)
+        config = commands.prepare_environment(config, emit=emit)
+        emit("Building JovyKit overlay image...")
+        self.call_from_thread(self._begin_progress, "Building JovyKit image")
+        try:
+            commands.build_streaming(
+                config,
+                log=lambda _line: self.call_from_thread(self._tick_progress),
+                no_cache="--no-cache" in args,
+                pull="--pull" in args,
+            )
+        finally:
+            self.call_from_thread(self._finish_progress)
+
+    def _begin_progress(self, label: str) -> None:
+        self._progress_label = label
+        self._progress_steps = 0
+        self._refresh_status_if_mounted()
+
+    def _tick_progress(self) -> None:
+        if self._progress_label is None:
+            return
+        self._progress_steps += 1
+        self._refresh_status_if_mounted()
+
+    def _finish_progress(self) -> None:
+        self._progress_label = None
+        self._progress_steps = 0
+        self._refresh_status_if_mounted()
+
+    def _progress_text(self) -> str | None:
+        if self._progress_label is None:
+            return None
+        return _progress_bar(self._progress_steps)
 
     def _append(self, line: str) -> None:
         self._write_log(Text.from_ansi(line))
@@ -556,30 +704,75 @@ class JovyKitDashboard(App[None]):
         if not running:
             command.focus()
 
+    def _begin_command(self, parsed: ParsedTuiCommand) -> None:
+        self._active_command = parsed
+        self._set_command_running(True)
+        self._refresh_status_if_mounted()
 
-def render_status_panel(status: EnvironmentStatus) -> Panel:
+    def _active_command_label(self) -> str | None:
+        if self._active_command is None:
+            return None
+        return _command_label(self._active_command)
+
+    def _queued_command_labels(self) -> list[str]:
+        return [_command_label(command) for command in self._command_queue]
+
+    def _queue_position(self, parsed: ParsedTuiCommand) -> int | None:
+        for index, command in enumerate(self._command_queue, start=1):
+            if _same_command(parsed, command):
+                return index
+        return None
+
+    def _refresh_status_if_mounted(self) -> None:
+        try:
+            self.refresh_status()
+        except (NoMatches, ScreenStackError):
+            return
+
+
+def render_status_panel(
+    status: EnvironmentStatus,
+    *,
+    active_command: str | None = None,
+    queued_count: int = 0,
+    queued_labels: Sequence[str] | None = None,
+    progress_text: str | None = None,
+) -> Panel:
     """Render the top status panel."""
-    details = Text()
+    details = Text(no_wrap=True, overflow="crop")
     details.append("Status: ", style="bold #e0e0e0")
     details.append(_status_label(status))
     details.append("   Build: ", style="bold #e0e0e0")
     details.append(status.build)
+    queue_text = _queue_status(queued_labels, queued_count)
+    details.append("\nActivity: ", style="bold #e0e0e0")
+    details.append(active_command or "idle")
+    if progress_text:
+        details.append("   ", style="bold #e0e0e0")
+        details.append(progress_text, style="#f37726")
+    if queue_text:
+        details.append("   Queue: ", style="bold #e0e0e0")
+        details.append(queue_text)
     details.append("\nImage: ", style="bold #e0e0e0")
     details.append(status.image)
-    if status.url:
-        details.append("\nURL: ", style="bold #e0e0e0")
-        details.append(status.url)
-    if status.home_mount:
-        details.append("\nHome: ", style="bold #e0e0e0")
-        details.append(status.home_mount)
     if status.last_error:
         details.append("\nError: ", style="bold #d33c3c")
         details.append(status.last_error)
+    elif status.is_running and status.url:
+        details.append("\nURL: ", style="bold #e0e0e0")
+        details.append(status.url)
+    elif status.home_mount:
+        details.append("\nHome: ", style="bold #e0e0e0")
+        details.append(status.home_mount)
+    else:
+        details.append("\nNext: ", style="bold #e0e0e0")
+        details.append("up starts Jupyter")
     return Panel(
         details,
         title=f"JovyKit - {status.project_path.name}",
         border_style=_border_style(status.status),
         style="on #1a1a1a",
+        height=STATUS_PANEL_HEIGHT,
     )
 
 
@@ -604,6 +797,39 @@ def _border_style(status: str) -> str:
     if status in {"starting", "stale image", "unknown"}:
         return "#f37726"
     return "#6c8ebf"
+
+
+def _command_label(parsed: ParsedTuiCommand) -> str:
+    return parsed.raw or parsed.name
+
+
+def _same_command(left: ParsedTuiCommand, right: ParsedTuiCommand) -> bool:
+    return (
+        left.kind is right.kind and left.name == right.name and left.args == right.args
+    )
+
+
+def _queue_status(labels: Sequence[str] | None, queued_count: int) -> str | None:
+    if labels:
+        if len(labels) <= 2:
+            return " -> ".join(labels)
+        return f"{labels[0]} -> {labels[1]} (+{len(labels) - 2})"
+    if queued_count:
+        return f"{queued_count} waiting"
+    return None
+
+
+def _progress_bar(steps: int, *, width: int = 16) -> str:
+    """Return an indeterminate progress bar for dashboard commands."""
+    if width < 6:
+        width = 6
+    chunk = min(6, width)
+    span = max(0, width - chunk)
+    start = steps % (span + 1)
+    cells = ["."] * width
+    for index in range(start, start + chunk):
+        cells[index] = "="
+    return "[" + "".join(cells) + f"] {steps} lines"
 
 
 def _option_value(args: list[str], name: str, default: str) -> str:

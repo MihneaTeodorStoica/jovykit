@@ -7,6 +7,7 @@ introduced.
 
 ## Unreleased
 
+- Bumped package version to 7.0.0.
 - Bumped package version to 3.1.0 for the dashboard and install workflow polish.
 - Changed `jovy install` to build updates before quickly recreating a running
   container, avoiding a long stop-then-build downtime window.

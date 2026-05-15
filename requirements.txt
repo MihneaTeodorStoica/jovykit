@@ -9,5 +9,6 @@ requests
 rich
 textual
 tomlkit
+tqdm
 typer
 uv

@@ -1,22 +1,26 @@
 # Automation
 
-The repository uses GitHub Actions for Python checks, security scanning, image
-publishing, pull request labeling, releases, website publishing, and wiki
-publishing.
+The repository uses GitHub Actions for checks, security scans, images,
+releases, labels, the website, and the wiki.
 
-## Main CI and release workflow
+## Main CI And Release
 
-`.github/workflows/ci-release.yml` runs on pushes to `main`, pull requests,
-weekly schedules, and manual dispatches.
+`.github/workflows/ci-release.yml` runs on:
 
-Security jobs run first in the job graph:
+- pushes to `main`
+- pull requests to `main`
+- weekly schedules
+- manual dispatches
 
-- CodeQL for Python.
-- Semgrep with Python and security-audit rules.
-- Zizmor for GitHub Actions workflow checks.
-- Dependency Review on pull requests.
+Security jobs run first:
 
-When the security gate passes, the Python matrix runs on Python 3.11 and 3.12:
+- CodeQL for Python
+- Semgrep for Python and security audit rules
+- Zizmor for workflow checks
+- Dependency Review on pull requests
+
+The security gate waits for those jobs.
+When it passes, the Python matrix runs on Python 3.11 and 3.12:
 
 ```bash
 ruff check .
@@ -32,42 +36,132 @@ pip-audit -r requirements.txt
 python -m build
 ```
 
-On successful pushes or manual runs, the release step reads `pyproject.toml`,
-creates a matching `vX.Y.Z` tag when needed, and continues to release jobs.
+On successful pushes and manual runs, release jobs read `pyproject.toml`.
+They create a matching `vX.Y.Z` tag when needed.
+They then build and publish the package.
 
-When release logic should not run, skip by not using version bumps/tags that need
-publishing.
+## Time Budgets
 
-## Image publishing
+These are the workflow timeout budgets.
+They are useful when judging how much a change can cost.
 
-`.github/workflows/images.yml` builds and publishes the layered notebook images.
-The Dockerfile targets are:
+Main CI and release job budgets:
 
-- `minimal`
-- `base`
-- `extended`
-- `full`
+| Job | Timeout |
+| --- | ---: |
+| CodeQL | 20 min |
+| Semgrep | 15 min |
+| Zizmor | 10 min |
+| Dependency Review | 10 min |
+| Security gate | 5 min |
+| Python 3.11 | 15 min |
+| Python 3.12 | 15 min |
+| Create tag | 10 min |
+| Build package from tag | 10 min |
+| Publish to PyPI | 10 min |
 
-Images are published to GitHub Container Registry under:
+Full push publish maximum runner budget:
+
+```text
+20 + 15 + 10 + 10 + 5 + 15 + 15 + 10 + 10 + 10 = 120 runner-min
+```
+
+Full push publish longest timeout path:
+
+```text
+20 security fanout + 5 gate + 15 Python + 10 tag + 10 package + 10 publish = 70 min
+```
+
+Pull request longest timeout path:
+
+```text
+20 security fanout + 5 gate + 15 Python = 40 min
+```
+
+Scheduled CI longest timeout path:
+
+```text
+20 security fanout + 5 gate = 25 min
+```
+
+Scheduled runs skip the Python matrix.
+
+## Image Publishing
+
+`.github/workflows/images.yml` builds and publishes the notebook images.
+
+It has one 45 minute job.
+The job builds separate Dockerfiles in layer order:
+
+```text
+minimal -> base -> extended -> full
+```
+
+Published images use:
 
 ```text
 ghcr.io/mihneateodorstoica/jovykit-TYPE:TAG
 ```
 
-Published tags are `latest`, `nightly`, `weekly`, and `monthly`.
+`TYPE` is:
 
-See [Images](Images) for the image layout and local build commands.
+```text
+minimal
+base
+extended
+full
+```
 
-## Website publishing
+Published tags are:
 
-`.github/workflows/pages.yml` publishes the promotional website from `site/` to
-GitHub Pages. It runs on pushes to `main` when website files change and can also
-run manually.
+```text
+latest
+nightly
+weekly
+monthly
+```
 
-## Wiki publishing
+Pull requests build local `:ci` images.
+Pushes and manual runs publish `latest`.
+Scheduled runs publish the matching rolling tag.
 
-Documentation source lives in `wiki/`. The `Wiki` workflow copies those pages
-into the GitHub Wiki repository:
+Non-PR image runs also publish:
+
+- SBOM data
+- provenance attestations
+
+Current `linux/amd64` `latest` size checks from 2026-05-15:
+
+| Image | Compressed pull size | Layers |
+| --- | ---: | ---: |
+| `minimal` | 659 MiB | 37 |
+| `base` | 927 MiB | 41 |
+| `extended` | 4.1 GiB | 45 |
+| `full` | 5.8 GiB | 49 |
+
+See [Images](Images) for contents and local build commands.
+
+## Website Publishing
+
+`.github/workflows/pages.yml` publishes `site/` to GitHub Pages.
+
+It runs on:
+
+- pushes to `main` when `site/**` changes
+- changes to `.github/workflows/pages.yml`
+- manual dispatches
+
+Timeout:
+
+```text
+10 min
+```
+
+## Wiki Publishing
+
+Documentation source lives in `wiki/`.
+
+`.github/workflows/wiki.yml` copies these pages into the GitHub Wiki:
 
 ```text
 wiki/Home.md
@@ -78,21 +172,31 @@ wiki/_Sidebar.md
 wiki/_Footer.md
 ```
 
-The workflow runs when `wiki/**` or the workflow file changes on `main`, and it
-can also run manually.
+It runs on:
 
-If the workflow is triggered before the wiki repository exists, GitHub returns a
-`jovykit.wiki.git` clone warning. Create one page in the web UI first, then
-rerun the workflow.
+- pushes to `main` when `wiki/**` changes
+- changes to `.github/workflows/wiki.yml`
+- manual dispatches
 
-GitHub only exposes the backing `jovykit.wiki.git` repository after the wiki has
-been initialized. If the workflow reports that the wiki repository is not
-available yet, create the first wiki page once in the GitHub UI, then rerun the
-workflow.
+Timeout:
 
-## Labels and dependency updates
+```text
+10 min
+```
 
-`.github/workflows/pr-labels.yml` applies labels using `.github/labeler.yml`.
+GitHub only exposes `jovykit.wiki.git` after the wiki exists.
+If the workflow cannot clone it, create one wiki page in the GitHub UI.
+Then rerun the workflow.
+
+## Labels And Dependency Updates
+
+`.github/workflows/pr-labels.yml` applies labels from `.github/labeler.yml`.
+
+Timeout:
+
+```text
+5 min
+```
 
 `.github/dependabot.yml` controls dependency update pull requests.
 

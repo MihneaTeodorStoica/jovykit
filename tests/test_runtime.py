@@ -272,6 +272,118 @@ def test_build_writes_state_after_success(
     assert "built_at" in state
 
 
+def test_build_quiet_path_ticks_tqdm_progress(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    (project.root / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
+    progress_kwargs: list[dict[str, Any]] = []
+    ticks: list[int] = []
+
+    class FakeProgress:
+        def __enter__(self) -> "FakeProgress":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def update(self, amount: int) -> None:
+            ticks.append(amount)
+
+    def fake_tqdm(**kwargs: Any) -> FakeProgress:
+        progress_kwargs.append(kwargs)
+        return FakeProgress()
+
+    def fake_run_command(
+        args: list[str],
+        *,
+        cwd: Path,
+        attached: bool = False,
+        check: bool = True,
+        log: runtime.LogCallback | None = None,
+        require_docker_path: bool = True,
+    ) -> None:
+        assert log is not None
+        log("step 1")
+        log("step 2")
+
+    monkeypatch.setattr(runtime, "tqdm", fake_tqdm)
+    monkeypatch.setattr(runtime, "_supports_tqdm_progress", lambda: True)
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+
+    runtime.build(project.config)
+
+    assert progress_kwargs[0]["desc"] == "Building JovyKit image"
+    assert progress_kwargs[0]["unit"] == "line"
+    assert ticks == [1, 1]
+
+
+def test_build_quiet_path_skips_tqdm_without_plain_terminal(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    (project.root / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
+    calls: list[dict[str, Any]] = []
+
+    def fake_run_command(
+        args: list[str],
+        *,
+        cwd: Path,
+        attached: bool = False,
+        check: bool = True,
+        log: runtime.LogCallback | None = None,
+        require_docker_path: bool = True,
+    ) -> None:
+        calls.append({"cwd": cwd, "log": log})
+
+    monkeypatch.setattr(runtime, "_supports_tqdm_progress", lambda: False)
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+
+    runtime.build(project.config)
+
+    assert calls == [{"cwd": project.root, "log": None}]
+
+
+def test_build_quiet_path_falls_back_when_tqdm_streaming_fd_fails(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any
+) -> None:
+    project = create_project()
+    (project.root / "jovy.lock").write_text("numpy==1.26.0\n", encoding="utf-8")
+    log_values: list[runtime.LogCallback | None] = []
+
+    class FakeProgress:
+        def __enter__(self) -> "FakeProgress":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def update(self, _amount: int) -> None:
+            return None
+
+    def fake_run_command(
+        args: list[str],
+        *,
+        cwd: Path,
+        attached: bool = False,
+        check: bool = True,
+        log: runtime.LogCallback | None = None,
+        require_docker_path: bool = True,
+    ) -> None:
+        log_values.append(log)
+        if log is not None:
+            raise ValueError("bad value(s) in fds_to_keep")
+
+    monkeypatch.setattr(runtime, "_supports_tqdm_progress", lambda: True)
+    monkeypatch.setattr(runtime, "tqdm", lambda **_kwargs: FakeProgress())
+    monkeypatch.setattr(runtime, "run_command", fake_run_command)
+
+    runtime.build(project.config)
+
+    assert log_values[0] is not None
+    assert log_values[1] is None
+
+
 def test_build_streaming_writes_state_and_streams_output(
     monkeypatch: pytest.MonkeyPatch, create_project: Any
 ) -> None:

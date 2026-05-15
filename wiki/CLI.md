@@ -2,16 +2,18 @@
 
 The `jovy` CLI manages one project-local Jupyter environment at a time.
 
-Most commands operate by walking up from the current directory and finding the
-nearest `jovy.toml`. Use `--env PATH` when targeting a specific project root or
-`.jovy` path.
+Most commands walk up from the current directory and find the nearest
+`jovy.toml`.
+Use `--env PATH` when targeting a specific project root or `.jovy` directory.
 
 ```bash
-jovy            # open the dashboard
-jovy status     # print project status
+jovy              # open the dashboard
+jovy dashboard    # same dashboard, explicit command
+jovy status       # print project status
+jovy open         # open the current Jupyter URL
 ```
 
-## Global pattern
+## Global Pattern
 
 Most subcommands accept `--env`:
 
@@ -36,13 +38,16 @@ Common options:
 - `--gpus`: `auto`, `none`, or `all`.
 - `--port`: local port mapped to container port `8888`.
 - SSH is exposed on `127.0.0.1:22` to container port `22` by default.
-- `--token`: token shown in the Jupyter URL (default `jovykit`).
+- `--token`: token shown in the Jupyter URL. Default: `jovykit`.
 - `--log-level`: Jupyter server log level.
-- `--name`: project name to persist in `jovy.toml`.
-- `--image-name`: overlay image repository name.
-- `--tag`: overlay tag (default `local`).
-- `--workdir`: mounted work directory (default `work`).
+- `--name`: project name stored in `jovy.toml`.
+- `--image-name`: project overlay image name.
+- `--tag`: project overlay image tag. Default: `local`.
+- `--workdir`: mounted work directory. Default: `work`.
 - `--force`: refresh an existing environment.
+
+After `init`, run `jovy add ...` or `jovy up`.
+`init` does not claim Jupyter is running.
 
 ## add / remove
 
@@ -53,12 +58,13 @@ jovy add -r requirements.txt -r requirements-dev.txt
 jovy remove plotly
 ```
 
-`add` writes entries to `[python].packages` and `add -r` stores constraints under
-`[python].constraints`. `add` and `remove` also refresh `jovy.lock` so the
-project lockfile matches `jovy.toml`.
+`add` writes entries to `[python].packages`.
+`add -r` stores constraints under `[python].constraints`.
 
-- `add` and `remove` update `jovy.toml` and `jovy.lock`.
-- `jovy install` or `jovy run/up` apply those changes to the generated overlay.
+- `add` and `remove` update `jovy.toml`.
+- `add` and `remove` refresh `jovy.lock`.
+- `jovy install`, `jovy build`, `jovy run`, or `jovy up` apply the lock to the
+  generated overlay image.
 
 ## install and build
 
@@ -78,8 +84,9 @@ jovy build -v
 - build the project overlay image when inputs are stale
 
 Use `--upgrade` to refresh locked package versions.
-
 Use `--no-build` when you only need local file refresh.
+
+Long install and build work shows progress in the CLI and dashboard.
 
 ## run, up, start, down, stop, restart
 
@@ -96,12 +103,30 @@ jovy restart
 ```
 
 - `run` starts Jupyter in the foreground and streams logs.
-- `up` (`start`) starts in the background.
-- `down` (`stop`) stops the environment without deleting generated files,
-  images, lockfiles, work files, or home data.
+- `up` starts Jupyter in the background.
+- `start` is an alias for `up`.
+- `down` stops the environment without deleting generated files, images,
+  lockfiles, work files, or home data.
+- `stop` is an alias for `down`.
 - `restart` restarts the background environment.
 
-`start` is an alias for `up`, and `stop` is an alias for `down`.
+Use `run` when you want the current terminal to own the process.
+Use `up` when you want to keep working in the same shell or dashboard.
+
+## open
+
+```bash
+jovy open
+jovy --env /path/to/project open
+```
+
+`open` opens the current Jupyter URL in the default browser.
+It does not start the container.
+If no URL is available, start the project with:
+
+```bash
+jovy up
+```
 
 ## status and logs
 
@@ -114,8 +139,9 @@ jovy logs --since 10m --timestamps
 jovy logs --no-follow
 ```
 
-`status --json` is convenient for scripts and contains image reference, URL,
-home mount, work mount, package count, build state, and environment path.
+`status --json` is useful for scripts.
+It contains image reference, URL, home mount, work mount, package count, build
+state, and environment path.
 
 ## shell and exec
 
@@ -135,7 +161,7 @@ jovy exec pip list
 jovy config
 ```
 
-The interactive config editor manages common runtime options, including:
+The interactive config editor manages common runtime options:
 
 - images and ports
 - GPU mode
@@ -165,12 +191,19 @@ jovy destroy --yes --purge
 - `destroy --purge` also deletes `.jovy/home/` and asks for confirmation.
 - `destroy --yes --purge` is the non-interactive purge path for automation.
 - `destroy --remove-dir` is deprecated. It is skipped unless `--purge` is also
-  passed so home data is not removed accidentally.
+  passed.
 
-## Dashboard commands
+## Dashboard
 
-Run `jovy` with no subcommand for the dashboard. Enter subcommands without the
-`jovy` prefix:
+Open the dashboard:
+
+```bash
+jovy
+jovy dashboard
+jovy dashboard --env /path/to/project
+```
+
+Enter commands without the `jovy` prefix:
 
 ```text
 status
@@ -179,7 +212,12 @@ down
 add numpy
 install
 config
+open
 ```
+
+The dashboard keeps one command active at a time.
+If you enter more commands during a build or start, they are queued and run in
+order.
 
 Run host shell commands with `!`:
 
@@ -190,21 +228,39 @@ Run host shell commands with `!`:
 
 Dashboard-local helper commands:
 
-- `help`, `clear`, `open`, `refresh`, `quit`, `exit`
+- `help`, `?`
+- `clear`, `cls`
+- `open`, `url`, `browser`
+- `refresh`, `reload`
+- `quit`, `exit`, `q`
 
-Blocked commands:
+Dashboard aliases:
+
+- `build`, `b`, `rebuild`
+- `up`, `start`, `u`
+- `down`, `stop`, `d`
+- `restart`, `r`
+- `shell`, `sh`
+- `exec`, `x`
+- `status`, `s`, `ps`
+- `config`, `settings`, `c`
+- `clean`, `reset-build`
+
+Blocked in the dashboard:
 
 - `run`: use `up` in-dashboard, or run `jovy run` in your terminal.
-- `logs`: use `jovy logs` from your terminal.
-- `destroy`: run `jovy destroy` from your shell so the confirmation prompt is
-  visible.
-- `sync`: no dedicated sync command exists; use `install` instead.
+- `logs`: use the dashboard log view or run `jovy logs` in your terminal.
+- `destroy`: run `jovy destroy` in your shell so confirmation is visible.
+- `sync`: no dedicated sync command exists; use `install`.
 
-## Error handling
+## Error Handling
 
 JovyKit wraps expected user-facing failures in clean messages and exits with a
-non-zero code. Common issues include:
+non-zero code.
+
+Common issues:
 
 - running outside a JovyKit project
 - invalid `jovy.toml`
 - using `jovy init` in a non-empty directory that is not already managed
+- trying to open a URL before the environment has started

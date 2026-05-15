@@ -1,20 +1,19 @@
 # JovyKit
 
-JovyKit is a small CLI for running a project-local JupyterLab environment, with
-Docker Compose doing the container work behind the scenes.
+JovyKit runs a project-local JupyterLab environment with Docker Compose behind
+the scenes.
 
-The intended mental model is close to a Python virtual environment:
+The mental model is close to a Python virtual environment:
 
 ```text
 .jovy is to JovyKit what .venv is to Python.
 ```
 
 Each project gets a `jovy.toml` manifest, a generated `.jovy/` environment
-directory, and a `work/` directory that is mounted into the notebook container.
-Project packages are recorded in TOML, locked with uv, and installed into a
-local overlay image built from one of the published JovyKit base images.
+directory, a `jovy.lock` lockfile, and a `work/` directory mounted into the
+notebook container.
 
-## Quick start
+## Quick Start
 
 Install JovyKit from a local checkout:
 
@@ -22,89 +21,87 @@ Install JovyKit from a local checkout:
 python -m pip install -e .
 ```
 
-Create an environment in a project:
+Create an environment:
 
 ```bash
 jovy init .jovy --image base --gpus auto
 ```
 
-Add the packages this project needs:
+Add project packages:
 
 ```bash
 jovy add pandas scikit-learn plotly
 ```
 
-Build the overlay image and start JupyterLab:
+Start JupyterLab:
 
 ```bash
-jovy run
+jovy up
 ```
 
-JovyKit prints the local Jupyter URL. By default it also exposes SSH on
-`127.0.0.1:22` and uses port `8888` plus token `jovykit` for Jupyter, so the
-browser URL is:
+Open it:
+
+```bash
+jovy open
+```
+
+Or use the dashboard:
+
+```bash
+jovy
+```
+
+## The First Run
+
+A good first run should feel like this:
+
+1. `jovy init` creates the local files and tells you the next useful command.
+2. `jovy add` updates `jovy.toml` and refreshes `jovy.lock`.
+3. `jovy up` locks, builds when needed, starts Docker Compose, and prints the
+   Jupyter URL.
+4. `jovy open` opens the current Jupyter URL.
+5. `jovy` opens the dashboard for status, logs, and queued commands.
+
+The default Jupyter URL is:
 
 ```text
 http://127.0.0.1:8888/lab?token=jovykit
 ```
 
-## Recommended workflow
+JovyKit also exposes SSH on `127.0.0.1:22` by default.
+
+## System Requirements
+
+- Python 3.11 or newer.
+- Docker Engine.
+- Docker Compose plugin support.
+- 2 CPU cores and 4 GiB RAM for `minimal` or `base`.
+- 8 GiB RAM or more for `extended` or `full`.
+- Disk space for the compressed image, unpacked layers, Docker cache, and the
+  project overlay image.
+
+Published `linux/amd64` `latest` image sizes checked on 2026-05-15:
+
+| Image | Compressed pull size | Direct packages | Cumulative packages |
+| --- | ---: | ---: | ---: |
+| `minimal` | 659 MiB | 17 | 17 |
+| `base` | 927 MiB | 36 | 53 |
+| `extended` | 4.1 GiB | 44 | 97 |
+| `full` | 5.8 GiB | 57 | 154 |
+
+Use `base` first unless the project already needs the larger stack.
+Published tag sizes can drift after rebuilds.
+
+## Recommended Workflow
 
 ```bash
 jovy init .jovy --image base --gpus auto
 jovy add pandas scikit-learn plotly
-jovy install
-jovy run
+jovy up
+jovy open
 ```
 
-`jovy add` and `jovy remove` edit `jovy.toml` only; `jovy install` applies
-dependency changes to the overlay image.
-
-## What gets created
-
-After `jovy init`, the project contains:
-
-```text
-jovy.toml
-work/
-.jovy/
-  Containerfile
-  compose.yaml
-  home/
-  state.json
-```
-
-After the first install or run, `jovy.lock` is added at the project root.
-
-Keep `jovy.toml` in version control when you want the environment definition to
-travel with the project. Keep `.jovy/` out of version control; it contains
-generated files, local build state, logs, and machine-local home data.
-
-`.jovy/home/` is mounted as `/home/jovyan` in the container. It preserves
-notebook/user configuration such as `.ssh`, Jupyter config, shell history, and
-dotfiles across normal `clean` and `destroy` runs. Use `jovy destroy --purge`
-only when you intentionally want to delete that home data.
-
-## Pick an image level
-
-Use `--image` with a friendly level:
-
-- `minimal`: Jupyter runtime plus the core scientific Python stack.
-- `base`: everyday data science, classical machine learning, statistics, and
-  local data access.
-- `extended`: advanced ML, NLP, time series, distributed compute, and API
-  tooling.
-- `full`: heavier frameworks and specialized research tooling.
-
-You can also pass a full image reference:
-
-```bash
-jovy init .jovy --image ghcr.io/example/custom-notebook:latest
-```
-
-## Daily workflow
-
-Use the dashboard when you want a project console:
+Use the dashboard for interactive local work:
 
 ```bash
 jovy
@@ -122,13 +119,85 @@ jovy shell
 jovy down
 ```
 
-Need a faster cycle? Try:
+## What Gets Created
+
+After `jovy init` and the first lock/build cycle, the project contains:
+
+```text
+jovy.toml
+jovy.lock
+work/
+.jovy/
+  Containerfile
+  compose.yaml
+  home/
+  state.json
+```
+
+Keep `jovy.toml` and `jovy.lock` in version control when you want the
+environment definition to travel with the project.
+
+Keep `.jovy/` out of version control.
+It contains generated files, local build state, logs, and machine-local home
+data.
+
+`.jovy/home/` is mounted as `/home/jovyan` in the container.
+It preserves `.ssh`, Jupyter config, shell history, and dotfiles across normal
+`clean` and `destroy` runs.
+Use `jovy destroy --purge` only when you want to delete that home data.
+
+## Pick An Image Level
+
+Use `--image` with a friendly level:
+
+- `minimal`: Jupyter runtime plus the core scientific Python stack.
+- `base`: everyday data science, classical machine learning, statistics, and
+  local data access.
+- `extended`: advanced ML, NLP, time series, distributed compute, and API
+  tooling.
+- `full`: heavier frameworks and specialized research tooling.
+
+You can also pass a full image reference:
 
 ```bash
-jovy up
-jovy status --json
-jovy logs --tail 200
-jovy down
+jovy init .jovy --image ghcr.io/example/custom-notebook:latest
+```
+
+## Dashboard
+
+Run:
+
+```bash
+jovy
+```
+
+Enter commands without the `jovy` prefix:
+
+```text
+status
+add numpy
+install
+up
+open
+down
+```
+
+The dashboard queues commands while another command is running.
+It shows status, URL, recent logs, and progress for long work.
+
+Dashboard-local helpers:
+
+- `help`
+- `clear`
+- `open`
+- `refresh`
+- `quit`
+
+Host shell escape:
+
+```text
+!pwd
+!git status
 ```
 
 See [CLI](CLI) for the full command guide and [Images](Images) for image

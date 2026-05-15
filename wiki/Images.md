@@ -1,10 +1,10 @@
 # Images
 
 JovyKit publishes layered Jupyter notebook images to GitHub Container Registry.
-The CLI can use these images directly, or you can build them from the repository
-for local testing.
+Use the published images for normal projects.
+Build them locally only when changing image contents.
 
-## Published references
+## Published References
 
 ```text
 ghcr.io/mihneateodorstoica/jovykit-minimal:latest
@@ -13,10 +13,15 @@ ghcr.io/mihneateodorstoica/jovykit-extended:latest
 ghcr.io/mihneateodorstoica/jovykit-full:latest
 ```
 
-The image publishing workflow also publishes rolling `nightly`, `weekly`, and
-`monthly` tags.
+Rolling tags are also published:
 
-`jovy init` accepts these friendly names and maps them to the `latest` images:
+```text
+nightly
+weekly
+monthly
+```
+
+`jovy init` accepts friendly names:
 
 | CLI value | Image |
 | --- | --- |
@@ -25,43 +30,114 @@ The image publishing workflow also publishes rolling `nightly`, `weekly`, and
 | `extended` | `ghcr.io/mihneateodorstoica/jovykit-extended:latest` |
 | `full` | `ghcr.io/mihneateodorstoica/jovykit-full:latest` |
 
-## Layers
+## Pick An Image
 
-The Dockerfile defines four build targets:
+Start with `base`.
+It is the best default for notebooks, data work, and local experiments.
 
-- `minimal` starts from Jupyter's minimal notebook image and installs the core
-  JovyKit runtime packages from `image/requirements-minimal.txt`.
-- `base` extends `minimal` with everyday data-science packages from
-  `image/requirements-base.txt`.
-- `extended` starts from Jupyter's base notebook image and installs the
-  minimal, base, and extended dependency manifests.
-- `full` extends `extended` with the heavier packages in
-  `image/requirements-full.txt`.
+Use `minimal` when you want the smallest runtime and will add most packages
+yourself.
 
-All image variants include:
+Use `extended` when the project already needs larger ML, NLP, time-series,
+distributed compute, or API tooling.
+
+Use `full` when the project needs the heavy research stack.
+It is useful, but it is large.
+
+## Size Budget
+
+Published `linux/amd64` `latest` sizes checked on 2026-05-15:
+
+| Image | Compressed pull size | Layers | Direct packages | Cumulative packages |
+| --- | ---: | ---: | ---: | ---: |
+| `minimal` | 659 MiB | 37 | 17 | 17 |
+| `base` | 927 MiB | 41 | 36 | 53 |
+| `extended` | 4.1 GiB | 45 | 44 | 97 |
+| `full` | 5.8 GiB | 49 | 57 | 154 |
+
+Compressed pull size is not final disk use.
+Docker also keeps unpacked layers, build cache, and the project overlay image.
+
+Plan for:
+
+- 2 CPU cores and 4 GiB RAM for `minimal` or `base`.
+- 8 GiB RAM or more for `extended` or `full`.
+- Several extra GiB of disk for cache and overlays.
+
+Sizes can drift after image rebuilds.
+
+## Layer Chain
+
+The image chain is made from separate Dockerfiles:
+
+```text
+minimal -> base -> extended -> full
+```
+
+`minimal` starts from:
+
+```text
+quay.io/jupyter/minimal-notebook:python-3.13
+```
+
+It copies `uv` and `uvx` from:
+
+```text
+ghcr.io/astral-sh/uv:0.11.12
+```
+
+It installs:
+
+- `git`
+- `openssh-client`
+- `rsync`
+- `software-properties-common`
+- `nvtop-nightly`
+- `image/requirements-minimal.txt`
+
+`base` extends `minimal` and installs:
+
+```text
+image/requirements-base.txt
+```
+
+`extended` extends `base` and installs:
+
+```text
+image/requirements-extended.txt
+```
+
+`full` extends `extended` and installs:
+
+- `build-essential`
+- `nodejs>=20,<23`
+- `image/requirements-full.txt`
+- a built JupyterLab frontend
+
+`full` removes `build-essential` after the build step.
+
+All variants include:
 
 - `uv` and `uvx`
 - `git`
 - OpenSSH client tools: `ssh`, `scp`, and `sftp`
 - `rsync`
-- a pre-created `/home/jovyan/.ssh` directory with secure permissions
+- `nvtop-nightly`
+- `/home/jovyan/.ssh` with secure permissions
 
-That setup supports SSH-backed Git remotes, SSH file copy, and runtime mounting
-of local SSH configuration.
+## Project Overlay Images
 
-## Project overlay images
-
-`jovy init` does not modify a published base image. Instead, each project gets a
-small generated overlay image:
+`jovy init` does not mutate a published image.
+Each project gets a small generated overlay:
 
 ```text
 .jovy/Containerfile
 jovy.lock
 ```
 
-The overlay image starts from the configured base image, copies the project
-lockfile, and installs locked packages with uv into the system Python
-environment inside the notebook image.
+The overlay starts from the configured base image.
+It copies `jovy.lock`.
+It installs locked packages with uv into the notebook image.
 
 The overlay image name and tag come from `jovy.toml`:
 
@@ -81,32 +157,36 @@ The resulting image reference is:
 jovykit-my-project:local
 ```
 
-## Build locally
+## Build The Published Images Locally
 
-Build one published-image target from the repository root:
+Run from the repository root:
 
 ```bash
-docker build --target minimal -t jovykit-minimal ./image
-docker build --target base -t jovykit-base ./image
-docker build --target extended -t jovykit-extended ./image
-docker build --target full -t jovykit-full ./image
+docker build -f image/minimal/Dockerfile -t jovykit-minimal ./image
+docker build -f image/base/Dockerfile --build-arg BASE_IMAGE=jovykit-minimal -t jovykit-base ./image
+docker build -f image/extended/Dockerfile --build-arg BASE_IMAGE=jovykit-base -t jovykit-extended ./image
+docker build -f image/full/Dockerfile --build-arg BASE_IMAGE=jovykit-extended -t jovykit-full ./image
 ```
 
-Build the current project's overlay image:
+Build in that order.
+Each layer uses the layer before it.
+
+## Build The Project Overlay
 
 ```bash
 jovy build
 jovy build --no-cache --pull
 ```
 
-Use `--no-cache` when the image cache is stale, and `--pull` to refresh base
-images before build.
+Use `--pull` to refresh the configured base image.
+Use `--no-cache` when Docker cache is stale.
 
-## Customize project builds
+Builds can take a while.
+The CLI and dashboard show progress while long steps run.
 
-Edit `jovy.toml` when a project needs a custom notebook user, Compose pull
-policy, labels, extra operating-system packages, build arguments, or pip
-options:
+## Customize Project Builds
+
+Edit `jovy.toml` when a project needs custom image behavior:
 
 ```toml
 [image]
@@ -136,8 +216,23 @@ Then apply the change:
 jovy install
 ```
 
-or restart the background environment with:
+or restart the background environment:
 
 ```bash
 jovy restart
 ```
+
+## Automation
+
+`.github/workflows/images.yml` builds images in one 45 minute job.
+It builds in layer order:
+
+```text
+minimal -> base -> extended -> full
+```
+
+Pull requests build local `:ci` images.
+Pushes and manual runs publish `latest`.
+Schedules publish `nightly`, `weekly`, or `monthly`.
+
+Non-PR runs also publish SBOM data and provenance attestations.

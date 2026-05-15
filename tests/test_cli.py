@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -65,6 +66,18 @@ def test_bare_command_launches_dashboard(
     run_cli([])
 
     assert launched == [True]
+
+
+def test_dashboard_command_passes_env(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    launched: list[Path | None] = []
+    monkeypatch.setattr(cli, "launch_dashboard", lambda env=None: launched.append(env))
+
+    run_cli(["dashboard", "--env", str(project.env_dir)])
+
+    assert launched == [project.env_dir]
 
 
 def test_config_command_launches_editor(
@@ -755,6 +768,35 @@ def test_destroy_prompt_mentions_home_data_for_purge(
     assert str(project.config.home_path) in prompts[0]
     assert "permanently delete home data" in prompts[0]
     assert "Destroy cancelled." in result.output
+
+
+def test_open_command_opens_jupyter_url(
+    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
+) -> None:
+    project = create_project()
+    url = "http://127.0.0.1:9999/lab?token=jovykit"
+    opened: list[str] = []
+    monkeypatch.setattr(
+        cli, "discover_status", lambda _env=None: SimpleNamespace(url=url)
+    )
+    monkeypatch.setattr(cli.webbrowser, "open", lambda value: opened.append(value))
+
+    result = run_cli(["open", "--env", str(project.env_dir)])
+
+    assert opened == [url]
+    assert f"Opened {url}" in result.output
+
+
+def test_open_command_requires_jupyter_url(
+    monkeypatch: pytest.MonkeyPatch, run_cli: Any
+) -> None:
+    monkeypatch.setattr(
+        cli, "discover_status", lambda _env=None: SimpleNamespace(url="unavailable")
+    )
+
+    result = run_cli(["open"], expected_code=1)
+
+    assert "No Jupyter URL available. Start it with: jovy up" in result.output
 
 
 def test_status_outputs_json(
