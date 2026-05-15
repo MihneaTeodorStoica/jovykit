@@ -10,7 +10,7 @@ List the checks you ran, such as:
 - `black --check .`
 - `mypy .`
 - `pytest`
-- `docker build --target minimal -t jovykit-minimal ./image`
+- `docker build -f image/minimal/Dockerfile -t jovykit-minimal ./image`
 - Website preview from `site/index.html`, for website changes
 - Wiki page preview or `.github/workflows/wiki.yml` dry run, for documentation changes
 

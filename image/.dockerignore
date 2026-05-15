@@ -1,7 +1,14 @@
 # Ignore everything by default, then include only files needed by Dockerfile.
 *
 
-!Dockerfile
+!minimal/
+!minimal/Dockerfile
+!base/
+!base/Dockerfile
+!extended/
+!extended/Dockerfile
+!full/
+!full/Dockerfile
 !requirements.txt
 !requirements-minimal.txt
 !requirements-base.txt

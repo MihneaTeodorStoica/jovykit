@@ -169,10 +169,10 @@ All image variants include `git`, OpenSSH client tools, `rsync`, and a prepared
 Build a target locally:
 
 ```bash
-docker build --target minimal -t jovykit-minimal ./image
-docker build --target base -t jovykit-base ./image
-docker build --target extended -t jovykit-extended ./image
-docker build --target full -t jovykit-full ./image
+docker build -f image/minimal/Dockerfile -t jovykit-minimal ./image
+docker build -f image/base/Dockerfile --build-arg BASE_IMAGE=jovykit-minimal -t jovykit-base ./image
+docker build -f image/extended/Dockerfile --build-arg BASE_IMAGE=jovykit-base -t jovykit-extended ./image
+docker build -f image/full/Dockerfile --build-arg BASE_IMAGE=jovykit-extended -t jovykit-full ./image
 ```
 
 ## Configuration
