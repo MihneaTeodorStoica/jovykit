@@ -3,6 +3,8 @@
 ARG BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-base:latest
 FROM ${BASE_IMAGE}
 
+LABEL org.opencontainers.image.description="JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work."
+
 WORKDIR /tmp/requirements
 
 COPY --chown=${NB_UID}:${NB_GID} \
