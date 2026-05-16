@@ -4,6 +4,8 @@ FROM ghcr.io/astral-sh/uv:0.11.12@sha256:3a59a3cdd5f7c217faa36e32dbc7fddbb041288
 
 FROM quay.io/jupyter/minimal-notebook:python-3.13@sha256:ed76b2d29fed80a73146efbf164d77e1f7e102e7481f4cd4a378311f01f7657b
 
+LABEL org.opencontainers.image.description="JovyKit minimal Jupyter image with Python, uv, Git, OpenSSH, rsync, nvtop, and the core scientific Python stack."
+
 COPY --from=uv-bin /uv /uvx /usr/local/bin/
 
 WORKDIR /tmp/requirements

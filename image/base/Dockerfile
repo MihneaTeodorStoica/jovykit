@@ -3,6 +3,8 @@
 ARG BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-minimal:latest
 FROM ${BASE_IMAGE}
 
+LABEL org.opencontainers.image.description="JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access."
+
 WORKDIR /tmp/requirements
 
 COPY --chown=${NB_UID}:${NB_GID} \

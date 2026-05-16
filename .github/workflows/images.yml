@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "image/**"
+      - ".github/workflows/images.yml"
   pull_request:
     branches: [main]
     paths:
       - "image/**"
+      - ".github/workflows/images.yml"
   schedule:
     - cron: "30 6 * * 1"
     - cron: "30 6 * * *"
@@ -29,6 +31,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: mihneateodorstoica
   CI_IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
+  IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with Python, uv, Git, OpenSSH, rsync, nvtop, and the core scientific Python stack.
+  IMAGE_DESCRIPTION_BASE: JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access.
+  IMAGE_DESCRIPTION_EXTENDED: JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work.
+  IMAGE_DESCRIPTION_FULL: JovyKit full Jupyter image with heavier AI, graph, geospatial, big-data, database, and research tooling.
 
 jobs:
   images:
@@ -68,6 +74,12 @@ jobs:
             type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
             type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
             type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_MINIMAL }}
+          annotations: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_MINIMAL }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
       - name: Build and publish minimal
         id: build_minimal
@@ -81,6 +93,7 @@ jobs:
             ${{ steps.meta_minimal.outputs.tags }}
             ${{ github.event_name == 'pull_request' && 'jovykit-minimal:ci' || '' }}
           labels: ${{ steps.meta_minimal.outputs.labels }}
+          annotations: ${{ github.event_name != 'pull_request' && steps.meta_minimal.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=minimal
@@ -106,6 +119,12 @@ jobs:
             type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
             type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
             type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_BASE }}
+          annotations: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_BASE }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
       - name: Build and publish base
         id: build_base
@@ -121,6 +140,7 @@ jobs:
             ${{ steps.meta_base.outputs.tags }}
             ${{ github.event_name == 'pull_request' && 'jovykit-base:ci' || '' }}
           labels: ${{ steps.meta_base.outputs.labels }}
+          annotations: ${{ github.event_name != 'pull_request' && steps.meta_base.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=base
@@ -146,6 +166,12 @@ jobs:
             type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
             type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
             type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_EXTENDED }}
+          annotations: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_EXTENDED }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
       - name: Build and publish extended
         id: build_extended
@@ -161,6 +187,7 @@ jobs:
             ${{ steps.meta_extended.outputs.tags }}
             ${{ github.event_name == 'pull_request' && 'jovykit-extended:ci' || '' }}
           labels: ${{ steps.meta_extended.outputs.labels }}
+          annotations: ${{ github.event_name != 'pull_request' && steps.meta_extended.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=extended
@@ -186,6 +213,12 @@ jobs:
             type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
             type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
             type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_FULL }}
+          annotations: |
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_FULL }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
       - name: Build and publish full
         id: build_full
@@ -201,6 +234,7 @@ jobs:
             ${{ steps.meta_full.outputs.tags }}
             ${{ github.event_name == 'pull_request' && 'jovykit-full:ci' || '' }}
           labels: ${{ steps.meta_full.outputs.labels }}
+          annotations: ${{ github.event_name != 'pull_request' && steps.meta_full.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=full
