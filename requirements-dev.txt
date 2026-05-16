@@ -16,6 +16,7 @@ ruff
 mypy
 types-PyYAML
 types-requests
+types-tqdm
 
 # Dependency and security checks
 pip-audit
