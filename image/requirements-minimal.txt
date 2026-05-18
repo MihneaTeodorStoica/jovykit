@@ -13,17 +13,17 @@ jupyter-server-proxy==4.5.0
 
 # Core arrays, tables, and plotting
 # sktime 0.40.1 requires numpy<2.4
-numpy==2.3.5
+numpy==2.4.4
 # mlflow 3.12.0 requires pandas<3
-pandas==2.3.3
+pandas==3.0.2
 # fairlearn 0.13.0 requires scipy<1.16
-scipy==1.15.3
+scipy==1.17.1
 matplotlib==3.10.9
 seaborn==0.13.2
 
 # Basic ML
 # sktime 0.40.1 requires scikit-learn<1.8.0
-scikit-learn==1.7.2
+scikit-learn==1.8.0
 
 # Developer ergonomics
 tqdm==4.67.3
