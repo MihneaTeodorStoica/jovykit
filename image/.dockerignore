@@ -9,6 +9,7 @@
 !extended/Dockerfile
 !full/
 !full/Dockerfile
+!Dockerfile
 !requirements.txt
 !requirements-minimal.txt
 !requirements-base.txt

@@ -1,25 +1,18 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 
 import pytest
 
-import jovykit.runtime as runtime
+from jovykit import runtime
 
 
 @pytest.mark.docker
-def test_docker_smoke_can_query_docker_version() -> None:
+def test_docker_compose_version_smoke() -> None:
     if shutil.which("docker") is None:
         pytest.skip("docker is not installed")
 
-    runtime.require_docker()
-    result = subprocess.run(
-        ["docker", "version", "--format", "{{.Server.Version}}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    code, output = runtime.docker_capture("compose", "version")
 
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip()
+    assert code == 0
+    assert "Docker Compose" in output

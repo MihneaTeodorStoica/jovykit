@@ -1,831 +1,146 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
 
 import pytest
+import yaml
 
-import jovykit.cli as cli
-from jovykit import commands as command_ops
-from jovykit.config import read_state, write_state
-
-
-def fake_compile_lock(*args: Any, **kwargs: Any) -> None:
-    kwargs["output_file"].write_text("locked\n", encoding="utf-8")
+from jovykit import commands
 
 
-def test_run_without_environment_prints_clean_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
+def test_no_args_initializes_empty_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "none")
 
-    result = run_cli(["run"], expected_code=1)
+    result = run_cli([])
 
-    assert "No JovyKit environment found" in result.output
-    assert "Traceback" not in result.output
+    assert (tmp_path / "compose.yaml").exists()
+    assert (tmp_path / "Dockerfile").exists()
+    assert (tmp_path / "requirements.txt").exists()
+    assert "Created compose.yaml" in result.output
+    assert "Created Dockerfile" in result.output
+    assert "Created requirements.txt" in result.output
+    assert "Created work/" in result.output
+    assert "Created .jupyter/" in result.output
+    assert "gpus:" not in (tmp_path / "compose.yaml").read_text()
 
 
-def test_init_existing_environment_prints_clean_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
+def test_no_args_prints_help_when_project_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
 ) -> None:
+    (tmp_path / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
-    run_cli(["init", ".jovy"])
 
-    result = run_cli(["init", ".jovy"], expected_code=1)
+    result = run_cli([])
 
-    assert "JovyKit environment already exists" in result.output
-    assert "Traceback" not in result.output
+    assert "JovyKit" in result.output
+    assert "jovy up" in result.output
 
 
-def test_init_refuses_to_force_non_jovykit_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
+def test_compose_command_passes_to_compose(
+    monkeypatch: pytest.MonkeyPatch, run_cli
 ) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / ".jovy").mkdir()
-    (tmp_path / ".jovy" / "notes.txt").write_text("not a jovy env", encoding="utf-8")
+    calls: list[list[str]] = []
 
-    result = run_cli(["init", ".jovy", "--force"], expected_code=1)
+    def fake_compose(args: list[str], **kwargs: object) -> int:
+        calls.append(list(args))
+        return 7
 
-    assert "Refusing to force initialize non-JovyKit directory" in result.output
-
-
-def test_version_flag_prints_package_version(run_cli: Any) -> None:
-    result = run_cli(["--version"])
-
-    assert "jovykit" in result.output
-
-
-def test_bare_command_launches_dashboard(
-    monkeypatch: pytest.MonkeyPatch, run_cli: Any
-) -> None:
-    launched: list[bool] = []
-    monkeypatch.setattr(cli, "launch_dashboard", lambda: launched.append(True))
-
-    run_cli([])
-
-    assert launched == [True]
-
-
-def test_dashboard_command_passes_env(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    launched: list[Path | None] = []
-    monkeypatch.setattr(cli, "launch_dashboard", lambda env=None: launched.append(env))
-
-    run_cli(["dashboard", "--env", str(project.env_dir)])
-
-    assert launched == [project.env_dir]
-
-
-def test_config_command_launches_editor(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    launched: list[Path | None] = []
     monkeypatch.setattr(
-        "jovykit.config_editor.run_config_editor",
-        lambda **kwargs: launched.append(kwargs["env"]),
+        commands,
+        "compose_passthrough",
+        fake_compose,
     )
 
-    run_cli(["config", "--env", str(project.env_dir)])
+    result = run_cli(["compose", "logs", "-f"], expected_code=7)
 
-    assert launched == [project.env_dir]
+    assert calls == [["logs", "-f"]]
+    assert result.output == ""
 
 
-def test_help_does_not_launch_dashboard(
-    monkeypatch: pytest.MonkeyPatch, run_cli: Any
+def test_compose_like_commands_pass_args(
+    monkeypatch: pytest.MonkeyPatch, run_cli
 ) -> None:
-    monkeypatch.setattr(
-        cli,
-        "launch_dashboard",
-        lambda: pytest.fail("dashboard should not launch for --help"),
-    )
+    calls: list[tuple[str, list[str]]] = []
 
-    result = run_cli(["--help"])
+    def fake_up(args: list[str]) -> int:
+        calls.append(("up", list(args)))
+        return 0
 
-    assert "Manage project-local JovyKit" in result.output
+    def fake_config(args: list[str]) -> int:
+        calls.append(("config", list(args)))
+        return 0
+
+    monkeypatch.setattr(commands, "up", fake_up)
+    monkeypatch.setattr(commands, "config", fake_config)
+
+    run_cli(["up", "-d", "--build"])
+    run_cli(["config", "--quiet"])
+
+    assert calls == [("up", ["-d", "--build"]), ("config", ["--quiet"])]
 
 
-def test_init_accepts_project_and_jupyter_flags(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
-) -> None:
-    monkeypatch.chdir(tmp_path)
+def test_unknown_command_errors(run_cli) -> None:
+    result = run_cli(["pull"], expected_code=2)
 
+    assert "unknown command: pull" in result.output
+    assert "jovy up" in result.output
+
+
+def test_init_accepts_python_level_gpu_and_port(tmp_path: Path, run_cli) -> None:
     run_cli(
         [
             "init",
-            ".jovy",
+            str(tmp_path),
+            "--image-level",
+            "extended",
+            "--python",
+            "3.12",
+            "--gpu",
+            "all",
+            "--port",
+            "9999",
             "--token",
-            "dev-token",
-            "--log-level",
-            "INFO",
-            "--name",
-            "Example Project",
-            "--image-name",
-            "custom-image",
-            "--tag",
-            "dev",
-            "--workdir",
-            "notebooks",
-        ],
+            "custom-token",
+        ]
     )
 
-    config_text = (tmp_path / "jovy.toml").read_text(encoding="utf-8")
-    assert 'name = "Example Project"' in config_text
-    assert 'name = "custom-image"' in config_text
-    assert 'tag = "dev"' in config_text
-    assert 'token = "dev-token"' in config_text
-    assert "password" not in config_text
-    assert 'log_level = "INFO"' in config_text
-    assert (tmp_path / "notebooks").is_dir()
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    service = compose["services"]["jovy"]
+    assert service["build"]["args"] == {
+        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit-extended:python-3.12"),
+    }
+    assert service["gpus"] == "all"
+    assert service["environment"] == {"JUPYTER_TOKEN": "custom-token"}
+    assert (tmp_path / "requirements.txt").read_text() == ""
+    dockerfile = (tmp_path / "Dockerfile").read_text()
+    assert (
+        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-extended:python-3.12"
+        in dockerfile
+    )
+    assert "ARG PYTHON_VERSION" not in dockerfile
 
 
-def test_init_prints_clean_summary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_cli: Any
+def test_init_auto_enables_detected_gpu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
 ) -> None:
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "all")
 
-    result = run_cli(["init", ".jovy"])
+    run_cli(["init", str(tmp_path)])
 
-    assert "Initialized .jovy" in result.output
-    assert "Jupyter: http://127.0.0.1:8888/lab?token=jovykit" in result.output
-    assert "Base image:" not in result.output
-    assert "Project image:" not in result.output
-    assert "GPU:" not in result.output
-    assert "Token:" not in result.output
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    assert compose["services"]["jovy"]["gpus"] == "all"
 
 
-def test_add_updates_toml_packages_and_clears_build_signature(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    write_state(project.env_dir, {"build_signature": "old", "other": "kept"})
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
+def test_help_is_compose_first(run_cli) -> None:
+    result = run_cli(["--help"])
 
-    run_cli(["add", "numpy", "pandas", "numpy"])
-
-    assert 'packages = ["numpy", "pandas"]' in (project.root / "jovy.toml").read_text(
-        encoding="utf-8"
-    )
-    assert read_state(project.env_dir) == {"other": "kept"}
-    assert (project.root / "jovy.lock").read_text(encoding="utf-8") == "locked\n"
-
-
-def test_add_imports_requirements_file_recursively(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    (project.root / "nested.txt").write_text("pandas\n", encoding="utf-8")
-    (project.root / "constraints.txt").write_text("numpy<2\n", encoding="utf-8")
-    (project.root / "requirements.txt").write_text(
-        "numpy\n-r nested.txt\n-c constraints.txt\n", encoding="utf-8"
-    )
-
-    run_cli(["add", "-r", "requirements.txt"])
-
-    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
-    assert 'packages = ["numpy", "pandas"]' in config_text
-    assert 'constraints = ["constraints.txt"]' in config_text
-    assert (project.root / "jovy.lock").read_text(encoding="utf-8") == "locked\n"
-
-
-def test_add_no_new_packages_skips_lock_rebuild(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project(
-        config_transform=lambda text: text.replace(
-            "packages = []",
-            'packages = ["numpy"]',
-        )
-    )
-    monkeypatch.chdir(project.root)
-    compile_calls: list[tuple] = []
-    monkeypatch.setattr(
-        command_ops,
-        "compile_requirements_lock",
-        lambda *args, **kwargs: compile_calls.append((args, kwargs)),
-    )
-    (project.root / "jovy.lock").write_text("locked\n", encoding="utf-8")
-
-    run_cli(["add", "numpy"])
-
-    assert compile_calls == []
-    assert (project.root / "jovy.lock").read_text(encoding="utf-8") == "locked\n"
-
-
-def test_add_requires_packages_or_requirement_file(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-
-    run_cli(["add"], expected_code=2)
-
-
-def test_remove_updates_toml_packages_and_clears_build_signature(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project(
-        config_transform=lambda text: text.replace(
-            "packages = []", 'packages = ["numpy", "pandas"]'
-        )
-    )
-    monkeypatch.chdir(project.root)
-    write_state(project.env_dir, {"build_signature": "old", "other": "kept"})
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-
-    run_cli(["remove", "numpy"])
-
-    assert 'packages = ["pandas"]' in (project.root / "jovy.toml").read_text(
-        encoding="utf-8"
-    )
-    assert read_state(project.env_dir) == {"other": "kept"}
-    assert (project.root / "jovy.lock").read_text(encoding="utf-8") == "locked\n"
-
-
-def test_remove_no_matching_packages_skips_lock_rebuild(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project(
-        config_transform=lambda text: text.replace(
-            "packages = []", 'packages = ["numpy", "pandas"]'
-        )
-    )
-    monkeypatch.chdir(project.root)
-    compile_calls: list[tuple] = []
-    monkeypatch.setattr(
-        command_ops,
-        "compile_requirements_lock",
-        lambda *args, **kwargs: compile_calls.append((args, kwargs)),
-    )
-    (project.root / "jovy.lock").write_text("locked\n", encoding="utf-8")
-
-    run_cli(["remove", "nonexistent"])
-
-    assert compile_calls == []
-    assert (project.root / "jovy.lock").read_text(encoding="utf-8") == "locked\n"
-
-
-def test_install_no_build_warns_without_building(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "build_streaming",
-        lambda config: pytest.fail("build should be skipped by --no-build"),
-    )
-
-    result = run_cli(["install", "--no-build"])
-
-    assert "Build is stale" in result.output
-
-
-def test_install_regenerates_and_builds_when_stale(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    built: list[str] = []
-    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: True)
-    monkeypatch.setattr(command_ops, "is_container_running", lambda config: False)
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "build_image",
-        lambda config, **kwargs: built.append(config.image_ref),
-    )
-
-    run_cli(["install"])
-
-    assert built == [project.config.image_ref]
-
-
-def test_install_upgrade_refreshes_lock(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[bool] = []
-    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
-
-    def compile_lock(*args: Any, **kwargs: Any) -> None:
-        calls.append(kwargs["upgrade"])
-        fake_compile_lock(*args, **kwargs)
-
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", compile_lock)
-
-    run_cli(["install", "--upgrade"])
-
-    assert calls == [True]
-
-
-def test_install_migrates_legacy_requirements_file(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    (project.env_dir / "requirements.txt").write_text(
-        "numpy\npandas\n", encoding="utf-8"
-    )
-    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-
-    run_cli(["install", "--no-build"])
-
-    config_text = (project.root / "jovy.toml").read_text(encoding="utf-8")
-    assert 'packages = ["numpy", "pandas"]' in config_text
-    assert not (project.env_dir / "requirements.txt").exists()
-
-
-def test_sync_command_is_not_registered(
-    monkeypatch: pytest.MonkeyPatch,
-    create_project: Any,
-    run_cli: Any,
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-
-    run_cli(["sync"], expected_code=2)
-
-
-def test_start_alias_calls_up(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-
-    run_cli(["start", "--no-build"])
-
-    assert calls == [("up", "-d")]
-
-
-def test_stop_alias_calls_down_with_timeout(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-    monkeypatch.setattr(command_ops, "stop_watcher", lambda env_dir: None)
-
-    run_cli(["stop", "--timeout", "5"])
-
-    assert calls == [("stop", "--timeout", "5")]
-
-
-def test_build_forwards_build_options(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[bool, bool]] = []
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "build_image",
-        lambda config, *, no_cache=False, pull=False, verbose=False: calls.append(
-            (no_cache, pull)
-        ),
-    )
-    monkeypatch.setattr(
-        command_ops,
-        "build_streaming",
-        lambda config, *, no_cache=False, pull=False, log=None: calls.append(
-            (no_cache, pull)
-        ),
-    )
-
-    run_cli(["build", "--no-cache", "--pull"])
-
-    assert calls == [(True, True)]
-
-
-def test_run_uses_compose_watch_by_default(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    started: list[Path] = []
-    stopped: list[Path] = []
-
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-    monkeypatch.setattr(
-        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
-    )
-    monkeypatch.setattr(
-        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
-    )
-
-    run_cli(["run", "--no-build"])
-
-    assert calls == [("up", "--watch")]
-    assert started == [project.env_dir]
-    assert stopped == [project.env_dir]
-
-
-def test_run_no_watch_skips_watcher(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    started: list[Path] = []
-
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-    monkeypatch.setattr(
-        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
-    )
-
-    run_cli(["run", "--no-build", "--no-watch"])
-
-    assert calls == [("up",)]
-    assert started == []
-
-
-def test_up_does_not_combine_detach_with_compose_watch(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    started: list[Path] = []
-
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-    monkeypatch.setattr(
-        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
-    )
-
-    result = run_cli(["up", "--no-build"])
-
-    assert calls == [("up", "-d")]
-    assert started == [project.env_dir]
-    assert "Jupyter: http://127.0.0.1:9999/lab?token=jovykit" in result.output
-    assert "Token:" not in result.output
-
-
-def test_down_stops_config_watcher_and_accepts_timeout(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    stopped: list[Path] = []
-
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-    monkeypatch.setattr(
-        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
-    )
-
-    result = run_cli(["down", "--timeout", "5"])
-
-    assert calls == [("stop", "--timeout", "5")]
-    assert stopped == [project.env_dir]
-    assert "Stopping JovyKit environment..." in result.output
-    assert "JovyKit environment stopped." in result.output
-
-
-def test_restart_stops_installs_and_starts_detached(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    started: list[Path] = []
-    stopped: list[Path] = []
-
-    monkeypatch.setattr(command_ops, "compile_requirements_lock", fake_compile_lock)
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-    monkeypatch.setattr(
-        command_ops, "start_watcher", lambda env_dir: started.append(env_dir)
-    )
-    monkeypatch.setattr(
-        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
-    )
-
-    run_cli(["restart", "--no-build", "--timeout", "5"])
-
-    assert calls == [("stop", "--timeout", "5"), ("up", "-d")]
-    assert stopped == [project.env_dir]
-    assert started == [project.env_dir]
-
-
-def test_logs_accepts_since_timestamps_and_no_follow(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-
-    run_cli(["logs", "--tail", "50", "--since", "10m", "--timestamps", "--no-follow"])
-
-    assert calls == [("logs", "--tail", "50", "--since", "10m", "--timestamps")]
-
-
-def test_shell_and_exec_construct_compose_commands(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    calls: list[tuple[str, ...]] = []
-    monkeypatch.setattr(command_ops, "is_container_running", lambda config: True)
-    monkeypatch.setattr(
-        command_ops,
-        "compose",
-        lambda config, *args, attached=False, log=None: calls.append(args),
-    )
-
-    run_cli(["shell", "--command", "python --version"])
-    run_cli(["exec", "python", "--version"])
-
-    assert calls == [
-        ("exec", "jovy", "bash", "-lc", "python --version"),
-        ("exec", "jovy", "python", "--version"),
-    ]
-
-
-def test_exec_without_command_is_usage_error(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-
-    run_cli(["exec"], expected_code=2)
-
-
-def test_destroy_stops_watcher_removes_environment_and_can_keep_image(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    (project.config.home_path / ".bashrc").write_text("config\n", encoding="utf-8")
-    destroyed: list[tuple[bool, bool]] = []
-    stopped: list[Path] = []
-    monkeypatch.setattr(
-        command_ops, "stop_watcher", lambda env_dir: stopped.append(env_dir)
-    )
-    monkeypatch.setattr(
-        command_ops,
-        "destroy_environment",
-        lambda config, *, remove_image=True, remove_volumes=False, log=None: destroyed.append(
-            (remove_image, remove_volumes)
-        ),
-    )
-
-    result = run_cli(["destroy", "--yes", "--keep-image", "--remove-dir"])
-
-    assert stopped == [project.env_dir]
-    assert destroyed == [(False, False)]
-    assert project.env_dir.exists()
-    assert (project.config.home_path / ".bashrc").exists()
-    assert "--remove-dir is deprecated" in result.output
-    assert "Destroying JovyKit environment..." in result.output
-    assert "JovyKit environment destroyed." in result.output
-
-
-def test_clean_removes_generated_artifacts_but_keeps_manifest(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    (project.root / "jovy.lock").write_text("locked\n", encoding="utf-8")
-    (project.config.home_path / ".ssh").mkdir(exist_ok=True)
-
-    run_cli(["clean"])
-
-    assert not (project.env_dir / "Containerfile").exists()
-    assert not (project.env_dir / "compose.yaml").exists()
-    assert not (project.env_dir / "state.json").exists()
-    assert (project.root / "jovy.lock").exists()
-    assert (project.config.home_path / ".ssh").is_dir()
-    assert not (project.env_dir / "requirements.txt").exists()
-
-
-def test_destroy_regenerates_compose_after_clean(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    destroyed: list[Path] = []
-    monkeypatch.setattr(command_ops, "stop_watcher", lambda env_dir: None)
-    monkeypatch.setattr(
-        command_ops,
-        "destroy_environment",
-        lambda config, *, remove_image=True, remove_volumes=False, log=None: destroyed.append(
-            config.env_dir / "compose.yaml"
-        ),
-    )
-
-    run_cli(["clean"])
-    run_cli(["destroy", "--yes", "--keep-image"])
-
-    assert destroyed == [project.env_dir / "compose.yaml"]
-    assert (project.env_dir / "compose.yaml").exists()
-
-
-def test_destroy_prompts_before_running(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    monkeypatch.setattr("jovykit.cli.typer.confirm", lambda *args, **kwargs: False)
-    stopped: list[Path] = []
-    monkeypatch.setattr(
-        command_ops,
-        "stop_watcher",
-        lambda env_dir: stopped.append(env_dir),
-    )
-
-    result = run_cli(["destroy"])
-
-    assert stopped == []
-    assert "Destroy cancelled." in result.output
-
-
-def test_destroy_allows_force_with_yes_and_still_outputs_confirmation(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    stopped: list[Path] = []
-    destroyed: list[tuple[bool, bool]] = []
-    monkeypatch.setattr(
-        command_ops,
-        "stop_watcher",
-        lambda env_dir: stopped.append(env_dir),
-    )
-    monkeypatch.setattr(
-        command_ops,
-        "destroy_environment",
-        lambda config, *, remove_image=True, remove_volumes=False, log=None: destroyed.append(
-            (remove_image, remove_volumes)
-        ),
-    )
-    monkeypatch.setattr("jovykit.cli.typer.confirm", lambda *args, **kwargs: False)
-
-    result = run_cli(["destroy", "--yes"])
-
-    assert stopped == [project.env_dir]
-    assert destroyed == [(True, False)]
-    assert "Destroying JovyKit environment..." in result.output
-    assert "Preserving home data" in result.output
-    assert "JovyKit environment destroyed." in result.output
-
-
-def test_destroy_purge_removes_home_data_and_legacy_volumes(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    (project.config.home_path / ".jupyter").mkdir()
-    destroyed: list[tuple[bool, bool]] = []
-    monkeypatch.setattr(command_ops, "stop_watcher", lambda env_dir: None)
-    monkeypatch.setattr(
-        command_ops,
-        "destroy_environment",
-        lambda config, *, remove_image=True, remove_volumes=False, log=None: destroyed.append(
-            (remove_image, remove_volumes)
-        ),
-    )
-
-    result = run_cli(["destroy", "--yes", "--purge"])
-
-    assert destroyed == [(True, True)]
-    assert not project.config.home_path.exists()
-    assert project.env_dir.exists()
-    assert "Removed home data" in result.output
-
-
-def test_destroy_prompt_mentions_home_data_for_purge(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    prompts: list[str] = []
-
-    def decline(prompt: str, *args: Any, **kwargs: Any) -> bool:
-        prompts.append(prompt)
-        return False
-
-    monkeypatch.setattr(
-        "jovykit.cli.typer.confirm",
-        decline,
-    )
-
-    result = run_cli(["destroy", "--purge"])
-
-    assert str(project.config.home_path) in prompts[0]
-    assert "permanently delete home data" in prompts[0]
-    assert "Destroy cancelled." in result.output
-
-
-def test_open_command_opens_jupyter_url(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    url = "http://127.0.0.1:9999/lab?token=jovykit"
-    opened: list[str] = []
-    monkeypatch.setattr(
-        cli, "discover_status", lambda _env=None: SimpleNamespace(url=url)
-    )
-    monkeypatch.setattr(cli.webbrowser, "open", lambda value: opened.append(value))
-
-    result = run_cli(["open", "--env", str(project.env_dir)])
-
-    assert opened == [url]
-    assert f"Opened {url}" in result.output
-
-
-def test_open_command_requires_jupyter_url(
-    monkeypatch: pytest.MonkeyPatch, run_cli: Any
-) -> None:
-    monkeypatch.setattr(
-        cli, "discover_status", lambda _env=None: SimpleNamespace(url="unavailable")
-    )
-
-    result = run_cli(["open"], expected_code=1)
-
-    assert "No Jupyter URL available. Start it with: jovy up" in result.output
-
-
-def test_status_outputs_json(
-    monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    monkeypatch.chdir(project.root)
-    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
-
-    result = run_cli(["status", "--json"])
-
-    data = json.loads(result.output)
-    assert data["environment"] == str(project.env_dir)
-    assert data["project_image"] == project.config.image_ref
-    assert data["home_mount"] == str(project.config.home_path)
-    assert data["work_mount"] == str(project.config.project_root)
-    assert data["destroy_preserves_home"] is True
-    assert data["build_stale"] is False
-
-
-def test_env_option_loads_environment_outside_cwd(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, create_project: Any, run_cli: Any
-) -> None:
-    project = create_project()
-    other_dir = tmp_path / "other"
-    other_dir.mkdir()
-    monkeypatch.chdir(other_dir)
-    monkeypatch.setattr(command_ops, "is_build_stale", lambda config: False)
-
-    result = run_cli(["status", "--env", str(project.env_dir), "--json"])
-
-    assert json.loads(result.output)["environment"] == str(project.env_dir)
+    assert "jovy up" in result.output
+    assert "jovy start" in result.output
+    assert "jovy config" in result.output
+    assert "jovy compose COMMAND" in result.output
+    assert "jovy add PACKAGE" in result.output
+    assert "destroy" not in result.output
+    assert "clean" not in result.output

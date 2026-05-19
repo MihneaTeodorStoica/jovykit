@@ -1,686 +1,462 @@
-"""Shared JovyKit command operations for the CLI and TUI."""
+"""High-level CLI commands."""
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
-from collections.abc import Callable
+import webbrowser
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from jovykit.config import (
-    DEFAULT_JUPYTER_TOKEN,
-    JovyConfig,
-    JovyKitError,
-    initial_config_text,
-    load_config,
-    read_state,
-    write_state,
+import yaml
+
+from jovykit import runtime
+from jovykit.config import DEFAULT_JUPYTER_TOKEN, JovyKitError
+from jovykit.images import (
+    DEFAULT_PYTHON_VERSION,
+    IMAGE_LEVELS,
+    image_level_from_reference,
+    python_version_from_image,
+    resolve_image_level,
 )
-from jovykit.deps import (
-    add_packages,
-    import_legacy_requirements,
-    import_requirements,
-    remove_packages,
-)
-from jovykit.generate import ensure_empty_or_jovy_env, write_generated_files
 from jovykit.paths import (
-    DEFAULT_ENV_DIR,
-    environment_from_path,
-    find_environment,
-    has_stale_legacy_config,
+    DEFAULT_JUPYTER_DIR,
+    DEFAULT_WORK_DIR,
+    SERVICE_NAME,
+    compose_path,
+    containerfile_path,
+    ensure_compose_project,
+    legacy_config_path,
+    project_root,
+    requirements_path,
 )
-from jovykit.runtime import (
-    build as build_image,
-    build_streaming,
-    compile_requirements_lock,
-    compose,
-    compose_ps,
-    destroy as destroy_environment,
-    is_build_stale,
-)
-from jovykit.watcher import start_watcher, stop_watcher
+from jovykit.templates import render_compose, render_containerfile, render_requirements
 
 Emitter = Callable[[str], None]
+VALID_GPU = ("none", "all")
 
-SHELL_REQUIRES_RUNNING_MESSAGE = (
-    "JovyKit environment is not running. Start it with `jovy up` before using shell."
-)
+
+@dataclass(frozen=True)
+class ProjectSettings:
+    """Editable project settings."""
+
+    level: str
+    python_version: str
+    gpu: str
+    port: int
+    token: str
 
 
 def noop_emit(_: str) -> None:
-    """Ignore emitted command output."""
+    """Default sink for command messages."""
 
 
-def display_path(path: Path) -> Path:
-    """Return a path relative to cwd when possible."""
-    cwd = Path.cwd()
-    return path.relative_to(cwd) if path.is_relative_to(cwd) else path
-
-
-def jupyter_url(config: JovyConfig) -> str:
-    """Return the local JupyterLab URL for a config."""
-    return f"http://127.0.0.1:{config.port}/lab"
-
-
-def jupyter_access_url(config: JovyConfig) -> str:
-    """Return the URL users should open in a browser."""
-    url = jupyter_url(config)
-    if config.jupyter_token:
-        return f"{url}?token={config.jupyter_token}"
-    return url
-
-
-def emit_jupyter_access(config: JovyConfig, emit: Emitter) -> None:
-    """Emit Jupyter access details."""
-    emit(f"Jupyter: {jupyter_access_url(config)}")
-
-
-def load_env(env: Path | None = None, *, emit: Emitter = noop_emit) -> JovyConfig:
-    """Load the current or explicit JovyKit environment."""
-    env_dir = environment_from_path(env) if env else find_environment()
-    if has_stale_legacy_config(env_dir):
-        emit(f"Ignoring stale legacy config at {env_dir / 'jovy.toml'}.")
-    return load_config(env_dir)
-
-
-def clear_build_state(env_dir: Path) -> None:
-    """Clear stale build signature while preserving other state."""
-    state = read_state(env_dir)
-    state.pop("build_signature", None)
-    write_state(env_dir, state)
-
-
-def ensure_built(
-    config: JovyConfig,
+def init_project(
+    root: Path | None = None,
     *,
-    no_build: bool = False,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Build the overlay image if it is stale."""
-    if no_build:
-        if is_build_stale(config):
-            emit("Build is stale; continuing because --no-build was used.")
-        return
-    if is_build_stale(config):
-        emit("Building JovyKit overlay image...")
-        if stream:
-            build_streaming(config, log=emit)
-        else:
-            build_image(config)
-
-
-def is_container_running(config: JovyConfig) -> bool:
-    """Return whether the JovyKit service appears to be running."""
-    try:
-        output = compose_ps(config).strip()
-    except JovyKitError:
-        return False
-    if not output:
-        return False
-    services: list[dict[str, Any]] = []
-    try:
-        parsed = json.loads(output)
-    except json.JSONDecodeError:
-        for line in output.splitlines():
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(item, dict):
-                services.append(item)
-    else:
-        if isinstance(parsed, list):
-            services = [item for item in parsed if isinstance(item, dict)]
-        elif isinstance(parsed, dict):
-            services = [parsed]
-    for service in services:
-        name = str(service.get("Service") or service.get("Name") or "").lower()
-        if name and "jovy" not in name:
-            continue
-        state = str(
-            service.get("State")
-            or service.get("state")
-            or service.get("Status")
-            or service.get("status")
-            or ""
-        ).lower()
-        if "running" in state or state == "up":
-            return True
-    return False
-
-
-def restart_running_container(
-    config: JovyConfig,
-    *,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Quickly recreate the running service after slow install work is done."""
-    emit("Restarting JovyKit container to apply updates...")
-    stop_watcher(config.env_dir)
-    compose(
-        config,
-        "up",
-        "-d",
-        "--no-build",
-        "jovy",
-        attached=False,
-        log=emit if stream else None,
-    )
-    if config.watch_enabled:
-        start_watcher(config.env_dir)
-
-
-def migrate_legacy_requirements(
-    config: JovyConfig,
-    *,
-    emit: Emitter = noop_emit,
-) -> JovyConfig:
-    """Import legacy .jovy/requirements.txt packages into jovy.toml."""
-    requirements_path = config.env_dir / "requirements.txt"
-    if not requirements_path.exists():
-        return config
-    update = import_legacy_requirements(config.config_path, requirements_path)
-    if update.added:
-        emit(f"Imported legacy packages: {', '.join(update.added)}")
-    requirements_path.unlink()
-    clear_build_state(config.env_dir)
-    return load_config(config.env_dir)
-
-
-def compile_lock(
-    config: JovyConfig,
-    *,
-    upgrade: bool = False,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-    verbose: bool = False,
-) -> None:
-    """Compile the project dependency lockfile with uv."""
-    config.env_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = config.lockfile_path
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=config.project_dir,
-        prefix=".jovy-",
-        suffix=".requirements.in",
-        delete=False,
-    ) as handle:
-        input_path = Path(handle.name)
-        handle.write("# Direct project packages managed by JovyKit.\n")
-        for package in config.python_packages:
-            handle.write(f"{package}\n")
-    constraints = [
-        path if path.is_absolute() else config.project_dir / path
-        for path in (Path(value) for value in config.python_constraints)
-    ]
-    try:
-        emit("Compiling JovyKit dependency lockfile...")
-        if verbose:
-            log_callback = None  # None means attached=True, output shown
-        else:
-            log_callback = noop_emit  # noop to suppress output
-        compile_requirements_lock(
-            config,
-            input_file=input_path,
-            output_file=lock_path,
-            constraints=constraints,
-            upgrade=upgrade,
-            log=log_callback if not stream else (emit if stream else None),
-        )
-    finally:
-        input_path.unlink(missing_ok=True)
-
-
-def prepare_environment(
-    config: JovyConfig,
-    *,
-    upgrade: bool = False,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-    verbose: bool = False,
-) -> JovyConfig:
-    """Migrate, regenerate, and lock generated environment files."""
-    config = migrate_legacy_requirements(config, emit=emit)
-    write_generated_files(config)
-    compile_lock(config, upgrade=upgrade, emit=emit, stream=stream, verbose=verbose)
-    return load_config(config.env_dir)
-
-
-def install(
-    config: JovyConfig,
-    *,
-    no_build: bool = False,
-    upgrade: bool = False,
-    restart_running: bool = True,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Regenerate files and build the overlay image when stale."""
-    was_running = restart_running and is_container_running(config)
-    config = prepare_environment(config, upgrade=upgrade, emit=emit, stream=stream)
-    needs_build = is_build_stale(config)
-    ensure_built(config, no_build=no_build, emit=emit, stream=stream)
-    if was_running and needs_build and not no_build:
-        restart_running_container(config, emit=emit, stream=stream)
-
-
-def init_environment(
-    *,
-    path: Path = Path(DEFAULT_ENV_DIR),
-    image: str = "base",
-    gpus: str = "auto",
+    level: str = "base",
+    python_version: str = DEFAULT_PYTHON_VERSION,
+    gpu: str | None = None,
     port: int = 8888,
     token: str = DEFAULT_JUPYTER_TOKEN,
-    log_level: str = "ERROR",
-    project_name: str | None = None,
-    image_name: str | None = None,
-    image_tag: str = "local",
-    workdir: str = "work",
     force: bool = False,
     emit: Emitter = noop_emit,
-) -> JovyConfig:
-    """Create a project-local JovyKit environment."""
-    env_dir = path.resolve()
-    if not force:
-        ensure_empty_or_jovy_env(env_dir)
-    elif (
-        env_dir.exists()
-        and any(env_dir.iterdir())
-        and not (env_dir.parent / "jovy.toml").exists()
-        and not (env_dir / "jovy.toml").exists()
+) -> Path:
+    """Create a Compose-first JovyKit project."""
+    resolved = project_root(root)
+    gpu = detect_gpu_mode() if gpu is None else gpu
+    if gpu not in VALID_GPU:
+        raise JovyKitError("GPU must be one of: none, all.")
+    if legacy_config_path(resolved).exists():
+        raise JovyKitError(
+            "jovy.toml is no longer used. Move settings into compose.yaml, then remove jovy.toml."
+        )
+
+    compose_file = compose_path(resolved)
+    containerfile = containerfile_path(resolved)
+    requirements_file = requirements_path(resolved)
+    if not force and (
+        compose_file.exists() or containerfile.exists() or requirements_file.exists()
     ):
         raise JovyKitError(
-            f"Refusing to force initialize non-JovyKit directory: {env_dir}"
+            "compose.yaml, Dockerfile, or requirements.txt already exists. Use --force to overwrite."
         )
-    env_dir.mkdir(parents=True, exist_ok=True)
 
-    project_root = env_dir.parent
-    (env_dir.parent / "jovy.toml").write_text(
-        initial_config_text(
-            project_name=project_name or project_root.name,
-            env_name=env_dir.name,
-            image=image,
-            gpus=gpus,
+    resolved.mkdir(parents=True, exist_ok=True)
+    (resolved / DEFAULT_WORK_DIR).mkdir(exist_ok=True)
+    (resolved / DEFAULT_JUPYTER_DIR).mkdir(exist_ok=True)
+    compose_file.write_text(
+        render_compose(
+            project_name=resolved.name,
+            level=level,
+            python_version=python_version,
+            gpu=gpu,
             port=port,
             token=token,
-            log_level=log_level,
-            image_name=image_name,
-            image_tag=image_tag,
-            workdir=workdir,
         ),
         encoding="utf-8",
     )
-
-    config = load_config(env_dir)
-    config.project_root.mkdir(parents=True, exist_ok=True)
-    write_generated_files(config)
-    write_state(env_dir, {})
-
-    emit(f"Initialized {display_path(env_dir)}")
-    emit_jupyter_access(config, emit)
-    return config
-
-
-def add(
-    packages: list[str],
-    *,
-    requirement_files: list[Path] | None = None,
-    env: Path | None = None,
-    emit: Emitter = noop_emit,
-) -> None:
-    """Add packages to the project environment manifest."""
-    config = load_env(env, emit=emit)
-    config = migrate_legacy_requirements(config, emit=emit)
-    imported = import_requirements(
-        requirement_files or [], project_dir=config.project_dir
+    containerfile.write_text(
+        render_containerfile(level=level, python_version=python_version),
+        encoding="utf-8",
     )
-    update = add_packages(
-        config.config_path,
-        [*packages, *imported.packages],
-        constraints=imported.constraints,
-    )
-    clear_build_state(config.env_dir)
-    if update.added or update.constraints_added:
-        config = load_config(config.env_dir)
-        compile_lock(config, emit=emit)
-        if update.added:
-            emit(f"Added: {', '.join(update.added)}")
-        if update.constraints_added:
-            emit(f"Added constraints: {', '.join(update.constraints_added)}")
-        emit("Run jovy install, jovy run, or jovy up to apply changes.")
-    else:
-        emit("No new packages added.")
+    requirements_file.write_text(render_requirements(), encoding="utf-8")
+    emit("Created compose.yaml")
+    emit("Created Dockerfile")
+    emit("Created requirements.txt")
+    emit("Created work/")
+    emit("Created .jupyter/")
+    return resolved
 
 
-def remove(
-    packages: list[str],
+def compose_passthrough(
+    args: Sequence[str],
     *,
-    env: Path | None = None,
-    emit: Emitter = noop_emit,
-) -> None:
-    """Remove packages from the project environment manifest."""
-    config = load_env(env, emit=emit)
-    config = migrate_legacy_requirements(config, emit=emit)
-    update = remove_packages(config.config_path, packages)
-    clear_build_state(config.env_dir)
-    if update.removed:
-        config = load_config(config.env_dir)
-        compile_lock(config, emit=emit)
-        emit(f"Removed: {', '.join(update.removed)}")
-        emit("Run jovy install, jovy run, or jovy up to apply changes.")
-    else:
-        emit("No matching packages removed.")
+    root: Path | None = None,
+    log: runtime.LogCallback | None = None,
+    attached: bool = True,
+) -> int:
+    """Forward a command to docker compose."""
+    return runtime.compose(root, list(args), log=log, attached=attached)
 
 
-def build(
+def compose_alias(
+    command: str,
+    args: Sequence[str] = (),
     *,
-    env: Path | None = None,
-    no_cache: bool = False,
-    pull: bool = False,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-    verbose: bool = False,
-) -> None:
-    """Build the project overlay image."""
-    config = load_env(env, emit=emit)
-    config = prepare_environment(config, emit=emit, stream=stream, verbose=verbose)
-    emit("Building JovyKit overlay image...")
-    if stream:
-        build_streaming(config, log=emit, no_cache=no_cache, pull=pull)
-    else:
-        build_image(config, no_cache=no_cache, pull=pull, verbose=verbose)
+    root: Path | None = None,
+) -> int:
+    """Run a named docker compose command."""
+    return runtime.compose(root, [command, *args])
 
 
-def run(
-    *,
-    env: Path | None = None,
-    no_build: bool = False,
-    watch: bool = True,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Build if needed and start Jupyter in the foreground."""
-    config = load_env(env, emit=emit)
-    install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
-    emit_jupyter_access(config, emit)
-    args = ["up"]
-    should_watch = watch and config.watch_enabled
-    if should_watch:
-        args.append("--watch")
-        start_watcher(config.env_dir)
-    try:
-        compose(config, *args, attached=True)
-    finally:
-        if should_watch:
-            stop_watcher(config.env_dir)
+def up(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose up."""
+    return compose_alias("up", args, root=root)
 
 
-def up(
-    *,
-    env: Path | None = None,
-    no_build: bool = False,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Build if needed and start Jupyter in the background."""
-    config = load_env(env, emit=emit)
-    install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
-    emit("Starting JovyKit environment...")
-    compose(
-        config,
-        "up",
-        "-d",
-        attached=False,
-        log=emit if stream else None,
-    )
-    if config.watch_enabled:
-        start_watcher(config.env_dir)
-    emit_jupyter_access(config, emit)
-    emit("JovyKit environment started.")
+def down(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose down."""
+    return compose_alias("down", args, root=root)
 
 
-def down(
-    *,
-    env: Path | None = None,
-    timeout: int | None = None,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Stop the JovyKit environment."""
-    args = ["stop"]
-    if timeout is not None:
-        args.extend(["--timeout", str(timeout)])
-    config = load_env(env, emit=emit)
-    emit("Stopping JovyKit environment...")
-    stop_watcher(config.env_dir)
-    compose(
-        config,
-        *args,
-        attached=False,
-        log=emit if stream else None,
-    )
-    emit("JovyKit environment stopped.")
+def start(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose start."""
+    return compose_alias("start", args, root=root)
 
 
-def restart(
-    *,
-    env: Path | None = None,
-    no_build: bool = False,
-    timeout: int | None = None,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Build if needed and restart Jupyter in the background."""
-    config = load_env(env, emit=emit)
-    install(config, no_build=no_build, restart_running=False, emit=emit, stream=stream)
-    emit("Restarting JovyKit environment...")
-    stop_watcher(config.env_dir)
-    args = ["stop"]
-    if timeout is not None:
-        args.extend(["--timeout", str(timeout)])
-    compose(
-        config,
-        *args,
-        attached=False,
-        log=emit if stream else None,
-    )
-    compose(
-        config,
-        "up",
-        "-d",
-        attached=False,
-        log=emit if stream else None,
-    )
-    if config.watch_enabled:
-        start_watcher(config.env_dir)
-    emit_jupyter_access(config, emit)
-    emit("JovyKit environment restarted.")
+def stop(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose stop."""
+    return compose_alias("stop", args, root=root)
 
 
-def logs(
-    *,
-    env: Path | None = None,
-    follow: bool = True,
-    tail: str = "all",
-    since: str | None = None,
-    timestamps: bool = False,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Follow JovyKit container logs."""
-    args = ["logs", "--tail", tail]
-    if since:
-        args.extend(["--since", since])
-    if timestamps:
-        args.append("--timestamps")
-    if follow:
-        args.append("-f")
-    compose(
-        load_env(env, emit=emit),
-        *args,
-        attached=not stream,
-        log=emit if stream else None,
-    )
+def restart(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose restart."""
+    return compose_alias("restart", args, root=root)
 
 
-def shell(
-    *,
-    env: Path | None = None,
-    command: str | None = None,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Open a bash shell in the running JovyKit container."""
-    if stream and command is None:
-        raise JovyKitError("Streaming shell mode requires a command.")
-    config = load_env(env, emit=emit)
-    if not is_container_running(config):
-        raise JovyKitError(SHELL_REQUIRES_RUNNING_MESSAGE)
-    args = ["exec", "jovy", "bash"]
-    if command:
-        if stream:
-            args = ["exec", "-T", "jovy", "bash", "-lc", command]
-        else:
-            args.extend(["-lc", command])
-    compose(
-        config,
-        *args,
-        attached=not stream,
-        log=emit if stream else None,
-    )
+def config(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose config."""
+    return compose_alias("config", args, root=root)
 
 
-def exec_in_container(
-    args: list[str],
-    *,
-    env: Path | None = None,
-    emit: Emitter = noop_emit,
-    stream: bool = False,
-) -> None:
-    """Run a command inside the running JovyKit container."""
+def logs(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose logs."""
+    return compose_alias("logs", args, root=root)
+
+
+def shell(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Open a shell or run a command in the JovyKit service."""
+    command = list(args) or ["bash"]
+    return runtime.compose(root, ["exec", SERVICE_NAME, *command])
+
+
+def run(args: Sequence[str], *, root: Path | None = None) -> int:
+    """Run a one-off command in the JovyKit service."""
     if not args:
-        raise JovyKitError(
-            "Pass a command to run, for example: jovy exec python --version"
-        )
-    compose_args = ["exec", "jovy", *args]
-    if stream:
-        compose_args = ["exec", "-T", "jovy", *args]
-    compose(
-        load_env(env, emit=emit),
-        *compose_args,
-        attached=not stream,
-        log=emit if stream else None,
-    )
+        raise JovyKitError("Command required.")
+    return runtime.compose(root, ["run", "--rm", SERVICE_NAME, *args])
 
 
-def destroy(
+def build(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose build."""
+    return compose_alias("build", args, root=root)
+
+
+def watch(args: Sequence[str] = (), *, root: Path | None = None) -> int:
+    """Run docker compose watch."""
+    return compose_alias("watch", args, root=root)
+
+
+def add_packages(
+    packages: Sequence[str],
     *,
-    env: Path | None = None,
-    purge: bool = False,
-    remove_dir: bool = False,
-    keep_image: bool = False,
+    root: Path | None = None,
     emit: Emitter = noop_emit,
-    stream: bool = False,
 ) -> None:
-    """Remove runtime resources while preserving home data by default."""
-    config = load_env(env, emit=emit)
-    if not (config.env_dir / "compose.yaml").exists():
-        write_generated_files(config)
-    emit("Destroying JovyKit environment...")
-    if purge:
-        emit(f"Purging home data at {display_path(config.home_path)}")
-    else:
-        emit(f"Preserving home data at {display_path(config.home_path)}")
-    stop_watcher(config.env_dir)
-    destroy_environment(
-        config,
-        remove_image=not keep_image,
-        remove_volumes=purge,
-        log=emit if stream else None,
-    )
-    if purge and config.home_path.exists():
-        shutil.rmtree(config.home_path)
-        emit(f"Removed home data at {display_path(config.home_path)}")
-    if remove_dir and not purge:
-        emit(
-            "--remove-dir is deprecated and skipped unless --purge is also used "
-            "so home data is not deleted accidentally."
-        )
-    elif remove_dir:
-        shutil.rmtree(config.env_dir)
-        emit(f"Removed {config.env_dir}")
-    emit("JovyKit environment destroyed.")
-
-
-def clean(*, env: Path | None = None, emit: Emitter = noop_emit) -> None:
-    """Remove generated files and local build state."""
-    config = load_env(env, emit=emit)
-    emit("Cleaning generated JovyKit artifacts...")
-    removed: list[Path] = []
-    for name in (
-        "Containerfile",
-        "compose.yaml",
-        ".gitignore",
-        "state.json",
-        "requirements.txt",
-        "watcher.pid",
-        "watcher.log",
-    ):
-        path = config.env_dir / name
-        if path.exists():
-            path.unlink()
-            removed.append(path)
-    if removed:
-        emit("Removed generated artifacts:")
-        for path in removed:
-            emit(f"- {display_path(path)}")
-    else:
-        emit("No generated artifacts to remove.")
-    emit("JovyKit clean complete.")
-
-
-def status_data(
-    *, env: Path | None = None, emit: Emitter = noop_emit
-) -> dict[str, Any]:
-    """Return basic JovyKit environment state for the CLI."""
-    config = load_env(env, emit=emit)
-    stale = is_build_stale(config)
-    return {
-        "environment": str(config.env_dir),
-        "base_image": config.base_image,
-        "project_image": config.image_ref,
-        "port": config.port,
-        "url": jupyter_access_url(config),
-        "gpus": config.gpus,
-        "work_mount": str(config.project_root),
-        "home_mount": str(config.home_path),
-        "package_count": len(config.python_packages),
-        "destroy_preserves_home": True,
-        "build_stale": stale,
+    """Add dependencies to requirements.txt."""
+    if not packages:
+        raise JovyKitError("Package name required.")
+    lines = _load_requirements(root)
+    existing = {
+        _dependency_name(spec)
+        for line in lines
+        if (spec := _requirement_spec(line)) is not None
     }
+    added: list[str] = []
+    for package in packages:
+        spec = package.strip()
+        if not spec:
+            continue
+        name = _dependency_name(spec)
+        if name not in existing:
+            lines.append(spec)
+            existing.add(name)
+            added.append(spec)
+    _save_requirements(root, lines)
+    for package in added:
+        emit(f"Added {package}")
+    emit("Saved requirements.txt")
 
 
-def status(
-    *, env: Path | None = None, json_output: bool = False, emit: Emitter
+def remove_packages(
+    packages: Sequence[str],
+    *,
+    root: Path | None = None,
+    emit: Emitter = noop_emit,
 ) -> None:
-    """Show basic JovyKit environment state."""
-    data = status_data(env=env, emit=emit)
-    if json_output:
-        emit(json.dumps(data, indent=2, sort_keys=True))
-        return
-    emit(f"Environment: {data['environment']}")
-    emit(f"Base image: {data['base_image']}")
-    emit(f"Project image: {data['project_image']}")
-    emit(f"Port: {data['port']}")
-    emit(f"URL: {data['url']}")
-    emit(f"GPU: {data['gpus']}")
-    emit(f"Work mount: {data['work_mount']}")
-    emit(f"Home mount: {data['home_mount']}")
-    emit(f"Packages: {data['package_count']}")
-    emit("Destroy preserves home: yes")
-    emit(f"Build stale: {'yes' if data['build_stale'] else 'no'}")
+    """Remove dependencies from requirements.txt."""
+    if not packages:
+        raise JovyKitError("Package name required.")
+    names = {
+        _dependency_name(package.strip()) for package in packages if package.strip()
+    }
+    kept: list[str] = []
+    removed: list[str] = []
+    for line in _load_requirements(root):
+        spec = _requirement_spec(line)
+        if spec is None:
+            kept.append(line)
+            continue
+        name = _dependency_name(spec)
+        if name not in names:
+            kept.append(line)
+            continue
+        removed.append(spec)
+    _save_requirements(root, kept)
+    for package in removed:
+        emit(f"Removed {package}")
+    emit("Saved requirements.txt")
+
+
+def load_project_settings(root: Path | None = None) -> ProjectSettings:
+    """Load editable settings from compose.yaml."""
+    resolved = ensure_compose_project(root)
+    data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
+    service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
+    build: dict[str, Any] = service.get("build") or {}
+    args = build.get("args") or {}
+    base_image = _read_build_arg(args, "JOVY_BASE_IMAGE") or resolve_image_level("base")
+    level = image_level_from_reference(base_image) or "base"
+    python_version = _read_build_arg(
+        args, "PYTHON_VERSION"
+    ) or python_version_from_image(base_image)
+    gpu = _read_gpu_mode(service)
+    port = _read_port(service)
+    token = _read_environment_value(service, "JUPYTER_TOKEN") or DEFAULT_JUPYTER_TOKEN
+    return ProjectSettings(
+        level=level,
+        python_version=python_version,
+        gpu=gpu,
+        port=port,
+        token=token,
+    )
+
+
+def save_project_settings(
+    root: Path | None = None,
+    *,
+    level: str,
+    python_version: str,
+    gpu: str,
+    port: int,
+    token: str,
+    emit: Emitter = noop_emit,
+) -> None:
+    """Save editable settings to compose.yaml and Dockerfile."""
+    resolved = ensure_compose_project(root)
+    if level not in IMAGE_LEVELS:
+        levels = ", ".join(IMAGE_LEVELS)
+        raise JovyKitError(f"Image level must be one of: {levels}.")
+    if gpu not in VALID_GPU:
+        raise JovyKitError("GPU must be one of: none, all.")
+    if port < 1 or port > 65535:
+        raise JovyKitError("Port must be between 1 and 65535.")
+    if not python_version:
+        raise JovyKitError("Python version is required.")
+    token = token.strip()
+    if not token:
+        raise JovyKitError("Jupyter token is required.")
+    compose_path(resolved).write_text(
+        render_compose(
+            project_name=resolved.name,
+            level=level,
+            python_version=python_version,
+            gpu=gpu,
+            port=port,
+            token=token,
+        ),
+        encoding="utf-8",
+    )
+    containerfile_path(resolved).write_text(
+        render_containerfile(level=level, python_version=python_version),
+        encoding="utf-8",
+    )
+    emit("Saved compose.yaml")
+    emit("Saved Dockerfile")
+    if not requirements_path(resolved).exists():
+        requirements_path(resolved).write_text(render_requirements(), encoding="utf-8")
+        emit("Created requirements.txt")
+
+
+def _load_requirements(root: Path | None = None) -> list[str]:
+    resolved = ensure_compose_project(root)
+    path = requirements_path(resolved)
+    if not path.exists():
+        raise JovyKitError("requirements.txt not found. Run: jovy init")
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def _save_requirements(root: Path | None, lines: list[str]) -> None:
+    resolved = ensure_compose_project(root)
+    content = "\n".join(lines)
+    if content:
+        content += "\n"
+    requirements_path(resolved).write_text(content, encoding="utf-8")
+
+
+def _requirement_spec(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith(("#", "-")):
+        return None
+    return stripped.split(" #", 1)[0].strip()
+
+
+def _dependency_name(spec: str) -> str:
+    spec = spec.split(" #", 1)[0].strip()
+    for separator in ("==", ">=", "<=", "!=", "~=", "=", ">", "<"):
+        if separator in spec:
+            spec = spec.split(separator, 1)[0]
+            break
+    return spec.split("[", 1)[0].strip().lower()
+
+
+def _read_build_arg(args: object, name: str) -> str | None:
+    if isinstance(args, dict):
+        value = args.get(name)
+        return None if value is None else str(value)
+    if isinstance(args, list):
+        prefix = f"{name}="
+        for item in args:
+            text = str(item)
+            if text.startswith(prefix):
+                return text[len(prefix) :]
+    return None
+
+
+def _read_gpu_mode(service: dict[str, Any]) -> str:
+    if service.get("gpus") == "all":
+        return "all"
+    return "none"
+
+
+def _read_port(service: dict[str, Any]) -> int:
+    for port in service.get("ports", []) or []:
+        parts = str(port).split(":")
+        if len(parts) >= 3 and parts[-1] == "8888":
+            return int(parts[-2])
+        if len(parts) == 2 and parts[-1] == "8888":
+            return int(parts[0])
+    return 8888
+
+
+def _read_environment_value(service: dict[str, Any], name: str) -> str | None:
+    environment = service.get("environment") or {}
+    if isinstance(environment, dict):
+        value = environment.get(name)
+        return None if value is None else str(value)
+    if isinstance(environment, list):
+        prefix = f"{name}="
+        for item in environment:
+            text = str(item)
+            if text.startswith(prefix):
+                return text[len(prefix) :]
+    return None
+
+
+def jupyter_url(root: Path | None = None) -> str:
+    """Return the local Lab URL from compose.yaml."""
+    resolved = ensure_compose_project(root)
+    data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
+    service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
+    for port in service.get("ports", []) or []:
+        parts = str(port).split(":")
+        if len(parts) >= 3 and parts[-1] == "8888":
+            return f"http://127.0.0.1:{parts[-2]}/lab"
+        if len(parts) == 2 and parts[-1] == "8888":
+            return f"http://127.0.0.1:{parts[0]}/lab"
+    return "http://127.0.0.1:8888/lab"
+
+
+def open_browser(root: Path | None = None) -> str:
+    """Open the Jupyter Lab URL."""
+    url = jupyter_url(root)
+    webbrowser.open(url)
+    return url
+
+
+def doctor(root: Path | None = None, *, emit: Emitter = noop_emit) -> None:
+    """Print basic host and project diagnostics."""
+    if shutil.which("docker") is None:
+        emit("docker: missing")
+    else:
+        _, version = runtime.docker_capture("--version")
+        emit(f"docker: {version}")
+        code, compose_version = runtime.docker_capture("compose", "version")
+        emit(f"compose: {compose_version if code == 0 else 'unavailable'}")
+
+    emit(f"gpu: {'detected' if detect_gpu_mode() == 'all' else 'not detected'}")
+    try:
+        resolved = ensure_compose_project(root)
+    except JovyKitError as exc:
+        emit(f"project: {exc}")
+    else:
+        emit(f"project: {compose_path(resolved)}")
+
+
+def status(root: Path | None = None) -> str:
+    """Return a short Compose status string."""
+    raw = runtime.compose_ps(root)
+    try:
+        items = json.loads(raw)
+    except json.JSONDecodeError:
+        return "stopped"
+    if isinstance(items, dict):
+        items = [items]
+    states = [
+        str(item.get("State") or item.get("Status") or "unknown") for item in items
+    ]
+    return ", ".join(states) if states else "stopped"
+
+
+def detect_gpu_mode() -> str:
+    """Return all when the host appears to expose a GPU."""
+    if shutil.which("nvidia-smi") is not None:
+        return "all"
+    if any(Path("/dev").glob("nvidia*")):
+        return "all"
+    if any(Path("/dev/dri").glob("renderD*")):
+        return "all"
+    return "none"

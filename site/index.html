@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="JovyKit creates project-local Jupyter container environments with layered notebook images, uv locking, and Docker Compose."
+      content="JovyKit creates project-local JupyterLab container projects with Docker Compose, uv-based images, and readable generated files."
     />
     <title>JovyKit | Project-local Jupyter containers</title>
     <link rel="icon" href="assets/jovykit-logo-transparent.png" />
@@ -32,8 +32,8 @@
           <h1 id="hero-title">JovyKit</h1>
           <p class="hero-lede">
             A venv-like command line for project-local JupyterLab environments:
-            readable generated files, uv-locked dependencies, layered notebook
-            images, and Docker Compose kept politely out of your way.
+            readable Compose files, uv-based Python images, simple package
+            overlays, and lifecycle commands that behave like Docker Compose.
           </p>
           <div class="hero-actions" aria-label="Primary actions">
             <a class="button primary" href="https://github.com/MihneaTeodorStoica/jovykit">View on GitHub</a>
@@ -47,7 +47,7 @@
 
       <section class="command-strip" aria-label="Quick start command">
         <span class="prompt">$</span>
-        <code>jovy init .jovy --image base &amp;&amp; jovy add pandas scikit-learn &amp;&amp; jovy run</code>
+        <code>jovy init --image-level base --python 3.13 &amp;&amp; jovy add pandas scikit-learn &amp;&amp; jovy up -d</code>
       </section>
 
       <section class="intro-grid" aria-label="JovyKit highlights">
@@ -55,25 +55,27 @@
           <span class="metric">01</span>
           <h2>Local by default</h2>
           <p>
-            A project gets <code>jovy.toml</code>, <code>.jovy/</code>, and
-            <code>work/</code>. The shape is easy to inspect and easy to throw
-            away.
+            A project gets <code>compose.yaml</code>, <code>Dockerfile</code>,
+            <code>requirements.txt</code>, <code>work/</code>, and
+            <code>.jupyter/</code>.
           </p>
         </article>
         <article>
           <span class="metric">02</span>
           <h2>Reproducible overlays</h2>
           <p>
-            Direct package specs live in TOML, uv compiles a lockfile, and the
-            generated Containerfile installs exactly that environment.
+            Project packages live in <code>requirements.txt</code>. The
+            generated Dockerfile installs them with uv on top of the selected
+            Python-tagged image.
           </p>
         </article>
         <article>
           <span class="metric">03</span>
           <h2>Comfortable operations</h2>
           <p>
-            Run attached, start detached, follow logs, open a shell, or use the
-            full-screen terminal dashboard when you want a cockpit.
+            <code>up</code>, <code>down</code>, <code>start</code>,
+            <code>stop</code>, <code>config</code>, and <code>logs</code>
+            follow Docker Compose.
           </p>
         </article>
       </section>
@@ -84,19 +86,19 @@
         <div class="workflow">
           <div class="step">
             <span>Init</span>
-            <code>jovy init .jovy --image base --gpus auto</code>
+            <code>jovy init --image-level base --python 3.13</code>
           </div>
           <div class="step">
             <span>Add</span>
             <code>jovy add pandas plotly scikit-learn</code>
           </div>
           <div class="step">
-            <span>Lock</span>
-            <code>jovy install --upgrade</code>
+            <span>Build</span>
+            <code>jovy build</code>
           </div>
           <div class="step">
             <span>Run</span>
-            <code>jovy run</code>
+            <code>jovy up -d</code>
           </div>
         </div>
       </section>
@@ -113,9 +115,9 @@
             grounded in normal files instead of one-off container state.
           </p>
           <p>
-            You still get Docker Compose, GPU reservations, custom volumes,
-            extra apt packages, and a generated overlay image. You just operate
-            them through commands that read like the project workflow.
+            You still get Docker Compose, GPU reservations with
+            <code>gpus: all</code>, custom volumes, and a generated overlay
+            image. JovyKit keeps the common notebook workflow short.
           </p>
         </div>
       </section>
@@ -126,19 +128,19 @@
         <div class="level-grid">
           <article>
             <h3>minimal</h3>
-            <p>Jupyter runtime and core scientific Python.</p>
+            <p>JupyterLab, add-ons, Nitro CLI, uv, and the runtime needed to start fast.</p>
           </article>
           <article>
             <h3>base</h3>
-            <p>Everyday data science, statistics, ML, and local data access.</p>
+            <p>Everyday data science, statistics, and classical ML without extra apt tools.</p>
           </article>
           <article>
             <h3>extended</h3>
-            <p>NLP, time series, distributed compute, and API tooling.</p>
+            <p>Lighter advanced stats, model inspection, APIs, visualization, spreadsheets, web scraping, and database clients.</p>
           </article>
           <article>
             <h3>full</h3>
-            <p>Heavier AI, graph, geospatial, big-data, and research tooling.</p>
+            <p>The huge batteries-included stack for ML, AI, cloud, distributed, apps, graph, geospatial, and research tooling.</p>
           </article>
         </div>
       </section>
@@ -148,22 +150,22 @@
           <div class="terminal-bar" aria-hidden="true">
             <span></span><span></span><span></span>
           </div>
-          <pre><code>jovy status --json
-{
-  "environment": ".jovy",
-  "image": "jovykit-research:local",
-  "jupyter_url": "http://127.0.0.1:8888/lab",
-  "running": true
-}</code></pre>
+          <pre><code>jovy config
+services:
+  jovy:
+    build:
+      args:
+        JOVY_BASE_IMAGE: ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
+    ports:
+      - 127.0.0.1:8888:8888</code></pre>
         </div>
         <div class="terminal-copy">
           <div class="section-kicker">Scriptable when it matters</div>
           <h2 id="terminal-title">Clean commands for humans and CI.</h2>
           <p>
-            Status output can be JSON. Logs can be tailed with timestamps.
-            Shell commands run inside the notebook service. The dashboard uses
-            the same command model, so interactive work and automation stay in
-            step.
+            Compose output stays available when you need it. Logs can be
+            tailed, shells run inside the notebook service, and
+            <code>jovy compose ...</code> is always there for escape hatches.
           </p>
         </div>
       </section>

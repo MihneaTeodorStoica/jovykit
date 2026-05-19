@@ -1,4 +1,4 @@
-"""Path discovery for JovyKit environments."""
+"""Project path helpers."""
 
 from __future__ import annotations
 
@@ -6,45 +6,55 @@ from pathlib import Path
 
 from jovykit.config import JovyKitError
 
+COMPOSE_FILE = "compose.yaml"
+CONTAINERFILE = "Dockerfile"
+REQUIREMENTS_FILE = "requirements.txt"
+LEGACY_CONFIG_FILE = "jovy.toml"
+SERVICE_NAME = "jovy"
+DEFAULT_WORK_DIR = "work"
+DEFAULT_JUPYTER_DIR = ".jupyter"
 DEFAULT_ENV_DIR = ".jovy"
-CONFIG_FILE = "jovy.toml"
+PROJECT_MARKERS = (COMPOSE_FILE, CONTAINERFILE, REQUIREMENTS_FILE)
 
 
-def environment_from_path(path: Path) -> Path:
-    """Normalize a project root or environment directory to the env directory."""
-    resolved = path.resolve()
-    if resolved.name == DEFAULT_ENV_DIR:
-        return resolved
-    return resolved / DEFAULT_ENV_DIR
+def project_root(path: Path | None = None) -> Path:
+    """Return the project root used for Compose commands."""
+    return (path or Path.cwd()).resolve()
 
 
-def legacy_config_path(env_dir: Path) -> Path:
-    """Return the pre-1.0 config path for an environment directory."""
-    return env_dir / CONFIG_FILE
+def compose_path(root: Path | None = None) -> Path:
+    """Return the project Compose file path."""
+    return project_root(root) / COMPOSE_FILE
 
 
-def root_config_path(env_dir: Path) -> Path:
-    """Return the root config path for an environment directory."""
-    return env_dir.parent / CONFIG_FILE
+def containerfile_path(root: Path | None = None) -> Path:
+    """Return the project Dockerfile path."""
+    return project_root(root) / CONTAINERFILE
 
 
-def has_stale_legacy_config(env_dir: Path) -> bool:
-    """Return whether both root and legacy config files exist."""
-    return root_config_path(env_dir).exists() and legacy_config_path(env_dir).exists()
+def requirements_path(root: Path | None = None) -> Path:
+    """Return the project requirements path."""
+    return project_root(root) / REQUIREMENTS_FILE
 
 
-def find_environment(start: Path | None = None) -> Path:
-    """Find the nearest JovyKit environment directory from start upward."""
-    current = (start or Path.cwd()).resolve()
-    for directory in (current, *current.parents):
-        candidate = directory / CONFIG_FILE
-        if candidate.exists():
-            return directory / DEFAULT_ENV_DIR
-    for directory in (current, *current.parents):
-        candidate = directory / DEFAULT_ENV_DIR / CONFIG_FILE
-        if candidate.exists():
-            return directory / DEFAULT_ENV_DIR
-    raise JovyKitError(
-        "No JovyKit environment found. Run 'jovy init .jovy' from your project root, "
-        "or pass --env PATH."
-    )
+def legacy_config_path(root: Path | None = None) -> Path:
+    """Return the removed jovy.toml path."""
+    return project_root(root) / LEGACY_CONFIG_FILE
+
+
+def ensure_compose_project(root: Path | None = None) -> Path:
+    """Return root or raise when no Compose file exists."""
+    resolved = project_root(root)
+    if legacy_config_path(resolved).exists():
+        raise JovyKitError(
+            "jovy.toml is no longer used. Move settings into compose.yaml, then remove jovy.toml."
+        )
+    if not compose_path(resolved).exists():
+        raise JovyKitError("compose.yaml not found. Run: jovy init")
+    return resolved
+
+
+def has_project_markers(root: Path | None = None) -> bool:
+    """Return true when any generated project file already exists."""
+    resolved = project_root(root)
+    return any((resolved / marker).exists() for marker in PROJECT_MARKERS)

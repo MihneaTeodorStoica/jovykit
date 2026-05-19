@@ -7,7 +7,22 @@ introduced.
 
 ## Unreleased
 
-- Bumped package version to 7.0.0.
+- Removed the Textual dashboard.
+- Added a small CLI abstraction for `start`, `stop`, `restart`, `status`,
+  `logs`, `shell`, `run`, `build`, and `watch`, with `jovy compose` as the
+  Docker Compose escape hatch.
+- Made `jovy add` and `jovy remove` edit `environment.yml` directly.
+- Replaced per-layer image Dockerfiles with one multi-stage `image/Dockerfile`.
+- Rebased published images on `condaforge/miniforge3:latest` with
+  mamba-managed Python environments.
+- Embedded the environment bootstrap in generated project Dockerfiles so stale
+  base images without `jovy-install-environment` still work.
+- Omitted the generated Compose `gpus` field for `--gpu none`.
+- Kept the base image lean by moving heavier ML, validation, and cloud-file
+  packages to the extended layer.
+- Made `build.sh` tag the minimal image as base instead of building a separate
+  base layer.
+- Bumped package version to 8.0.0.
 - Bumped package version to 3.1.0 for the dashboard and install workflow polish.
 - Changed `jovy install` to build updates before quickly recreating a running
   container, avoiding a long stop-then-build downtime window.
