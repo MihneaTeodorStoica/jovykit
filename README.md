@@ -84,6 +84,10 @@ ghcr.io/mihneateodorstoica/jovykit-full:python-3.13
 `extended` and `full` publish `python-3.11` through `python-3.13`.
 Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x` tags.
 
+`minimal`, `base`, and `extended` are curated cuts from the full stack.
+`full` is intentionally huge and keeps heavyweight ML, AI, cloud, distributed,
+and app runtimes in one batteries-included layer.
+
 ```bash
 jovy init --image-level minimal --python 3.11
 jovy init --image-level base --python 3.12

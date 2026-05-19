@@ -130,6 +130,9 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     assert 'ln -sf "${VIRTUAL_ENV}/bin/jupyter" /usr/local/bin/jupyter' in dockerfile
     assert "exec /opt/jovy/bin/jupyter lab" in dockerfile
     assert "UV_LINK_MODE=hardlink" in dockerfile
+    assert "--mount=type=cache,target=/var/cache/apt,sharing=locked" in dockerfile
+    assert "--mount=type=cache,target=/var/lib/apt/lists,sharing=locked" in dockerfile
+    assert "/usr/share/doc/*" in dockerfile
     assert "jovy-prune-image" in dockerfile
     assert (
         'rm -rf /root/.cache/pip "$home_dir/.cache/pip" "$home_dir/.cache/uv"'
@@ -140,9 +143,31 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
 
 
 def test_extended_image_excludes_heavy_full_image_packages() -> None:
+    dockerfile = (IMAGE_DIR / "Dockerfile").read_text()
+    base_stage = dockerfile.split("FROM base AS extended", 1)[0].split(
+        "FROM minimal AS base", 1
+    )[1]
     extended = requirement_names(IMAGE_DIR / "requirements-extended.txt")
     full = requirement_names(IMAGE_DIR / "requirements-full.txt")
-    full_packages = {
+    moved_to_full_packages = {
+        "accelerate",
+        "adlfs",
+        "dask",
+        "datasets",
+        "distributed",
+        "fsspec",
+        "gcsfs",
+        "lightgbm",
+        "mlflow",
+        "pyarrow",
+        "s3fs",
+        "scikit-image",
+        "sktime",
+        "tokenizers",
+        "transformers",
+        "xgboost",
+    }
+    full_packages = moved_to_full_packages | {
         "dvc",
         "evidently",
         "flaml",
@@ -177,5 +202,10 @@ def test_extended_image_excludes_heavy_full_image_packages() -> None:
     dropped_packages = {"eli5", "missingno", "scikit-plot"}
 
     assert full_packages <= full
-    assert (extended | full) & giant_packages == set()
+    assert giant_packages <= full
+    assert extended & moved_to_full_packages == set()
+    assert extended & giant_packages == set()
     assert extended & dropped_packages == set()
+    assert "apt-get install" not in base_stage
+    assert " git \\" not in base_stage
+    assert "openssh-client" not in base_stage

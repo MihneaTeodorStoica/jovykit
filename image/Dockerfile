@@ -28,11 +28,13 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR /tmp/requirements
 COPY requirements-minimal.txt ./
 
-RUN apt-get update -o Acquire::Retries=3 && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update -o Acquire::Retries=3 && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         tini && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/lintian/* /usr/share/locale/* && \
     groupadd --gid "${NB_GID}" "${NB_USER}" || true && \
     useradd --uid "${NB_UID}" --gid "${NB_GID}" --create-home --shell /bin/bash "${NB_USER}" || true && \
     install -d -m 0755 -o "${NB_UID}" -g "${NB_GID}" /home/${NB_USER}/work && \
@@ -68,18 +70,13 @@ CMD ["sh", "-lc", "exec /opt/jovy/bin/jupyter lab --ip=0.0.0.0 --port=${JUPYTER_
 
 FROM minimal AS base
 
-LABEL org.opencontainers.image.description="JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access."
+LABEL org.opencontainers.image.description="JovyKit base Jupyter image for everyday data science, classical machine learning, and statistics."
 
 WORKDIR /tmp/requirements
 COPY requirements-base.txt ./
 
 USER root
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
-    apt-get update -o Acquire::Retries=3 && \
-    apt-get install -y --no-install-recommends \
-        git \
-        openssh-client && \
-    rm -rf /var/lib/apt/lists/* && \
     cat requirements-base.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-base.txt && \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
@@ -90,7 +87,7 @@ WORKDIR "${HOME}"
 
 FROM base AS extended
 
-LABEL org.opencontainers.image.description="JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work."
+LABEL org.opencontainers.image.description="JovyKit extended Jupyter image for lighter advanced statistics, model inspection, APIs, visualization, spreadsheets, web scraping, and database clients."
 
 WORKDIR /tmp/requirements
 COPY requirements-extended.txt ./
@@ -107,22 +104,26 @@ WORKDIR "${HOME}"
 
 FROM extended AS full
 
-LABEL org.opencontainers.image.description="JovyKit full Jupyter image with heavier AI, graph, geospatial, database, and research tooling."
+LABEL org.opencontainers.image.description="JovyKit full Jupyter image with heavier ML, NLP, cloud files, distributed compute, AI, graph, geospatial, database, and research tooling."
 
 WORKDIR /tmp/requirements
 COPY requirements-full.txt ./
 
 USER root
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update -o Acquire::Retries=3 && \
     apt-get install -y --no-install-recommends \
-        build-essential && \
+        build-essential \
+        git \
+        openssh-client && \
     cat requirements-full.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-full.txt && \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     apt-get purge -y --auto-remove \
         build-essential && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/lintian/* /usr/share/locale/* && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
 USER ${NB_UID}

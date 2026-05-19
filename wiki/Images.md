@@ -17,10 +17,10 @@ Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthl
 
 ## Levels
 
-- `minimal`: JupyterLab, add-ons, Nitro CLI, uv, Git, and OpenSSH.
-- `base`: everyday data science, statistics, ML, and local data access.
-- `extended`: NLP, time series, distributed compute, and API tooling.
-- `full`: heavier AI, graph, geospatial, big-data, and research tooling.
+- `minimal`: JupyterLab, add-ons, Nitro CLI, uv, and the runtime needed to start fast.
+- `base`: everyday data science, statistics, and classical ML without extra apt tools.
+- `extended`: lighter advanced stats, model inspection, APIs, visualization, spreadsheets, web scraping, and database clients.
+- `full`: the huge batteries-included stack for ML, AI, cloud, distributed, apps, graph, geospatial, big-data, and research tooling.
 
 ## Build Model
 

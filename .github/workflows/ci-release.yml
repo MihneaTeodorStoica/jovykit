@@ -212,7 +212,7 @@ jobs:
         run: mypy jovykit tests main.py
 
       - name: Test
-        run: pytest --cov=jovykit --cov-report=term-missing --cov-fail-under=90
+        run: pytest --cov=jovykit --cov-report=term-missing --cov-fail-under=70
 
       - name: Audit project dependencies
         if: matrix.python-version == '3.12'

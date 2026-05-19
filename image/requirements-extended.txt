@@ -1,15 +1,7 @@
 -r requirements-base.txt
 
-# Extended: advanced ML, NLP, time series, distributed compute, and APIs.
-
-# Data interchange and cloud files
-# mlflow 3.12.0 requires pyarrow<24
-pyarrow==23.0.1
-# datasets 4.8.5 requires fsspec<=2026.2.0
-fsspec==2026.2.0
-s3fs==2026.2.0
-gcsfs==2026.2.0
-adlfs==2026.2.0
+# Extended: lighter advanced statistics, model inspection, APIs, visualization,
+# spreadsheets, config, web scraping, and database clients.
 
 # Statistics and modeling
 statsmodels==0.14.6
@@ -22,37 +14,13 @@ category-encoders==2.9.0; python_version >= "3.11"
 shap==0.51.0
 yellowbrick==1.5
 
-# Experiment tracking and data validation
-mlflow==3.12.0
+# Data validation
 pandera==0.31.1
 
-# Gradient boosting and AutoML
-xgboost==3.2.0
-lightgbm==4.6.0
+# AutoML and hyperparameter search
 optuna==4.8.0
 hyperopt==0.2.7
 scikit-optimize==0.10.2
-
-# NLP and embeddings
-transformers==5.8.0
-datasets==4.8.5
-# transformers 5.8.0 requires tokenizers<=0.23.0
-tokenizers==0.22.2
-evaluate==0.4.6
-accelerate==1.13.0
-
-# Time series
-sktime==0.40.1
-arch==8.0.0
-
-# Computer vision and image processing
-scikit-image==0.26.0
-imageio==2.37.3
-pillow==12.2.0
-
-# Distributed and parallel workloads
-dask==2026.3.0
-distributed==2026.3.0
 
 # Serving and APIs
 fastapi==0.136.1

@@ -61,10 +61,10 @@ jovy doctor
 
 Image levels:
 
-- `minimal`: JupyterLab, add-ons, Nitro CLI, uv, Git, and OpenSSH.
-- `base`: everyday data science and ML.
-- `extended`: NLP, time series, distributed compute, and API tooling.
-- `full`: heavier AI, graph, geospatial, and research tooling.
+- `minimal`: JupyterLab, add-ons, Nitro CLI, uv, and the runtime needed to start fast.
+- `base`: everyday data science, statistics, and classical ML without extra apt tools.
+- `extended`: lighter advanced stats, model inspection, APIs, visualization, spreadsheets, web scraping, and database clients.
+- `full`: the huge batteries-included stack for ML, AI, cloud, distributed, apps, graph, geospatial, and research tooling.
 
 Published tags use Python versions:
 
