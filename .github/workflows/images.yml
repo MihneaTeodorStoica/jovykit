@@ -198,8 +198,8 @@ jobs:
           annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: ${{ steps.plan.outputs.cache-from }}
-          cache-to: ${{ steps.plan.outputs.cache-to }}
+          cache-from: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-from || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-to || '' }}
 
       - name: Attest image provenance
         if: steps.plan.outputs.should-build == 'true' && github.event_name != 'pull_request'

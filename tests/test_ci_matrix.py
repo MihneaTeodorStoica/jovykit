@@ -39,8 +39,14 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
         step for step in steps if step["name"] == "Build and publish image"
     )
 
-    assert build_step["with"]["cache-from"] == "${{ steps.plan.outputs.cache-from }}"
-    assert build_step["with"]["cache-to"] == "${{ steps.plan.outputs.cache-to }}"
+    assert (
+        build_step["with"]["cache-from"]
+        == "${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-from || '' }}"
+    )
+    assert (
+        build_step["with"]["cache-to"]
+        == "${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-to || '' }}"
+    )
     assert "jovykit-buildcache" not in text
     assert "type=registry" not in text
     assert 'image_name="jovykit"' in text
