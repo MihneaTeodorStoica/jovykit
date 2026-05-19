@@ -121,6 +121,7 @@ def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
 
 def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     dockerfile = (IMAGE_DIR / "Dockerfile").read_text()
+    full_stage = dockerfile.split("FROM extended AS full", 1)[1]
 
     assert (
         "FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim" in dockerfile
@@ -140,25 +141,31 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     )
     assert "share/jupyter/lab/staging" in dockerfile
     assert "jupyter lab build" not in dockerfile
+    assert " git \\" not in full_stage
+    assert "openssh-client" not in full_stage
 
 
-def test_extended_image_excludes_heavy_full_image_packages() -> None:
+def test_extended_image_includes_medium_packages_without_giant_packages() -> None:
     dockerfile = (IMAGE_DIR / "Dockerfile").read_text()
     base_stage = dockerfile.split("FROM base AS extended", 1)[0].split(
         "FROM minimal AS base", 1
     )[1]
     extended = requirement_names(IMAGE_DIR / "requirements-extended.txt")
     full = requirement_names(IMAGE_DIR / "requirements-full.txt")
-    moved_to_full_packages = {
+    medium_packages = {
         "accelerate",
         "adlfs",
+        "arch",
         "dask",
         "datasets",
         "distributed",
+        "evaluate",
         "fsspec",
         "gcsfs",
+        "imageio",
         "lightgbm",
         "mlflow",
+        "pillow",
         "pyarrow",
         "s3fs",
         "scikit-image",
@@ -167,16 +174,20 @@ def test_extended_image_excludes_heavy_full_image_packages() -> None:
         "transformers",
         "xgboost",
     }
-    full_packages = moved_to_full_packages | {
+    full_packages = {
+        "autoviz",
         "dvc",
         "evidently",
+        "fasttext-wheel",
         "flaml",
         "gensim",
         "great-expectations",
         "nltk",
         "onnx",
         "prophet",
+        "pytorch-lightning",
         "spacy",
+        "tensorboard",
         "tsfresh",
     }
     giant_packages = {
@@ -201,11 +212,12 @@ def test_extended_image_excludes_heavy_full_image_packages() -> None:
     }
     dropped_packages = {"eli5", "missingno", "scikit-plot"}
 
+    assert medium_packages <= extended
     assert full_packages <= full
     assert giant_packages <= full
-    assert extended & moved_to_full_packages == set()
     assert extended & giant_packages == set()
     assert extended & dropped_packages == set()
     assert "apt-get install" not in base_stage
+    assert "apt-get install" not in dockerfile.split("FROM extended AS full", 1)[1]
     assert " git \\" not in base_stage
     assert "openssh-client" not in base_stage

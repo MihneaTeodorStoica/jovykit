@@ -87,7 +87,7 @@ WORKDIR "${HOME}"
 
 FROM base AS extended
 
-LABEL org.opencontainers.image.description="JovyKit extended Jupyter image for lighter advanced statistics, model inspection, APIs, visualization, spreadsheets, web scraping, and database clients."
+LABEL org.opencontainers.image.description="JovyKit extended Jupyter image for advanced statistics, model inspection, cloud files, experiment tracking, NLP, distributed data, APIs, visualization, and database clients."
 
 WORKDIR /tmp/requirements
 COPY requirements-extended.txt ./
@@ -111,19 +111,9 @@ COPY requirements-full.txt ./
 
 USER root
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update -o Acquire::Retries=3 && \
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        git \
-        openssh-client && \
     cat requirements-full.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-full.txt && \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
-    apt-get purge -y --auto-remove \
-        build-essential && \
-    rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/lintian/* /usr/share/locale/* && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
 USER ${NB_UID}
