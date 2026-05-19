@@ -162,4 +162,5 @@ speechrecognition==3.16.1
 pydub
 resampy
 noisereduce
-autoviz; python_version >= "3.11" and python_version < "3.14"
+# autoviz pulls fasttext-wheel, which has no Python 3.13 wheel and needs a C++ build.
+autoviz; python_version >= "3.11" and python_version < "3.13"
