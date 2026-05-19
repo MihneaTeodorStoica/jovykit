@@ -31,7 +31,7 @@ def test_image_workflow_builds_supported_image_versions() -> None:
     }
 
 
-def test_image_workflow_uses_registry_cache_without_pushing_on_prs() -> None:
+def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     text = Path(".github/workflows/images.yml").read_text(encoding="utf-8")
     workflow = yaml.safe_load(text)
     steps = workflow["jobs"]["images"]["steps"]
@@ -41,11 +41,21 @@ def test_image_workflow_uses_registry_cache_without_pushing_on_prs() -> None:
 
     assert build_step["with"]["cache-from"] == "${{ steps.plan.outputs.cache-from }}"
     assert build_step["with"]["cache-to"] == "${{ steps.plan.outputs.cache-to }}"
+    assert "jovykit-buildcache" not in text
+    assert "type=registry" not in text
+    assert 'image_name="jovykit"' in text
+    assert "value=${{ matrix.target }}-python-${{ matrix.python-version }}" in text
+    assert "value=latest" in text
+    assert "matrix.target == 'base' && matrix.python-version == '3.11'" in text
     assert (
-        "jovykit-buildcache:${{ matrix.target }}-python-${{ matrix.python-version }}"
-        in text
+        "value=${{ matrix.target }}-nightly-python-${{ matrix.python-version }}" in text
     )
-    assert 'if [ "${{ github.event_name }}" != "pull_request" ]; then' in text
+    assert (
+        "value=${{ matrix.target }}-weekly-python-${{ matrix.python-version }}" in text
+    )
+    assert (
+        "value=${{ matrix.target }}-monthly-python-${{ matrix.python-version }}" in text
+    )
 
 
 def test_image_workflow_skips_heavy_nightly_targets() -> None:

@@ -110,14 +110,14 @@ def test_init_accepts_python_level_gpu_and_port(tmp_path: Path, run_cli) -> None
     compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
     service = compose["services"]["jovy"]
     assert service["build"]["args"] == {
-        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit-extended:python-3.12"),
+        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit:extended-python-3.12"),
     }
     assert service["gpus"] == "all"
     assert service["environment"] == {"JUPYTER_TOKEN": "custom-token"}
     assert (tmp_path / "requirements.txt").read_text() == ""
     dockerfile = (tmp_path / "Dockerfile").read_text()
     assert (
-        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-extended:python-3.12"
+        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:extended-python-3.12"
         in dockerfile
     )
     assert "ARG PYTHON_VERSION" not in dockerfile

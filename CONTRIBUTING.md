@@ -39,7 +39,7 @@ pytest
 Build an image target:
 
 ```bash
-docker build --target minimal -t jovykit-minimal ./image
+docker build --target minimal -t jovykit:minimal-python-3.13 ./image
 ```
 
 Preview documentation changes:

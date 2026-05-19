@@ -7,6 +7,15 @@ introduced.
 
 ## Unreleased
 
+## 8.1.0 - 2026-05-19
+
+- Publish all levels under the single `jovykit` image with `LEVEL-python-VERSION` tags.
+- Point `latest` at `base-python-3.11`.
+- Use level-specific scheduled tags such as `base-nightly-python-3.11`.
+- Add `build.sh --latest` and `build.sh --channel` tag helpers.
+- Remove generated Compose `pull_policy`.
+- Add `lint.sh`, `test.sh`, and `check.sh`.
+
 - Removed the Textual dashboard.
 - Added a small CLI abstraction for `start`, `stop`, `restart`, `status`,
   `logs`, `shell`, `run`, `build`, and `watch`, with `jovy compose` as the

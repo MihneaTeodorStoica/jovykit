@@ -37,7 +37,7 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
     assert service["gpus"] == "all"
     assert service["build"]["dockerfile"] == "Dockerfile"
     assert service["build"]["args"] == {
-        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.11"),
+        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.11"),
     }
     assert (tmp_path / "requirements.txt").read_text() == ""
 
@@ -108,11 +108,11 @@ def test_save_project_settings_updates_generated_files(tmp_path: Path) -> None:
     assert service["environment"] == {"JUPYTER_TOKEN": "new-token"}
     assert service["gpus"] == "all"
     assert service["build"]["args"] == {
-        "JOVY_BASE_IMAGE": "ghcr.io/mihneateodorstoica/jovykit-full:python-3.11",
+        "JOVY_BASE_IMAGE": "ghcr.io/mihneateodorstoica/jovykit:full-python-3.11",
     }
     dockerfile = (tmp_path / "Dockerfile").read_text()
     assert (
-        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-full:python-3.11"
+        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:full-python-3.11"
         in dockerfile
     )
     assert "ARG PYTHON_VERSION" not in dockerfile

@@ -10,10 +10,10 @@
 
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
-  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.0.0-ff5a00"></a>
+  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.1.0-ff5a00"></a>
   <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.9%2B-2f3133">
   <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.9--3.14-0a9e9a">
-  <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit-base"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
+  <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f3133"></a>
 </p>
 
@@ -22,7 +22,7 @@
 `compose.yaml` is runtime.
 `Dockerfile` is the project overlay.
 `requirements.txt` is project Python packages.
-Python comes from the selected image tag, for example `:python-3.13`.
+Python comes from the selected image tag, for example `:base-python-3.13`.
 
 - `jovy` initializes an empty directory, or prints help in an existing project.
 - `jovy init` creates `compose.yaml`, `Dockerfile`, `requirements.txt`, `work/`, and `.jupyter/`.
@@ -74,15 +74,15 @@ jovy compose ps
 Image levels map to published JovyKit images:
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-extended:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-full:python-3.13
+ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```
 
-`minimal` and `base` publish `python-3.9` through `python-3.14`.
-`extended` and `full` publish `python-3.11` through `python-3.13`.
-Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x` tags.
+`minimal` and `base` publish Python 3.9 through 3.14 tags.
+`extended` and `full` publish Python 3.11 through 3.13 tags.
+`latest` points at `base-python-3.11`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11`, `base-weekly-python-3.11`, and `base-monthly-python-3.11`.
 
 `minimal`, `base`, and `extended` are curated cuts from the full stack.
 `full` is intentionally huge and keeps heavyweight ML, AI, cloud, distributed,
@@ -104,6 +104,8 @@ Build published image targets from the single multi-stage Dockerfile:
 ./build.sh minimal
 ./build.sh --python-version 3.13 base
 ./build.sh --python 3.11 --python 3.12 --python 3.13 all
+./build.sh --python 3.11 --latest base
+./build.sh --python 3.11 --channel nightly base
 ```
 
 With no args, `./build.sh` builds all supported image and Python tag pairs.
