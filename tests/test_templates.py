@@ -44,6 +44,7 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
     assert set(service) == {
         "build",
         "image",
+        "pull_policy",
         "environment",
         "ports",
         "volumes",
@@ -54,6 +55,7 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
     }
     assert "gpus" not in service
     assert service["image"] == "my-project-jovy:local"
+    assert service["pull_policy"] == "build"
     assert service["environment"] == {"JUPYTER_TOKEN": "jovykit"}
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "./Dockerfile"},
@@ -74,6 +76,8 @@ def test_render_containerfile_uses_requirements_txt_and_uv() -> None:
     assert "NB_USER=jovyan" in text
     assert "uv" in text
     assert "UV_LINK_MODE=hardlink" in text
+    assert "UV_PYTHON_DOWNLOADS=never" in text
+    assert "uv pip install --only-binary=:all:" in text
     assert "--mount=type=cache,target=/root/.cache/uv,sharing=locked" in text
     assert "source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly" in text
     assert "if [ -s /tmp/jovy-requirements.txt ]; then \\" in text
@@ -163,49 +167,64 @@ def test_extended_image_includes_medium_packages_without_giant_packages() -> Non
         "fsspec",
         "gcsfs",
         "imageio",
+        "lightning",
         "lightgbm",
         "mlflow",
-        "pillow",
-        "pyarrow",
-        "s3fs",
-        "scikit-image",
-        "sktime",
-        "tokenizers",
-        "transformers",
-        "xgboost",
-    }
-    full_packages = {
-        "autoviz",
-        "dvc",
-        "evidently",
-        "fasttext-wheel",
-        "flaml",
-        "gensim",
-        "great-expectations",
-        "nltk",
-        "onnx",
-        "prophet",
-        "pytorch-lightning",
-        "spacy",
-        "tensorboard",
-        "tsfresh",
-    }
-    giant_packages = {
-        "albumentations",
-        "catboost",
-        "gradio",
-        "lightning",
         "modin",
         "onnxruntime",
         "opencv-python-headless",
-        "pyspark",
+        "pillow",
+        "pyarrow",
         "ray",
+        "s3fs",
+        "scikit-image",
         "sentence-transformers",
+        "sktime",
         "streamlit",
+        "tokenizers",
         "torch",
         "torchaudio",
         "torchmetrics",
         "torchvision",
+        "transformers",
+        "xgboost",
+        "albumentations",
+        "autoviz",
+        "catboost",
+        "cvxpy",
+        "dvc",
+        "einops",
+        "evidently",
+        "fasttext-wheel",
+        "flaml",
+        "gradio",
+        "graphviz",
+        "h5py",
+        "librosa",
+        "networkx",
+        "onnx",
+        "prophet",
+        "pymc",
+        "soundfile",
+        "sympy",
+        "tsfresh",
+        "xarray",
+    }
+    full_packages = {
+        "delta-spark",
+        "flax",
+        "great-expectations",
+        "jax",
+        "jaxlib",
+        "keras",
+        "optax",
+        "orbax-checkpoint",
+        "pytorch-lightning",
+        "pyspark",
+        "tensorboard",
+        "tensorflow",
+    }
+    giant_packages = {
         "tensorflow",
         "jax",
         "jaxlib",

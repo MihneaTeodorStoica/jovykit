@@ -40,13 +40,14 @@ ENV HOME=/home/${{NB_USER}} \\
     NB_UID=${{NB_UID}} \\
     NB_USER=${{NB_USER}} \\
     UV_LINK_MODE=hardlink \\
+    UV_PYTHON_DOWNLOADS=never \\
     VIRTUAL_ENV=/opt/jovy
 ENV PATH="${{VIRTUAL_ENV}}/bin:${{PATH}}"
 
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\
     --mount=type=bind,source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly \\
     if [ -s /tmp/jovy-requirements.txt ]; then \\
-        uv pip install --python "${{VIRTUAL_ENV}}/bin/python" -r /tmp/jovy-requirements.txt; \\
+        uv pip install --only-binary=:all: --python "${{VIRTUAL_ENV}}/bin/python" -r /tmp/jovy-requirements.txt; \\
     fi
 
 USER ${{NB_UID}}
@@ -73,6 +74,7 @@ def render_compose(
             },
         },
         "image": f"{slugify_name(project_name)}-jovy:local",
+        "pull_policy": "build",
         "environment": {
             "JUPYTER_TOKEN": token,
         },
