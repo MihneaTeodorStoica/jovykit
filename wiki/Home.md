@@ -72,7 +72,8 @@ Published tags use Python versions:
 ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
 ```
 
-Supported image tags are `python-3.8` through `python-3.14`.
+`minimal` and `base` publish `python-3.9` through `python-3.14`.
+`extended` and `full` publish `python-3.11` through `python-3.13`.
 Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x` tags.
 
 ## GPU

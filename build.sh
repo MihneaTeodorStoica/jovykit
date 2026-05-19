@@ -3,7 +3,7 @@ set -euo pipefail
 
 prefix="${IMAGE_PREFIX:-ghcr.io/mihneateodorstoica/jovykit}"
 targets=(minimal base extended full)
-default_python_versions=(3.8 3.9 3.10 3.11 3.12 3.13 3.14)
+default_python_versions=(3.9 3.10 3.11 3.12 3.13 3.14)
 python_versions=()
 requested=()
 
@@ -16,6 +16,10 @@ Options:
       --python VERSION          Alias for --python-version.
       --prefix PREFIX           Image prefix. Default: ${prefix}
   -h, --help                    Show this help.
+
+Default versions:
+  minimal/base: 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
+  extended/full: 3.11, 3.12, 3.13
 
 Examples:
   $0 --python-version 3.13 minimal
@@ -113,11 +117,38 @@ for image in "${requested[@]}"; do
   esac
 done
 
+image_supports_python() {
+  local image="$1"
+  local version="$2"
+
+  case "${image}:${version}" in
+    minimal:3.9 | minimal:3.10 | minimal:3.11 | minimal:3.12 | minimal:3.13 | minimal:3.14)
+      return 0
+      ;;
+    base:3.9 | base:3.10 | base:3.11 | base:3.12 | base:3.13 | base:3.14)
+      return 0
+      ;;
+    extended:3.11 | extended:3.12 | extended:3.13)
+      return 0
+      ;;
+    full:3.11 | full:3.12 | full:3.13)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 build_python_version() {
   local version="$1"
   local image
 
   for image in "${selected[@]}"; do
+    if ! image_supports_python "${image}" "${version}"; then
+      printf 'skip %s Python %s (unsupported)\n' "${image}" "${version}" >&2
+      continue
+    fi
     docker build \
       --build-arg "PYTHON_VERSION=${version}" \
       --target "${image}" \

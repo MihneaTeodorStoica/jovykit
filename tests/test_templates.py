@@ -69,3 +69,15 @@ def test_render_requirements_is_empty_by_default() -> None:
 def test_arbitrary_image_source_is_rejected() -> None:
     with pytest.raises(JovyKitError, match="Unknown image level"):
         resolve_image_level("quay.io/jupyter/minimal-notebook")
+
+
+def test_python_version_must_be_published_for_image_level() -> None:
+    with pytest.raises(
+        JovyKitError, match="full images support Python versions: 3.11, 3.12, 3.13"
+    ):
+        resolve_image_level("full", "3.14")
+
+    assert (
+        resolve_image_level("minimal", "3.14")
+        == "ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.14"
+    )

@@ -15,7 +15,8 @@ adlfs==2026.2.0
 statsmodels==0.14.6
 patsy==1.0.2
 imbalanced-learn==0.14.1
-category-encoders==2.9.0
+category-encoders==2.8.1; python_version < "3.11"
+category-encoders==2.9.0; python_version >= "3.11"
 
 # Model inspection and evaluation
 shap==0.51.0

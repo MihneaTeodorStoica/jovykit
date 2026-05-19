@@ -40,7 +40,7 @@ jovy init --image-level base --python 3.13 --gpu none --port 8888 --token jovyki
 Options:
 
 - `--image-level`: `minimal`, `base`, `extended`, or `full`
-- `--python`: image Python tag, from `3.8` through `3.14`
+- `--python`: image Python tag, from `3.9` through `3.14`
 - `--gpu`: `none` or `all`
 - `--port`: host Jupyter port
 - `--token`: Jupyter token

@@ -65,7 +65,7 @@ pulp==3.3.1
 
 # Explainability, fairness, and monitoring
 # alibi 0.9.6 requires numpy<2 and is incompatible with Python 3.13 image deps
-fairlearn==0.13.0
+fairlearn==0.13.0; python_version < "3.14"
 interpret==0.7.8
 whylogs==1.6.4
 

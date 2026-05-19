@@ -5,7 +5,19 @@ from __future__ import annotations
 from jovykit.config import JovyKitError
 
 DEFAULT_PYTHON_VERSION = "3.13"
-SUPPORTED_PYTHON_VERSIONS = ("3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14")
+SUPPORTED_PYTHON_VERSIONS_BY_LEVEL = {
+    "minimal": ("3.9", "3.10", "3.11", "3.12", "3.13", "3.14"),
+    "base": ("3.9", "3.10", "3.11", "3.12", "3.13", "3.14"),
+    "extended": ("3.11", "3.12", "3.13"),
+    "full": ("3.11", "3.12", "3.13"),
+}
+SUPPORTED_PYTHON_VERSIONS = tuple(
+    dict.fromkeys(
+        version
+        for versions in SUPPORTED_PYTHON_VERSIONS_BY_LEVEL.values()
+        for version in versions
+    )
+)
 
 IMAGE_REPOSITORIES = {
     "minimal": "ghcr.io/mihneateodorstoica/jovykit-minimal",
@@ -32,7 +44,16 @@ def resolve_image_level(
         raise JovyKitError(
             f"Unknown image level {level!r}. Choose one of: {levels}."
         ) from exc
+    validate_python_version(level, python_version)
     return f"{repository}:{image_tag(python_version)}"
+
+
+def validate_python_version(level: str, python_version: str) -> None:
+    """Raise if an image level does not publish a Python tag."""
+    versions = SUPPORTED_PYTHON_VERSIONS_BY_LEVEL[level]
+    if python_version not in versions:
+        supported = ", ".join(versions)
+        raise JovyKitError(f"{level} images support Python versions: {supported}.")
 
 
 def resolve_image(value: str) -> str:

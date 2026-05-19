@@ -12,7 +12,7 @@
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
   <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.0.0-ff5a00"></a>
   <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.11%2B-2f3133">
-  <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.8--3.14-0a9e9a">
+  <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.9--3.14-0a9e9a">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit-base"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f3133"></a>
 </p>
@@ -80,14 +80,15 @@ ghcr.io/mihneateodorstoica/jovykit-extended:python-3.13
 ghcr.io/mihneateodorstoica/jovykit-full:python-3.13
 ```
 
-Supported tags are `python-3.8` through `python-3.14`.
+`minimal` and `base` publish `python-3.9` through `python-3.14`.
+`extended` and `full` publish `python-3.11` through `python-3.13`.
 Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x` tags.
 
 ```bash
 jovy init --image-level minimal --python 3.11
 jovy init --image-level base --python 3.12
 jovy init --image-level extended --python 3.13
-jovy init --image-level full --python 3.14
+jovy init --image-level full --python 3.13
 ```
 
 The generated Compose file passes only `JOVY_BASE_IMAGE`.
@@ -101,7 +102,7 @@ Build published image targets from the single multi-stage Dockerfile:
 ./build.sh --python 3.11 --python 3.12 --python 3.13 all
 ```
 
-With no args, `./build.sh` builds all image levels for Python 3.8 through 3.14.
+With no args, `./build.sh` builds all supported image and Python tag pairs.
 
 ## Dependencies
 
