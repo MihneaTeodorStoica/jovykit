@@ -76,7 +76,7 @@ def python_version_from_image(
     """Read a Python version from a JovyKit image tag."""
     tag = reference.rsplit(":", 1)[-1] if ":" in reference.rsplit("/", 1)[-1] else ""
     if tag.startswith("python-"):
-        return tag.removeprefix("python-")
+        return tag[len("python-") :]
     return default
 
 

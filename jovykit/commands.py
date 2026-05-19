@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import shutil
 import webbrowser
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -362,7 +362,7 @@ def _read_build_arg(args: object, name: str) -> str | None:
         for item in args:
             text = str(item)
             if text.startswith(prefix):
-                return text.removeprefix(prefix)
+                return text[len(prefix) :]
     return None
 
 
@@ -392,7 +392,7 @@ def _read_environment_value(service: dict[str, Any], name: str) -> str | None:
         for item in environment:
             text = str(item)
             if text.startswith(prefix):
-                return text.removeprefix(prefix)
+                return text[len(prefix) :]
     return None
 
 

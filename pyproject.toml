@@ -3,7 +3,7 @@ name = "jovykit"
 version = "8.0.0"
 description = "Layered Jupyter container images and project-local JovyKit environments."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 dependencies = [
     "pyyaml",
     "rich",
@@ -53,4 +53,4 @@ exclude_lines = [
 ]
 
 [tool.black]
-target-version = ["py311"]
+target-version = ["py38"]

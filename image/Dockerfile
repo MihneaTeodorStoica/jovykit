@@ -98,12 +98,9 @@ USER root
 RUN --mount=type=cache,target=/root/.cache/uv \
     apt-get update -o Acquire::Retries=3 && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        nodejs \
-        npm && \
+        build-essential && \
     cat requirements-full.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-full.txt && \
-    jupyter lab build --dev-build=False --minimize=False && \
     apt-get purge -y --auto-remove \
         build-essential && \
     rm -rf /var/lib/apt/lists/* && \

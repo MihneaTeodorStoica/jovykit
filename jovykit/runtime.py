@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Callable
 
 from jovykit.config import JovyKitError
 from jovykit.paths import COMPOSE_FILE, ensure_compose_project
