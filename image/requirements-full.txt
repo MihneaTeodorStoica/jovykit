@@ -16,7 +16,7 @@ orbax-checkpoint==0.11.39; python_version >= "3.11" and python_version < "3.14"
 
 # Generative AI and LLM application tooling
 openai==2.36.0
-anthropic==0.100.0
+anthropic==0.101.0
 google-genai==2.0.1
 langchain==1.2.18
 langchain-community==0.4.1
