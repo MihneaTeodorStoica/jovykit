@@ -1,93 +1,71 @@
 from __future__ import annotations
 
-from typing import Any
-
+import pytest
 import yaml
 
-from jovykit.templates import render_compose, render_containerfile
+from jovykit.config import JovyKitError
+from jovykit.images import resolve_image_level
+from jovykit.templates import render_compose, render_containerfile, render_requirements
 
 
-def test_render_compose_disables_gpu_deploy_for_none(create_project: Any) -> None:
-    project = create_project(gpus="none")
-
-    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
-
-    assert "deploy" not in service
-
-
-def test_render_compose_enables_gpu_deploy_for_auto(create_project: Any) -> None:
-    project = create_project(gpus="auto")
-
-    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
-
-    devices = service["deploy"]["resources"]["reservations"]["devices"]
-    assert devices[0]["driver"] == "nvidia"
-    assert devices[0]["capabilities"] == ["gpu"]
-
-
-def test_render_compose_omits_develop_watch_when_disabled(create_project: Any) -> None:
-    project = create_project(
-        config_transform=lambda text: text.replace("enabled = true", "enabled = false")
-    )
-
-    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
-
-    assert "develop" not in service
-
-
-def test_render_compose_uses_token_only_auth(create_project: Any) -> None:
-    project = create_project()
-
-    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
-
-    assert service["environment"]["JUPYTER_TOKEN"] == "jovykit"
-    assert service["command"] == ["start-notebook.py"]
-
-
-def test_render_compose_sync_workspace_has_initial_sync_and_ignores(
-    create_project: Any,
-) -> None:
-    project = create_project(
-        config_transform=lambda text: text.replace(
-            'workspace_mode = "bind"', 'workspace_mode = "sync"'
+def test_render_compose_is_small_and_watch_enabled() -> None:
+    compose = yaml.safe_load(
+        render_compose(
+            project_name="My Project",
+            level="base",
+            python_version="3.13",
+            gpu="none",
+            port=8888,
+            token="jovykit",
         )
     )
 
-    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
-
-    assert f"../work:{project.config.work_mount}" not in service["volumes"]
-    assert "./home:/home/jovyan" in service["volumes"]
-    assert service["develop"]["watch"][0] == {
-        "action": "sync",
-        "path": "../work",
-        "target": project.config.work_mount,
-        "initial_sync": True,
-        "ignore": project.config.watch_ignore,
+    service = compose["services"]["jovy"]
+    assert set(service) == {
+        "build",
+        "image",
+        "environment",
+        "ports",
+        "volumes",
+        "working_dir",
+        "stdin_open",
+        "tty",
+        "develop",
     }
+    assert "gpus" not in service
+    assert service["image"] == "my-project-jovy:local"
+    assert service["environment"] == {"JUPYTER_TOKEN": "jovykit"}
+    assert service["develop"]["watch"] == [
+        {"action": "rebuild", "path": "./Dockerfile"},
+        {"action": "rebuild", "path": "./requirements.txt"},
+    ]
 
 
-def test_render_compose_marks_relative_home_as_bind_mount(create_project: Any) -> None:
-    project = create_project()
+def test_render_containerfile_uses_requirements_txt_and_uv() -> None:
+    text = render_containerfile(level="full", python_version="3.12")
 
-    service = yaml.safe_load(render_compose(project.config))["services"]["jovy"]
-
-    assert service["volumes"][0] == "./home:/home/jovyan"
-
-
-def test_render_containerfile_shell_quotes_apt_packages_and_pip_args(
-    create_project: Any,
-) -> None:
-    project = create_project(
-        config_transform=lambda text: text.replace(
-            "packages = []",
-            'packages = ["curl", "weird package"]',
-        ).replace(
-            "pip_args = []",
-            'pip_args = ["--index-url", "https://example.test/simple path"]',
-        )
+    assert (
+        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-full:python-3.12"
+        in text
     )
+    assert "FROM ${JOVY_BASE_IMAGE}" in text
+    assert "ARG PYTHON_VERSION" not in text
+    assert "VIRTUAL_ENV=/opt/jovy" in text
+    assert "NB_USER=jovyan" in text
+    assert "uv" in text
+    assert "source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly" in text
+    assert "/usr/local/share/jovykit/base-requirements.txt" not in text
+    assert "mamba" not in text
+    assert "conda" not in text
+    assert "environment.yml" not in text
+    assert "jovy-install-environment" not in text
+    assert "required=false" not in text
 
-    containerfile = render_containerfile(project.config)
 
-    assert "curl 'weird package'" in containerfile
-    assert "--index-url 'https://example.test/simple path' --system" in containerfile
+def test_render_requirements_is_empty_by_default() -> None:
+    assert render_requirements() == ""
+
+
+def test_arbitrary_image_source_is_rejected() -> None:
+    with pytest.raises(JovyKitError, match="Unknown image level"):
+        resolve_image_level("quay.io/jupyter/minimal-notebook")

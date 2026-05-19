@@ -30,15 +30,16 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: mihneateodorstoica
+  DEFAULT_PYTHON_VERSION: "3.13"
   CI_IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
-  IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with Python, uv, Git, OpenSSH, rsync, nvtop, and the core scientific Python stack.
+  IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with JupyterLab add-ons, Nitro CLI, uv, Git, and OpenSSH.
   IMAGE_DESCRIPTION_BASE: JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access.
   IMAGE_DESCRIPTION_EXTENDED: JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work.
   IMAGE_DESCRIPTION_FULL: JovyKit full Jupyter image with heavier AI, graph, geospatial, big-data, database, and research tooling.
 
 jobs:
   images:
-    name: Images
+    name: ${{ matrix.target }} py${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -47,10 +48,29 @@ jobs:
       id-token: write
       attestations: write
       artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [minimal, base, extended, full]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Set image metadata
+        run: |
+          case "${{ matrix.target }}" in
+            minimal) description="$IMAGE_DESCRIPTION_MINIMAL" ;;
+            base) description="$IMAGE_DESCRIPTION_BASE" ;;
+            extended) description="$IMAGE_DESCRIPTION_EXTENDED" ;;
+            full) description="$IMAGE_DESCRIPTION_FULL" ;;
+          esac
+          {
+            echo "IMAGE_NAME=jovykit-${{ matrix.target }}"
+            echo "IMAGE_DESCRIPTION=$description"
+            echo "CACHE_SCOPE=${{ matrix.target }}-${{ matrix.python-version }}"
+          } >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -63,188 +83,54 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract minimal metadata
-        id: meta_minimal
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-minimal
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=python-${{ matrix.python-version }}
+            type=raw,value=latest,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+            type=raw,value=nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
+            type=raw,value=weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
+            type=raw,value=monthly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
+            type=raw,value=nightly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
+            type=raw,value=weekly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
+            type=raw,value=monthly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
+            type=raw,value=${{ env.CI_IMAGE_TAG }}-python-${{ matrix.python-version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_MINIMAL }}
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
           annotations: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_MINIMAL }}
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
-      - name: Build and publish minimal
-        id: build_minimal
+      - name: Build and publish image
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: ./image
-          file: ./image/minimal/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
-          tags: |
-            ${{ steps.meta_minimal.outputs.tags }}
-            ${{ github.event_name == 'pull_request' && 'jovykit-minimal:ci' || '' }}
-          labels: ${{ steps.meta_minimal.outputs.labels }}
-          annotations: ${{ github.event_name != 'pull_request' && steps.meta_minimal.outputs.annotations || '' }}
-          provenance: ${{ github.event_name != 'pull_request' }}
-          sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=minimal
-          cache-to: type=gha,mode=max,scope=minimal
-
-      - name: Attest minimal provenance
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-minimal
-          subject-digest: ${{ steps.build_minimal.outputs.digest }}
-          push-to-registry: true
-          create-storage-record: false
-
-      - name: Extract base metadata
-        id: meta_base
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-base
-          tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
-          labels: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_BASE }}
-          annotations: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_BASE }}
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-
-      - name: Build and publish base
-        id: build_base
-        uses: docker/build-push-action@v7
-        with:
-          context: ./image
-          file: ./image/base/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
+          file: ./image/Dockerfile
+          target: ${{ matrix.target }}
           build-args: |
-            BASE_IMAGE=${{ github.event_name == 'pull_request' && 'jovykit-minimal:ci' || format('{0}/{1}/jovykit-minimal:{2}', env.REGISTRY, env.IMAGE_NAMESPACE, env.CI_IMAGE_TAG) }}
-          tags: |
-            ${{ steps.meta_base.outputs.tags }}
-            ${{ github.event_name == 'pull_request' && 'jovykit-base:ci' || '' }}
-          labels: ${{ steps.meta_base.outputs.labels }}
-          annotations: ${{ github.event_name != 'pull_request' && steps.meta_base.outputs.annotations || '' }}
-          provenance: ${{ github.event_name != 'pull_request' }}
-          sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
-
-      - name: Attest base provenance
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-base
-          subject-digest: ${{ steps.build_base.outputs.digest }}
-          push-to-registry: true
-          create-storage-record: false
-
-      - name: Extract extended metadata
-        id: meta_extended
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-extended
-          tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
-          labels: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_EXTENDED }}
-          annotations: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_EXTENDED }}
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-
-      - name: Build and publish extended
-        id: build_extended
-        uses: docker/build-push-action@v7
-        with:
-          context: ./image
-          file: ./image/extended/Dockerfile
+            PYTHON_VERSION=${{ matrix.python-version }}
           push: ${{ github.event_name != 'pull_request' }}
           load: ${{ github.event_name == 'pull_request' }}
-          build-args: |
-            BASE_IMAGE=${{ github.event_name == 'pull_request' && 'jovykit-base:ci' || format('{0}/{1}/jovykit-base:{2}', env.REGISTRY, env.IMAGE_NAMESPACE, env.CI_IMAGE_TAG) }}
           tags: |
-            ${{ steps.meta_extended.outputs.tags }}
-            ${{ github.event_name == 'pull_request' && 'jovykit-extended:ci' || '' }}
-          labels: ${{ steps.meta_extended.outputs.labels }}
-          annotations: ${{ github.event_name != 'pull_request' && steps.meta_extended.outputs.annotations || '' }}
+            ${{ steps.meta.outputs.tags }}
+            ${{ github.event_name == 'pull_request' && format('{0}:ci-python-{1}', env.IMAGE_NAME, matrix.python-version) || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=extended
-          cache-to: type=gha,mode=max,scope=extended
+          cache-from: type=gha,scope=${{ env.CACHE_SCOPE }}
+          cache-to: type=gha,mode=max,scope=${{ env.CACHE_SCOPE }}
 
-      - name: Attest extended provenance
+      - name: Attest image provenance
         if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@v4
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-extended
-          subject-digest: ${{ steps.build_extended.outputs.digest }}
-          push-to-registry: true
-          create-storage-record: false
-
-      - name: Extract full metadata
-        id: meta_full
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-full
-          tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly,enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=${{ env.CI_IMAGE_TAG }},enable=${{ github.event_name != 'pull_request' }}
-          labels: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_FULL }}
-          annotations: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION_FULL }}
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-
-      - name: Build and publish full
-        id: build_full
-        uses: docker/build-push-action@v7
-        with:
-          context: ./image
-          file: ./image/full/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
-          build-args: |
-            BASE_IMAGE=${{ github.event_name == 'pull_request' && 'jovykit-extended:ci' || format('{0}/{1}/jovykit-extended:{2}', env.REGISTRY, env.IMAGE_NAMESPACE, env.CI_IMAGE_TAG) }}
-          tags: |
-            ${{ steps.meta_full.outputs.tags }}
-            ${{ github.event_name == 'pull_request' && 'jovykit-full:ci' || '' }}
-          labels: ${{ steps.meta_full.outputs.labels }}
-          annotations: ${{ github.event_name != 'pull_request' && steps.meta_full.outputs.annotations || '' }}
-          provenance: ${{ github.event_name != 'pull_request' }}
-          sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=full
-          cache-to: type=gha,mode=max,scope=full
-
-      - name: Attest full provenance
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/jovykit-full
-          subject-digest: ${{ steps.build_full.outputs.digest }}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
           create-storage-record: false
