@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 
 from jovykit.config import JovyKitError
 from jovykit.images import resolve_image_level
 from jovykit.templates import render_compose, render_containerfile, render_requirements
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+IMAGE_DIR = REPO_ROOT / "image"
+
+
+def requirement_names(path: Path) -> set[str]:
+    names = set()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("-"):
+            continue
+        line = line.split(";", 1)[0].strip()
+        for separator in ("==", ">=", "<=", "~=", "!=", ">", "<"):
+            if separator in line:
+                line = line.split(separator, 1)[0]
+                break
+        names.add(line.lower())
+    return names
 
 
 def test_render_compose_is_small_and_watch_enabled() -> None:
@@ -53,7 +73,11 @@ def test_render_containerfile_uses_requirements_txt_and_uv() -> None:
     assert "VIRTUAL_ENV=/opt/jovy" in text
     assert "NB_USER=jovyan" in text
     assert "uv" in text
+    assert "UV_LINK_MODE=hardlink" in text
+    assert "--mount=type=cache,target=/root/.cache/uv,sharing=locked" in text
     assert "source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly" in text
+    assert "if [ -s /tmp/jovy-requirements.txt ]; then \\" in text
+    assert "chown -R" not in text
     assert "/usr/local/share/jovykit/base-requirements.txt" not in text
     assert "mamba" not in text
     assert "conda" not in text
@@ -81,3 +105,77 @@ def test_python_version_must_be_published_for_image_level() -> None:
         resolve_image_level("minimal", "3.14")
         == "ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.14"
     )
+
+
+def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
+    dockerfile = (IMAGE_DIR / "Dockerfile").read_text()
+    minimal_stage = dockerfile.split("FROM minimal AS base", 1)[0]
+    requirements = requirement_names(IMAGE_DIR / "requirements-minimal.txt")
+
+    assert {"jupyterlab", "ipykernel", "jupyterlab-nitro-ai-judge"} <= requirements
+    assert "nitro-ai-judge-cli" in requirements
+    assert {"notebook", "ipywidgets", "jupyter-server-proxy"} & requirements == set()
+    assert " git \\" not in minimal_stage
+    assert "openssh-client" not in minimal_stage
+
+
+def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
+    dockerfile = (IMAGE_DIR / "Dockerfile").read_text()
+
+    assert (
+        "FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim" in dockerfile
+    )
+    assert "uv python install" not in dockerfile
+    assert "--python /usr/local/bin/python" in dockerfile
+    assert 'ln -sf "${VIRTUAL_ENV}/bin/jupyter" /usr/local/bin/jupyter' in dockerfile
+    assert "exec /opt/jovy/bin/jupyter lab" in dockerfile
+    assert "UV_LINK_MODE=hardlink" in dockerfile
+    assert "jovy-prune-image" in dockerfile
+    assert (
+        'rm -rf /root/.cache/pip "$home_dir/.cache/pip" "$home_dir/.cache/uv"'
+        in dockerfile
+    )
+    assert "share/jupyter/lab/staging" in dockerfile
+    assert "jupyter lab build" not in dockerfile
+
+
+def test_extended_image_excludes_heavy_full_image_packages() -> None:
+    extended = requirement_names(IMAGE_DIR / "requirements-extended.txt")
+    full = requirement_names(IMAGE_DIR / "requirements-full.txt")
+    full_packages = {
+        "dvc",
+        "evidently",
+        "flaml",
+        "gensim",
+        "great-expectations",
+        "nltk",
+        "onnx",
+        "prophet",
+        "spacy",
+        "tsfresh",
+    }
+    giant_packages = {
+        "albumentations",
+        "catboost",
+        "gradio",
+        "lightning",
+        "modin",
+        "onnxruntime",
+        "opencv-python-headless",
+        "pyspark",
+        "ray",
+        "sentence-transformers",
+        "streamlit",
+        "torch",
+        "torchaudio",
+        "torchmetrics",
+        "torchvision",
+        "tensorflow",
+        "jax",
+        "jaxlib",
+    }
+    dropped_packages = {"eli5", "missingno", "scikit-plot"}
+
+    assert full_packages <= full
+    assert (extended | full) & giant_packages == set()
+    assert extended & dropped_packages == set()

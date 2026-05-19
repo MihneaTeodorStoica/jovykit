@@ -130,6 +130,8 @@ jobs:
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: moderate
 
       - name: Skip outside pull requests
         if: github.event_name != 'pull_request'

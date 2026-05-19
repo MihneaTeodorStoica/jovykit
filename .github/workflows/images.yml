@@ -32,10 +32,10 @@ env:
   IMAGE_NAMESPACE: mihneateodorstoica
   DEFAULT_PYTHON_VERSION: "3.13"
   CI_IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
-  IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with JupyterLab add-ons, Nitro CLI, uv, Git, and OpenSSH.
+  IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with Python, uv, JupyterLab add-ons, and Nitro CLI.
   IMAGE_DESCRIPTION_BASE: JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access.
   IMAGE_DESCRIPTION_EXTENDED: JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work.
-  IMAGE_DESCRIPTION_FULL: JovyKit full Jupyter image with heavier AI, graph, geospatial, big-data, database, and research tooling.
+  IMAGE_DESCRIPTION_FULL: JovyKit full Jupyter image with heavier AI, graph, geospatial, database, and research tooling.
 
 jobs:
   images:
@@ -150,15 +150,17 @@ jobs:
           build-args: |
             PYTHON_VERSION=${{ matrix.python-version }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
           tags: |
             ${{ steps.meta.outputs.tags }}
-            ${{ github.event_name == 'pull_request' && format('{0}:ci-python-{1}', env.IMAGE_NAME, matrix.python-version) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=${{ env.CACHE_SCOPE }}
+          cache-from: |
+            type=gha,scope=minimal-${{ matrix.python-version }}
+            type=gha,scope=base-${{ matrix.python-version }}
+            type=gha,scope=extended-${{ matrix.python-version }}
+            type=gha,scope=${{ env.CACHE_SCOPE }}
           cache-to: type=gha,mode=max,scope=${{ env.CACHE_SCOPE }}
 
       - name: Attest image provenance

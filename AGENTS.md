@@ -12,7 +12,7 @@ JovyKit is a Python 3.11+ CLI package for project-local Jupyter container enviro
 - `black --check .`: verify formatting without rewriting files.
 - `mypy jovykit tests main.py`: type-check the package, tests, and top-level launcher.
 - `pytest --cov=jovykit --cov-report=term-missing`: run the full test suite with coverage, matching CI.
-- `docker build --target minimal -t jovykit-minimal ./image`: build one image layer locally; replace `minimal` with `base`, `extended`, or `full` as needed.
+- `./build.sh`: build container images locally; use this script whenever building images instead of invoking `docker build` directly.
 - Open `site/index.html` in a browser: preview the GitHub Pages website.
 - Edit Markdown files in `wiki/`: update GitHub Wiki documentation.
 

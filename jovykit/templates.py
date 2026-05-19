@@ -39,16 +39,15 @@ ENV HOME=/home/${{NB_USER}} \\
     NB_GID=${{NB_GID}} \\
     NB_UID=${{NB_UID}} \\
     NB_USER=${{NB_USER}} \\
-    UV_LINK_MODE=copy \\
+    UV_LINK_MODE=hardlink \\
     VIRTUAL_ENV=/opt/jovy
 ENV PATH="${{VIRTUAL_ENV}}/bin:${{PATH}}"
 
-RUN --mount=type=cache,target=/root/.cache/uv \\
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\
     --mount=type=bind,source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly \\
     if [ -s /tmp/jovy-requirements.txt ]; then \\
         uv pip install --python "${{VIRTUAL_ENV}}/bin/python" -r /tmp/jovy-requirements.txt; \\
-    fi && \\
-    chown -R "${{NB_UID}}:${{NB_GID}}" "${{VIRTUAL_ENV}}" "/home/${{NB_USER}}"
+    fi
 
 USER ${{NB_UID}}
 WORKDIR /home/${{NB_USER}}/work

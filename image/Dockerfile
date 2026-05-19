@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ghcr.io/astral-sh/uv:bookworm-slim AS minimal
+ARG PYTHON_VERSION=3.13
+FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS minimal
 
 LABEL org.opencontainers.image.description="JovyKit minimal Jupyter image with Python, uv, JupyterLab add-ons, and Nitro CLI."
 
-ARG PYTHON_VERSION=3.13
+ARG PYTHON_VERSION
 ARG NB_USER=jovyan
 ARG NB_UID=1000
 ARG NB_GID=100
@@ -15,8 +16,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NB_GID=${NB_GID} \
     NB_UID=${NB_UID} \
     NB_USER=${NB_USER} \
-    UV_LINK_MODE=copy \
-    UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=0 \
+    UV_LINK_MODE=hardlink \
     VIRTUAL_ENV=/opt/jovy
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
@@ -28,8 +31,6 @@ COPY requirements-minimal.txt ./
 RUN apt-get update -o Acquire::Retries=3 && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        git \
-        openssh-client \
         tini && \
     rm -rf /var/lib/apt/lists/* && \
     groupadd --gid "${NB_GID}" "${NB_USER}" || true && \
@@ -40,20 +41,30 @@ RUN apt-get update -o Acquire::Retries=3 && \
 RUN install -d /usr/local/share/jovykit && \
     cp requirements-minimal.txt /usr/local/share/jovykit/base-requirements.txt
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv python install "${PYTHON_VERSION}" && \
-    uv venv --clear --python "${PYTHON_VERSION}" "${VIRTUAL_ENV}" && \
-    uv pip install --python "${VIRTUAL_ENV}/bin/python" --upgrade pip setuptools wheel && \
+RUN cat > /usr/local/bin/jovy-prune-image <<'SH' && \
+    chmod +x /usr/local/bin/jovy-prune-image
+#!/usr/bin/env sh
+set -eu
+prefix="${1:-/opt/jovy}"
+home_dir="${2:-/home/jovyan}"
+rm -rf /root/.cache/pip "$home_dir/.cache/pip" "$home_dir/.cache/uv"
+find "$prefix" -type d \( -name __pycache__ -o -name tests -o -name test \) -prune -exec rm -rf {} +
+find "$prefix" -type f \( -name "*.pyc" -o -name "*.pyo" -o -name "*.a" -o -name "*.la" \) -delete
+find "$prefix" -type d -path "*/share/jupyter/lab/staging" -prune -exec rm -rf {} +
+SH
+
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv venv --clear --python /usr/local/bin/python "${VIRTUAL_ENV}" && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-minimal.txt && \
-    find "${VIRTUAL_ENV}" -type d -name __pycache__ -prune -exec rm -rf {} + && \
-    find "${VIRTUAL_ENV}" -type f -name "*.pyc" -delete && \
+    ln -sf "${VIRTUAL_ENV}/bin/jupyter" /usr/local/bin/jupyter && \
+    jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
 USER ${NB_UID}
 WORKDIR "${HOME}"
 EXPOSE 8888
 ENTRYPOINT ["tini", "-g", "--"]
-CMD ["sh", "-lc", "jupyter lab --ip=0.0.0.0 --port=${JUPYTER_PORT} --no-browser --ServerApp.token=${JUPYTER_TOKEN:-jovykit} --ServerApp.password=''"]
+CMD ["sh", "-lc", "exec /opt/jovy/bin/jupyter lab --ip=0.0.0.0 --port=${JUPYTER_PORT} --no-browser --ServerApp.token=${JUPYTER_TOKEN:-jovykit} --ServerApp.password=''"]
 
 FROM minimal AS base
 
@@ -63,9 +74,15 @@ WORKDIR /tmp/requirements
 COPY requirements-base.txt ./
 
 USER root
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    apt-get update -o Acquire::Retries=3 && \
+    apt-get install -y --no-install-recommends \
+        git \
+        openssh-client && \
+    rm -rf /var/lib/apt/lists/* && \
     cat requirements-base.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-base.txt && \
+    jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
 USER ${NB_UID}
@@ -79,9 +96,10 @@ WORKDIR /tmp/requirements
 COPY requirements-extended.txt ./
 
 USER root
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     cat requirements-extended.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-extended.txt && \
+    jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
 USER ${NB_UID}
@@ -89,18 +107,19 @@ WORKDIR "${HOME}"
 
 FROM extended AS full
 
-LABEL org.opencontainers.image.description="JovyKit full Jupyter image with heavier AI, graph, geospatial, big-data, database, and research tooling."
+LABEL org.opencontainers.image.description="JovyKit full Jupyter image with heavier AI, graph, geospatial, database, and research tooling."
 
 WORKDIR /tmp/requirements
 COPY requirements-full.txt ./
 
 USER root
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     apt-get update -o Acquire::Retries=3 && \
     apt-get install -y --no-install-recommends \
         build-essential && \
     cat requirements-full.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-full.txt && \
+    jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     apt-get purge -y --auto-remove \
         build-essential && \
     rm -rf /var/lib/apt/lists/* && \

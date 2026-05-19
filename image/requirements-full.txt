@@ -1,16 +1,10 @@
 -r requirements-extended.txt
 
-# Full: heavy frameworks, probabilistic ML, generative AI, graph/geospatial,
-# databases, and additional research tooling.
+# Full: probabilistic ML, generative AI, graph/geospatial, databases, and
+# additional research tooling without giant Spark/browser/app runtimes.
 
 # Additional deep learning frameworks
-tensorflow==2.21.0
-keras==3.14.1
-jax==0.10.0
-jaxlib==0.10.0
-flax==0.12.7
-optax==0.2.8
-orbax-checkpoint==0.11.39
+einops==0.8.2
 
 # Generative AI and LLM application tooling
 openai==2.36.0
@@ -25,6 +19,9 @@ faiss-cpu==1.13.2
 chromadb==1.5.9
 qdrant-client==1.17.1
 weaviate-client==4.21.0
+spacy==3.8.14
+gensim==4.4.0
+nltk==3.9.4
 
 # Probabilistic programming and Bayesian analysis
 pymc==5.28.5
@@ -47,11 +44,6 @@ rasterio==1.4.4
 folium==0.20.0
 contextily==1.7.0
 
-# Spark and big data
-pyspark==4.1.1
-delta-spark==4.2.0
-kafka-python==2.3.1
-
 # Databases and vector stores
 pymongo==4.17.0
 redis==7.4.0
@@ -68,6 +60,10 @@ pulp==3.3.1
 fairlearn==0.13.0; python_version < "3.14"
 interpret==0.7.8
 whylogs==1.6.4
+flaml==2.6.0
+great-expectations==1.17.1
+dvc==3.67.1
+evidently==0.7.21
 
 # Audio and speech
 librosa==0.11.0
@@ -77,8 +73,12 @@ speechrecognition==3.16.1
 # Scientific and domain utilities
 sympy==1.14.0
 numba==0.65.1
-# tensorflow 2.21.0 requires h5py<3.15.0
-h5py==3.14.0
+h5py==3.15.1
 netcdf4==1.7.4
 xarray==2026.4.0
 zarr==3.1.6
+
+# Time series and media tooling
+prophet==1.3.0
+tsfresh==0.21.1
+onnx==1.21.0
