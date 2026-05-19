@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
   <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.0.0-ff5a00"></a>
-  <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.8%2B-2f3133">
+  <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.9%2B-2f3133">
   <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.9--3.14-0a9e9a">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit-base"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f3133"></a>
@@ -36,7 +36,7 @@ Edit `compose.yaml`, `Dockerfile`, or `requirements.txt` directly.
 
 ## Requirements
 
-- Python 3.8 or newer on the host.
+- Python 3.9 or newer on the host.
 - Docker Engine.
 - Docker Compose plugin support.
 - Optional GPU runtime support for `gpus: all`.

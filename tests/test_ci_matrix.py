@@ -11,4 +11,4 @@ def test_python_ci_runs_supported_host_versions() -> None:
     )
     versions = workflow["jobs"]["python"]["strategy"]["matrix"]["python-version"]
 
-    assert versions == ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    assert versions == ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
