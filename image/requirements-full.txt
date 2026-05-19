@@ -70,7 +70,7 @@ pinecone==9.0.0
 
 # Monitoring, data quality, and MLOps
 # alibi 0.9.6 requires numpy<2 and is incompatible with Python 3.13 image deps
-whylogs==1.6.4
+whylogs==1.6.4; python_version < "3.13"
 great-expectations==1.17.1
 
 # Domain science
