@@ -18,6 +18,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NB_USER=${NB_USER} \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    SHELL=/bin/bash \
     UV_COMPILE_BYTECODE=0 \
     UV_LINK_MODE=hardlink \
     VIRTUAL_ENV=/opt/jovy

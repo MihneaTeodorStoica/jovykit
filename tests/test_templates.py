@@ -119,6 +119,7 @@ def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
     assert {"jupyterlab", "ipykernel", "jupyterlab-nitro-ai-judge"} <= requirements
     assert "nitro-ai-judge-cli" in requirements
     assert {"notebook", "ipywidgets", "jupyter-server-proxy"} & requirements == set()
+    assert "SHELL=/bin/bash" in minimal_stage
     assert " git \\" not in minimal_stage
     assert "openssh-client" not in minimal_stage
 
