@@ -5,15 +5,15 @@ JovyKit publishes Python-tagged images to GitHub Container Registry.
 ## Published References
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-extended:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-full:python-3.13
+ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```
 
-`minimal` and `base` publish `python-3.9` through `python-3.14`.
-`extended` and `full` publish `python-3.11` through `python-3.13`.
-Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x` tags.
+`minimal` and `base` publish Python 3.9 through 3.14 tags.
+`extended` and `full` publish Python 3.11 through 3.13 tags.
+`latest` points at `base-python-3.11`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11`, `base-weekly-python-3.11`, and `base-monthly-python-3.11`.
 
 ## Levels
 
@@ -56,12 +56,14 @@ Build selected targets and versions:
 
 ```bash
 ./build.sh --python 3.13 --python 3.14 minimal base
+./build.sh --python 3.11 --latest base
+./build.sh --python 3.11 --channel nightly base
 ```
 
 Output tags look like:
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
 ```
 
 ## Project Overlay
@@ -76,7 +78,7 @@ requirements.txt
 The generated Dockerfile starts from the selected image:
 
 ```dockerfile
-ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
+ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
 FROM ${JOVY_BASE_IMAGE}
 ```
 

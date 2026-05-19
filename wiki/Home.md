@@ -32,7 +32,7 @@ work/
 - `.jupyter/` persists local Jupyter config.
 
 Python version comes from the selected image tag, for example
-`ghcr.io/mihneateodorstoica/jovykit-base:python-3.13`.
+`ghcr.io/mihneateodorstoica/jovykit:base-python-3.13`.
 
 ## Commands
 
@@ -69,12 +69,12 @@ Image levels:
 Published tags use Python versions:
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
 ```
 
-`minimal` and `base` publish `python-3.9` through `python-3.14`.
-`extended` and `full` publish `python-3.11` through `python-3.13`.
-Scheduled images also get `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x` tags.
+`minimal` and `base` publish Python 3.9 through 3.14 tags.
+`extended` and `full` publish Python 3.11 through 3.13 tags.
+`latest` points at `base-python-3.11`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11`, `base-weekly-python-3.11`, and `base-monthly-python-3.11`.
 
 ## GPU
 

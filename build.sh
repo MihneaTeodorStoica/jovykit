@@ -6,15 +6,22 @@ targets=(minimal base extended full)
 default_python_versions=(3.9 3.10 3.11 3.12 3.13 3.14)
 python_versions=()
 requested=()
+release=""
+channels=()
+tag_latest=false
 
 usage() {
   cat <<EOF
 usage: $0 [OPTIONS] [all|minimal|base|extended|full ...]
 
 Options:
-  -p, --python-version VERSION  Build VERSION as :python-VERSION. Repeat or use commas.
+  -p, --python-version VERSION  Build VERSION as :LEVEL-python-VERSION. Repeat or use commas.
       --python VERSION          Alias for --python-version.
-      --prefix PREFIX           Image prefix. Default: ${prefix}
+      --image IMAGE             Image repository. Default: ${prefix}
+      --prefix PREFIX           Alias for --image.
+      --release VERSION         Also tag :LEVEL-python-VERSION-VERSION.
+      --channel CHANNEL         Also tag :LEVEL-CHANNEL-python-VERSION. Repeat for nightly, weekly, monthly.
+      --latest                  Also tag :latest for base Python 3.11.
   -h, --help                    Show this help.
 
 Default versions:
@@ -25,6 +32,8 @@ Examples:
   $0 --python-version 3.13 minimal
   $0 --python 3.13 --python 3.14 minimal base
   $0 --python-version 3.11,3.12,3.13 all
+  $0 --python 3.11 --release v8.1.0 --latest base
+  $0 --python 3.11 --channel nightly base
 EOF
 }
 
@@ -36,6 +45,19 @@ add_python_versions() {
   for version in ${raw}; do
     python_versions+=("${version}")
   done
+}
+
+add_channel() {
+  case "$1" in
+    nightly | weekly | monthly)
+      channels+=("$1")
+      ;;
+    *)
+      printf 'unknown channel: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
 }
 
 while (($#)); do
@@ -52,7 +74,7 @@ while (($#)); do
       add_python_versions "${1#*=}"
       shift
       ;;
-    --prefix)
+    --prefix | --image)
       if [[ "$#" -lt 2 ]]; then
         printf 'missing value for %s\n' "$1" >&2
         exit 2
@@ -60,8 +82,36 @@ while (($#)); do
       prefix="$2"
       shift 2
       ;;
-    --prefix=*)
+    --prefix=* | --image=*)
       prefix="${1#*=}"
+      shift
+      ;;
+    --release)
+      if [[ "$#" -lt 2 ]]; then
+        printf 'missing value for %s\n' "$1" >&2
+        exit 2
+      fi
+      release="$2"
+      shift 2
+      ;;
+    --release=*)
+      release="${1#*=}"
+      shift
+      ;;
+    --channel)
+      if [[ "$#" -lt 2 ]]; then
+        printf 'missing value for %s\n' "$1" >&2
+        exit 2
+      fi
+      add_channel "$2"
+      shift 2
+      ;;
+    --channel=*)
+      add_channel "${1#*=}"
+      shift
+      ;;
+    --latest)
+      tag_latest=true
       shift
       ;;
     -h | --help)
@@ -143,16 +193,27 @@ image_supports_python() {
 build_python_version() {
   local version="$1"
   local image
+  local tags
 
   for image in "${selected[@]}"; do
     if ! image_supports_python "${image}" "${version}"; then
       printf 'skip %s Python %s (unsupported)\n' "${image}" "${version}" >&2
       continue
     fi
+    tags=(-t "${prefix}:${image}-python-${version}")
+    if [[ -n "${release}" ]]; then
+      tags+=(-t "${prefix}:${image}-python-${version}-${release}")
+    fi
+    for channel in "${channels[@]}"; do
+      tags+=(-t "${prefix}:${image}-${channel}-python-${version}")
+    done
+    if [[ "${tag_latest}" == true && "${image}" == "base" && "${version}" == "3.11" ]]; then
+      tags+=(-t "${prefix}:latest")
+    fi
     docker build \
       --build-arg "PYTHON_VERSION=${version}" \
       --target "${image}" \
-      -t "${prefix}-${image}:python-${version}" \
+      "${tags[@]}" \
       ./image
   done
 }

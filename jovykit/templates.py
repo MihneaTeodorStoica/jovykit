@@ -74,7 +74,6 @@ def render_compose(
             },
         },
         "image": f"{slugify_name(project_name)}-jovy:local",
-        "pull_policy": "build",
         "environment": {
             "JUPYTER_TOKEN": token,
         },

@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "image/**"
+      - "build.sh"
       - ".github/workflows/images.yml"
   pull_request:
     branches: [main]
     paths:
       - "image/**"
+      - "build.sh"
       - ".github/workflows/images.yml"
   schedule:
     - cron: "30 6 * * 1"
@@ -123,32 +125,25 @@ jobs:
               ;;
           esac
 
-          image_name="jovykit-${{ matrix.target }}"
+          image_name="jovykit"
           cache_scope="${{ matrix.target }}-${{ matrix.python-version }}"
-          cache_ref="${REGISTRY}/${IMAGE_NAMESPACE}/jovykit-buildcache:${{ matrix.target }}-python-${{ matrix.python-version }}"
 
           {
             echo "IMAGE_NAME=$image_name"
             echo "IMAGE_DESCRIPTION=$description"
             echo "CACHE_SCOPE=$cache_scope"
-            echo "REGISTRY_CACHE_REF=$cache_ref"
           } >> "$GITHUB_ENV"
 
           {
             echo "should-build=$should_build"
             echo "cache-from<<EOF"
             echo "type=gha,scope=$cache_scope"
-            echo "type=registry,ref=$cache_ref"
             if [ -n "$parent_target" ]; then
               echo "type=gha,scope=${parent_target}-${{ matrix.python-version }}"
-              echo "type=registry,ref=${REGISTRY}/${IMAGE_NAMESPACE}/jovykit-buildcache:${parent_target}-python-${{ matrix.python-version }}"
             fi
             echo "EOF"
             echo "cache-to<<EOF"
             echo "type=gha,mode=max,scope=$cache_scope"
-            if [ "${{ github.event_name }}" != "pull_request" ]; then
-              echo "type=registry,ref=$cache_ref,mode=max"
-            fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -171,15 +166,14 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=python-${{ matrix.python-version }}
-            type=raw,value=latest,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-            type=raw,value=nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=nightly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=${{ env.CI_IMAGE_TAG }}-python-${{ matrix.python-version }},enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=${{ matrix.target }}-python-${{ matrix.python-version }}
+            type=raw,value=latest,enable=${{ matrix.target == 'base' && matrix.python-version == '3.11' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
+            type=raw,value=${{ matrix.target }}-python-${{ matrix.python-version }}-${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=${{ matrix.target }}-python-${{ matrix.python-version }}-
+            type=raw,value=${{ matrix.target }}-nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
+            type=raw,value=${{ matrix.target }}-weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
+            type=raw,value=${{ matrix.target }}-monthly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
+            type=raw,value=${{ matrix.target }}-${{ env.CI_IMAGE_TAG }}-python-${{ matrix.python-version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
           annotations: |
@@ -204,8 +198,8 @@ jobs:
           annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: ${{ steps.plan.outputs.cache-from }}
-          cache-to: ${{ steps.plan.outputs.cache-to }}
+          cache-from: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-from || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-to || '' }}
 
       - name: Attest image provenance
         if: steps.plan.outputs.should-build == 'true' && github.event_name != 'pull_request'
