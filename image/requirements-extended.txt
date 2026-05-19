@@ -109,7 +109,6 @@ plotnine
 kaleido
 wordcloud
 adjusttext
-panel
 holoviews
 hvplot
 datashader
