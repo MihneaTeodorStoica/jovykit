@@ -60,24 +60,3 @@ updates:
       root-python:
         patterns:
           - "*"
-
-  - package-ecosystem: "pip"
-    directory: "/image"
-    cooldown:
-      default-days: 7
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:45"
-      timezone: "Etc/UTC"
-    labels:
-      - "dependencies"
-      - "python"
-      - "docker"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
-    groups:
-      image-python:
-        patterns:
-          - "*"
