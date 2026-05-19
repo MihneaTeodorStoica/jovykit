@@ -20,6 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     SHELL=/bin/bash \
     UV_COMPILE_BYTECODE=0 \
+    UV_HTTP_TIMEOUT=120 \
     UV_LINK_MODE=hardlink \
     VIRTUAL_ENV=/opt/jovy
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
