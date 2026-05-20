@@ -2,10 +2,10 @@
 
 # Core arrays, tables, and plotting
 # sktime 0.40.1 requires numpy<2.4
-numpy==1.26.4; python_version < "3.11"
+numpy==2.0.2; python_version < "3.11"
 numpy==2.3.5; python_version >= "3.11"
 # mlflow 3.12.0 requires pandas<3
-pandas==2.2.3; python_version < "3.11"
+pandas==2.3.3; python_version < "3.11"
 pandas==2.3.3; python_version >= "3.11"
 # fairlearn 0.13.0 requires scipy<1.16
 scipy==1.13.1; python_version == "3.9"
@@ -22,7 +22,7 @@ scikit-learn==1.7.2; python_version >= "3.10"
 # Developer ergonomics
 tqdm==4.67.3
 rich==15.0.0
-python-dotenv==1.0.1; python_version < "3.10"
+python-dotenv==1.2.1; python_version < "3.10"
 python-dotenv==1.2.2; python_version >= "3.10"
 requests==2.32.5; python_version == "3.9"
 requests==2.34.2; python_version >= "3.10"
@@ -32,9 +32,9 @@ ipywidgets==8.1.8
 jupyter-server-proxy==4.5.0
 
 # Data frames and query engines
-polars==1.35.2; python_version < "3.10"
+polars==1.36.1; python_version < "3.10"
 polars==1.40.1; python_version >= "3.10"
-duckdb==1.4.3; python_version < "3.10"
+duckdb==1.4.4; python_version < "3.10"
 duckdb==1.5.2; python_version >= "3.10"
 sqlalchemy==2.0.49
 

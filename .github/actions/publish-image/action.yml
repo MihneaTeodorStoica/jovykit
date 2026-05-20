@@ -56,7 +56,9 @@ runs:
           fi
           echo "EOF"
           echo "cache-to<<EOF"
-          echo "type=gha,mode=max,scope=$cache_scope"
+          if [ "${{ inputs.target }}" != "full" ]; then
+            echo "type=gha,mode=max,scope=$cache_scope"
+          fi
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
 
@@ -83,7 +85,6 @@ runs:
           type=raw,value=${{ inputs.target }}-python-${{ inputs.python-version }}-${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
           type=raw,value=${{ inputs.target }}-nightly-python-${{ inputs.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
           type=raw,value=${{ inputs.target }}-weekly-python-${{ inputs.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-          type=raw,value=${{ inputs.target }}-monthly-python-${{ inputs.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
         labels: |
           org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
         annotations: |

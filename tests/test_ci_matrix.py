@@ -124,14 +124,7 @@ def test_image_workflow_define_step_writes_valid_output(tmp_path: Path) -> None:
         Path(".github/workflows/images.yml").read_text(encoding="utf-8")
     )
     assert _image_matrix(workflow, event_name="pull_request", tmp_path=tmp_path) == [
-        {"target": "minimal", "python-version": "3.9"},
-        {"target": "base", "python-version": "3.9"},
-        {"target": "minimal", "python-version": "3.12"},
-        {"target": "base", "python-version": "3.12"},
-        {"target": "extended", "python-version": "3.12"},
         {"target": "full", "python-version": "3.12"},
-        {"target": "minimal", "python-version": "3.14"},
-        {"target": "base", "python-version": "3.14"},
     ]
     assert _image_matrix(
         workflow,
@@ -139,18 +132,8 @@ def test_image_workflow_define_step_writes_valid_output(tmp_path: Path) -> None:
         event_schedule="30 6 * * *",
         tmp_path=tmp_path,
     ) == [
-        {"target": "minimal", "python-version": "3.9"},
-        {"target": "base", "python-version": "3.9"},
-        {"target": "minimal", "python-version": "3.10"},
-        {"target": "base", "python-version": "3.10"},
-        {"target": "minimal", "python-version": "3.11"},
-        {"target": "base", "python-version": "3.11"},
         {"target": "minimal", "python-version": "3.12"},
         {"target": "base", "python-version": "3.12"},
-        {"target": "minimal", "python-version": "3.13"},
-        {"target": "base", "python-version": "3.13"},
-        {"target": "minimal", "python-version": "3.14"},
-        {"target": "base", "python-version": "3.14"},
     ]
 
 
@@ -216,9 +199,8 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     assert (
         "value=${{ inputs.target }}-weekly-python-${{ inputs.python-version }}" in text
     )
-    assert (
-        "value=${{ inputs.target }}-monthly-python-${{ inputs.python-version }}" in text
-    )
+    assert "monthly-python" not in text
+    assert 'if [ "${{ inputs.target }}" != "full" ]; then' in text
 
 
 def test_image_workflow_skips_heavy_nightly_targets(tmp_path: Path) -> None:
