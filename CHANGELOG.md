@@ -7,6 +7,15 @@ introduced.
 
 ## Unreleased
 
+## 8.2.0 - 2026-05-20
+
+- Added `jovy install-docker` to print or run Linux Docker Engine and Compose
+  plugin setup for Ubuntu, Debian, Fedora, RHEL, and CentOS.
+- Improved `jovy doctor` to report Docker CLI, Compose plugin, and daemon access
+  separately.
+- Documented Docker requirements and macOS/Windows Docker Desktop setup
+  guidance.
+
 ## 8.1.1 - 2026-05-20
 
 - Point `latest` at `minimal-python-3.14`.

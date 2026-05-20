@@ -44,8 +44,23 @@ jovy build [ARGS...]
 jovy watch [ARGS...]
 jovy open
 jovy doctor
+jovy install-docker [--dry-run] [--yes] [--skip-hello-world]
 jovy compose COMMAND [ARGS...]
 ```
+
+## install-docker
+
+Linux helper for Docker Engine and Compose plugin setup.
+Dry run is default.
+
+```bash
+jovy install-docker --dry-run
+jovy install-docker --yes
+jovy install-docker --yes --skip-hello-world
+```
+
+Supported Linux distros: Ubuntu, Debian, Fedora, RHEL, and CentOS.
+macOS and Windows users should install Docker Desktop manually.
 
 ## init
 
@@ -95,6 +110,7 @@ jovy shell
 jovy shell python --version
 jovy run python script.py
 jovy doctor
+jovy install-docker --dry-run
 ```
 
 Use `jovy compose ...` for raw Docker Compose access.

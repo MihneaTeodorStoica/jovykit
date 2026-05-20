@@ -8,11 +8,20 @@ Docker Compose files. There is no hidden JovyKit config file: edit
 
 ## Install
 
+JovyKit requires Docker Engine and the Docker Compose plugin.
+On macOS and Windows, install Docker Desktop first.
+On supported Linux distros, JovyKit can print or run the Docker install plan.
+
 ```bash
 pip install jovykit
 # or
 uv tool install jovykit
+
+jovy install-docker --dry-run
+jovy doctor
 ```
+
+Run `jovy install-docker --yes` only after reading the dry run output.
 
 ## Quick Start
 

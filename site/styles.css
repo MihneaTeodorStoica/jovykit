@@ -238,6 +238,28 @@ pre {
   white-space: nowrap;
 }
 
+.requirement-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  max-width: min(var(--content-max), calc(100% - 40px));
+  margin: 18px auto 0;
+  padding: 14px clamp(18px, 3vw, 24px);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.requirement-strip strong {
+  font-weight: 900;
+}
+
+.requirement-strip code {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
 .demo-section {
   max-width: min(var(--content-max), calc(100% - 40px));
   margin: clamp(28px, 5vw, 52px) auto clamp(36px, 6vw, 68px);

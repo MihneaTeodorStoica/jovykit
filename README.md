@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
-  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.1.2-ff5a00"></a>
+  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.2.0-ff5a00"></a>
   <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.9%2B-2f3133">
   <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.9--3.14-0a9e9a">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
@@ -22,12 +22,21 @@ Run `jovy init`, start Jupyter, throw the container away, keep the notebooks.
 
 ## Install
 
+JovyKit requires Docker Engine and the Docker Compose plugin.
+On macOS and Windows, install Docker Desktop first.
+On supported Linux distros, JovyKit can print or run the Docker install plan.
+
 ```bash
 pip install jovykit
 # or
 uv tool install jovykit
+
+jovy install-docker --dry-run
+jovy doctor
 jovy --version
 ```
+
+Run `jovy install-docker --yes` only after reading the dry run output.
 
 ## Quick Start
 
@@ -77,13 +86,17 @@ Edit `compose.yaml`, `Dockerfile`, or `requirements.txt` directly.
 ## Requirements
 
 - Python 3.9 or newer on the host.
-- Docker Engine.
-- Docker Compose plugin support.
+- Docker Engine and the Docker Compose plugin, or Docker Desktop on macOS/Windows.
+- Linux auto-install support for Ubuntu, Debian, Fedora, RHEL, and CentOS.
 - Optional GPU runtime support for `gpus: all`.
+
+`jovy doctor` checks Docker, Compose, daemon access, GPU support, and project files.
 
 ## Common Commands
 
 ```bash
+jovy install-docker --dry-run
+jovy doctor
 jovy add pandas scikit-learn
 jovy build
 jovy watch
