@@ -14,7 +14,6 @@ on:
   schedule:
     - cron: "30 6 * * 1"
     - cron: "30 6 * * *"
-    - cron: "30 6 1 * *"
   workflow_dispatch:
 
 permissions:
@@ -25,7 +24,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.schedule || 'none' }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -38,8 +37,35 @@ env:
   IMAGE_DESCRIPTION_FULL: JovyKit full Jupyter image with heavier AI, graph, geospatial, database, and research tooling.
 
 jobs:
+  define-images:
+    name: define image order
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Define image matrix
+        id: matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            matrix='{"include":[{"target":"full","python-version":"3.12"}]}'
+          elif [ "$EVENT_NAME" = "schedule" ] && [ "$EVENT_SCHEDULE" = "30 6 * * *" ]; then
+            matrix='{"include":[{"target":"minimal","python-version":"3.12"},{"target":"base","python-version":"3.12"}]}'
+          else
+            matrix='{"include":[{"target":"minimal","python-version":"3.9"},{"target":"base","python-version":"3.9"},{"target":"minimal","python-version":"3.10"},{"target":"base","python-version":"3.10"},{"target":"minimal","python-version":"3.11"},{"target":"base","python-version":"3.11"},{"target":"extended","python-version":"3.11"},{"target":"full","python-version":"3.11"},{"target":"minimal","python-version":"3.12"},{"target":"base","python-version":"3.12"},{"target":"extended","python-version":"3.12"},{"target":"full","python-version":"3.12"},{"target":"minimal","python-version":"3.13"},{"target":"base","python-version":"3.13"},{"target":"extended","python-version":"3.13"},{"target":"full","python-version":"3.13"},{"target":"minimal","python-version":"3.14"},{"target":"base","python-version":"3.14"}]}'
+          fi
+
+          {
+            echo "matrix<<JSON"
+            echo "$matrix"
+            echo "JSON"
+          } >> "$GITHUB_OUTPUT"
+
   images:
     name: ${{ matrix.target }} py${{ matrix.python-version }}
+    needs: define-images
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -50,44 +76,7 @@ jobs:
       artifact-metadata: write
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - target: minimal
-            python-version: "3.9"
-          - target: minimal
-            python-version: "3.10"
-          - target: minimal
-            python-version: "3.11"
-          - target: minimal
-            python-version: "3.12"
-          - target: minimal
-            python-version: "3.13"
-          - target: minimal
-            python-version: "3.14"
-          - target: base
-            python-version: "3.9"
-          - target: base
-            python-version: "3.10"
-          - target: base
-            python-version: "3.11"
-          - target: base
-            python-version: "3.12"
-          - target: base
-            python-version: "3.13"
-          - target: base
-            python-version: "3.14"
-          - target: extended
-            python-version: "3.11"
-          - target: extended
-            python-version: "3.12"
-          - target: extended
-            python-version: "3.13"
-          - target: full
-            python-version: "3.11"
-          - target: full
-            python-version: "3.12"
-          - target: full
-            python-version: "3.13"
+      matrix: ${{ fromJson(needs.define-images.outputs.matrix) }}
 
     steps:
       - name: Checkout repository
@@ -145,9 +134,11 @@ jobs:
             fi
             echo "EOF"
             echo "cache-to<<EOF"
-            echo "type=gha,mode=max,scope=$cache_scope"
-            if [ "${{ github.event_name }}" != "pull_request" ]; then
-              echo "type=registry,ref=$cache_ref,mode=max"
+            if [ "${{ matrix.target }}" != "full" ]; then
+              echo "type=gha,mode=max,scope=$cache_scope"
+              if [ "${{ github.event_name }}" != "pull_request" ]; then
+                echo "type=registry,ref=$cache_ref,mode=max"
+              fi
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -175,10 +166,8 @@ jobs:
             type=raw,value=latest,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
             type=raw,value=nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
             type=raw,value=weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
             type=raw,value=nightly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
             type=raw,value=weekly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=monthly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
             type=raw,value=${{ env.CI_IMAGE_TAG }}-python-${{ matrix.python-version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}

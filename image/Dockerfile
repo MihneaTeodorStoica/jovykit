@@ -56,6 +56,18 @@ find "$prefix" -type f \( -name "*.pyc" -o -name "*.pyo" -o -name "*.a" -o -name
 find "$prefix" -type d -path "*/share/jupyter/lab/staging" -prune -exec rm -rf {} +
 SH
 
+RUN cat > /usr/local/bin/jovy-remove-panel <<'SH' && \
+    chmod +x /usr/local/bin/jovy-remove-panel
+#!/usr/bin/env sh
+set -eu
+prefix="${1:-/opt/jovy}"
+python_bin="${prefix}/bin/python"
+
+if "$python_bin" -c "import importlib.metadata as m; m.version('panel')" >/dev/null 2>&1; then
+    uv pip uninstall --python "$python_bin" panel
+fi
+SH
+
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv venv --clear --python /usr/local/bin/python "${VIRTUAL_ENV}" && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-minimal.txt && \
@@ -97,6 +109,7 @@ USER root
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     cat requirements-extended.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-extended.txt && \
+    jovy-remove-panel "${VIRTUAL_ENV}" && \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
@@ -114,6 +127,7 @@ USER root
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     cat requirements-full.txt >> /usr/local/share/jovykit/base-requirements.txt && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-full.txt && \
+    jovy-remove-panel "${VIRTUAL_ENV}" && \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
