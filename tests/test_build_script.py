@@ -26,7 +26,7 @@ def test_build_script_tags_match_published_scheme(tmp_path: Path) -> None:
             "--python",
             "3.14",
             "--release",
-            "v8.3.1",
+            "v8.3.2",
             "--channel",
             "nightly",
             "--latest",
@@ -40,7 +40,7 @@ def test_build_script_tags_match_published_scheme(tmp_path: Path) -> None:
     assert log.read_text(encoding="utf-8").strip() == (
         "build --build-arg PYTHON_VERSION=3.14 --target minimal "
         "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14 "
-        "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14-v8.3.1 "
+        "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14-v8.3.2 "
         "-t ghcr.io/mihneateodorstoica/jovykit:minimal-nightly-python-3.14 "
         "-t ghcr.io/mihneateodorstoica/jovykit:latest ./image"
     )
