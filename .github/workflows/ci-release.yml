@@ -379,7 +379,6 @@ jobs:
           path: dist
 
       - name: Extract changelog notes
-        id: notes
         run: |
           python - <<'PY'
           import os
@@ -393,14 +392,12 @@ jobs:
               changelog,
               flags=re.M | re.S,
           )
-          body = match.group("body").strip() if match else ""
-          if body:
-              Path("release-notes.md").write_text(body + "\n")
-              has_notes = "true"
-          else:
-              has_notes = "false"
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"has_notes={has_notes}", file=output)
+          if not match:
+              raise SystemExit(f"Missing CHANGELOG.md section for {version}")
+          body = match.group("body").strip()
+          if not body:
+              raise SystemExit(f"Empty CHANGELOG.md section for {version}")
+          Path("release-notes.md").write_text(body + "\n")
           PY
         env:
           VERSION: ${{ needs.tag.outputs.version }}
@@ -410,17 +407,9 @@ jobs:
           tag="${{ needs.tag.outputs.tag }}"
           title="${tag}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
-              gh release edit "$tag" --title "$title" --notes-file release-notes.md
-            else
-              gh release edit "$tag" --title "$title"
-            fi
+            gh release edit "$tag" --title "$title" --notes-file release-notes.md
           else
-            if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
-              gh release create "$tag" --verify-tag --title "$title" --notes-file release-notes.md
-            else
-              gh release create "$tag" --verify-tag --title "$title" --generate-notes
-            fi
+            gh release create "$tag" --verify-tag --title "$title" --notes-file release-notes.md
           fi
           gh release upload "$tag" dist/* --clobber
         env:

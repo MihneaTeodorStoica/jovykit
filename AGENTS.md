@@ -28,6 +28,10 @@ Add or update pytest coverage for behavior changes, especially CLI error handlin
 
 Recent history uses concise imperative subjects and conventional prefixes such as `chore:` and `ci:`; follow that style when practical. Keep commits scoped to one concern. Pull requests should include a summary, verification commands, linked issues when applicable, and notes about image, docs, security, or release impacts. Follow `.github/PULL_REQUEST_TEMPLATE.md`.
 
+## Release Notes & Changelog
+
+For version bumps, tags, PyPI publishes, or GitHub Releases, update `CHANGELOG.md` before the release. Write user-facing notes under the exact `## X.Y.Z - YYYY-MM-DD` heading that matches `pyproject.toml`, grouped by impact such as breaking changes, CLI, images, packaging, docs, fixes, and upgrade notes. Keep notes accurate to the tag diff; do not dump commit logs or use version bumps as release notes unless that is the only user-visible change. Mention image tag changes, PyPI/package changes, breaking behavior, and upgrade steps when applicable.
+
 ## Security & Configuration Tips
 
 Do not commit generated `.jovy/` environments, secrets, registry tokens, or local virtualenvs. Keep image dependencies pinned where possible, and run `pip-audit -r requirements.txt` after dependency changes.
