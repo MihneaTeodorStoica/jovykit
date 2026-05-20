@@ -7,6 +7,11 @@ introduced.
 
 ## Unreleased
 
+## 8.1.1 - 2026-05-20
+
+- Point `latest` at `minimal-python-3.14`.
+- Remove the generated Compose image name so local builds do not try to pull it.
+
 ## 8.1.0 - 2026-05-19
 
 - Publish all levels under the single `jovykit` image with `LEVEL-python-VERSION` tags.
