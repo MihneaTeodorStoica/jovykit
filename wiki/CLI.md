@@ -9,6 +9,22 @@ With no arguments:
 
 ## Usage
 
+Install:
+
+```bash
+pip install jovykit
+# or
+uv tool install jovykit
+```
+
+Smallest first run:
+
+```bash
+jovy init
+jovy up -d
+jovy open
+```
+
 ```text
 jovy
 jovy init [--image-level LEVEL] [--python VERSION] [--gpu MODE] [--port PORT] [--token TOKEN]

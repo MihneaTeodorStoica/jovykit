@@ -5,30 +5,70 @@
 <h1 align="center">JovyKit</h1>
 
 <p align="center">
-  <strong>Project-local JupyterLab environments, built and run through Docker Compose.</strong>
+  <strong>Disposable JupyterLab environments that feel like Python virtualenvs.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
-  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.1.1-ff5a00"></a>
+  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.1.2-ff5a00"></a>
   <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.9%2B-2f3133">
   <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.9--3.14-0a9e9a">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f3133"></a>
 </p>
 
-## Model
+JovyKit gives each project a readable Dockerized JupyterLab environment.
+Run `jovy init`, start Jupyter, throw the container away, keep the notebooks.
 
-`compose.yaml` is runtime.
-`Dockerfile` is the project overlay.
-`requirements.txt` is project Python packages.
-Python comes from the selected image tag, for example `:base-python-3.13`.
+## Install
 
-- `jovy` initializes an empty directory, or prints help in an existing project.
-- `jovy init` creates `compose.yaml`, `Dockerfile`, `requirements.txt`, `work/`, and `.jupyter/`.
-- `jovy up`, `down`, `start`, `stop`, `restart`, `config`, `logs`, `build`, and `watch` pass through to Docker Compose.
+```bash
+pip install jovykit
+# or
+uv tool install jovykit
+jovy --version
+```
+
+## Quick Start
+
+```bash
+pip install jovykit
+
+jovy init
+jovy up -d
+jovy open
+```
+
+<p align="center">
+  <img src="site/assets/jovykit-demo.gif" alt="JovyKit demo: install, init, start, and open JupyterLab">
+</p>
+
+Use a pinned Python image or GPU mode when you need it:
+
+```bash
+jovy init --python 3.13
+jovy init --gpu all --python 3.13
+```
+
+## Why?
+
+Machine learning environments are annoying.
+
+- Conda environments drift.
+- Docker Compose is repetitive.
+- Jupyter setup takes boilerplate.
+- GPU configuration is fragile.
+- Reproducing environments across machines is painful.
+
+JovyKit makes Dockerized Jupyter environments feel lightweight and disposable.
+
+## What You Get
+
+- One command creates `compose.yaml`, `Dockerfile`, `requirements.txt`, `work/`, and `.jupyter/`.
+- Notebooks and Jupyter settings persist; container state stays disposable.
 - `jovy add` and `jovy remove` edit `requirements.txt`.
-- `jovy status`, `shell`, `run`, `open`, and `doctor` add small Jupyter-focused conveniences.
+- `up`, `down`, `start`, `stop`, `config`, `logs`, `build`, and `watch` behave like Docker Compose.
+- GPU support is explicit with `jovy init --gpu all`.
 - `jovy compose ...` is the Docker Compose escape hatch.
 
 There is no JovyKit config file.
@@ -41,25 +81,10 @@ Edit `compose.yaml`, `Dockerfile`, or `requirements.txt` directly.
 - Docker Compose plugin support.
 - Optional GPU runtime support for `gpus: all`.
 
-## Install
+## Common Commands
 
 ```bash
-python -m pip install -e .
-jovy --version
-```
-
-## Quick Start
-
-```bash
-jovy init --image-level base --python 3.13 --port 8888
 jovy add pandas scikit-learn
-jovy up -d
-jovy open
-```
-
-Common commands:
-
-```bash
 jovy build
 jovy watch
 jovy logs -f
@@ -68,6 +93,17 @@ jovy shell
 jovy down
 jovy compose ps
 ```
+
+## How JovyKit Works
+
+`compose.yaml` is runtime.
+`Dockerfile` is the project overlay.
+`requirements.txt` is project Python packages.
+Python comes from the selected image tag, for example `:base-python-3.13`.
+
+- `jovy` initializes an empty directory, or prints help in an existing project.
+- `jovy init` creates `compose.yaml`, `Dockerfile`, `requirements.txt`, `work/`, and `.jupyter/`.
+- `jovy status`, `shell`, `run`, `open`, and `doctor` add small Jupyter-focused conveniences.
 
 ## Images
 

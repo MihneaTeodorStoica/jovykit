@@ -57,9 +57,17 @@ def test_init_project_requires_force_for_existing_files(tmp_path: Path) -> None:
 
 
 def test_jupyter_url_reads_compose_port(tmp_path: Path) -> None:
-    commands.init_project(tmp_path, gpu="none", port=9999)
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
 
-    assert commands.jupyter_url(tmp_path) == "http://127.0.0.1:9999/lab"
+    assert commands.jupyter_url(tmp_path) == (
+        "http://127.0.0.1:9999/lab?token=secret-token"
+    )
+
+
+def test_jupyter_url_encodes_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="a/b+c")
+
+    assert commands.jupyter_url(tmp_path) == "http://127.0.0.1:9999/lab?token=a%2Fb%2Bc"
 
 
 def test_load_project_settings_reads_compose(tmp_path: Path) -> None:

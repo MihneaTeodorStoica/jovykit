@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlencode
 
 import yaml
 
@@ -401,13 +402,15 @@ def jupyter_url(root: Path | None = None) -> str:
     resolved = ensure_compose_project(root)
     data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
     service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
+    token = _read_environment_value(service, "JUPYTER_TOKEN") or DEFAULT_JUPYTER_TOKEN
+    query = urlencode({"token": token})
     for port in service.get("ports", []) or []:
         parts = str(port).split(":")
         if len(parts) >= 3 and parts[-1] == "8888":
-            return f"http://127.0.0.1:{parts[-2]}/lab"
+            return f"http://127.0.0.1:{parts[-2]}/lab?{query}"
         if len(parts) == 2 and parts[-1] == "8888":
-            return f"http://127.0.0.1:{parts[0]}/lab"
-    return "http://127.0.0.1:8888/lab"
+            return f"http://127.0.0.1:{parts[0]}/lab?{query}"
+    return f"http://127.0.0.1:8888/lab?{query}"
 
 
 def open_browser(root: Path | None = None) -> str:

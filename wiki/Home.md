@@ -1,19 +1,60 @@
 # JovyKit
 
+Disposable JupyterLab environments that feel like Python virtualenvs.
+
 JovyKit creates a project-local JupyterLab container project using normal
-Docker Compose files.
+Docker Compose files. There is no hidden JovyKit config file: edit
+`compose.yaml`, `Dockerfile`, or `requirements.txt` directly.
+
+## Install
+
+```bash
+pip install jovykit
+# or
+uv tool install jovykit
+```
 
 ## Quick Start
 
 ```bash
-python3 -m pip install -e .
-jovy init --image-level base --python 3.13
-jovy add pandas scikit-learn plotly
+pip install jovykit
+
+jovy init
 jovy up -d
 jovy open
 ```
 
-## Files
+![JovyKit demo](https://raw.githubusercontent.com/MihneaTeodorStoica/jovykit/main/site/assets/jovykit-demo.gif)
+
+Use a pinned Python image or GPU mode when you need it:
+
+```bash
+jovy init --python 3.13
+jovy init --gpu all --python 3.13
+```
+
+## Why?
+
+Machine learning environments are annoying.
+
+- Conda environments drift.
+- Docker Compose is repetitive.
+- Jupyter setup takes boilerplate.
+- GPU configuration is fragile.
+- Reproducing environments across machines is painful.
+
+JovyKit makes Dockerized Jupyter environments feel lightweight and disposable.
+
+## What You Get
+
+- Persistent notebooks and Jupyter settings.
+- Disposable container state.
+- Readable generated Docker Compose files.
+- Python-tagged image levels from `minimal` to `full`.
+- Optional GPU support with `jovy init --gpu all`.
+- A Compose escape hatch with `jovy compose ...`.
+
+## Project Files
 
 `jovy init` creates:
 
@@ -39,7 +80,7 @@ Python version comes from the selected image tag, for example
 These behave like Docker Compose:
 
 ```bash
-jovy up
+jovy up -d
 jovy down
 jovy start
 jovy stop
