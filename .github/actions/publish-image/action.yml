@@ -1,0 +1,126 @@
+name: Publish JovyKit image
+description: Publish one JovyKit image variant.
+
+inputs:
+  target:
+    required: true
+    description: Dockerfile target to publish.
+  python-version:
+    required: true
+    description: Python version to build.
+
+runs:
+  using: composite
+  steps:
+    - name: Plan image build
+      id: plan
+      shell: bash
+      run: |
+        should_build=true
+        if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then
+          case "${{ inputs.target }}" in
+            minimal|base) should_build=true ;;
+            *) should_build=false ;;
+          esac
+        fi
+
+        case "${{ inputs.target }}" in
+          minimal)
+            description="$IMAGE_DESCRIPTION_MINIMAL"
+            parent_target=""
+            ;;
+          base)
+            description="$IMAGE_DESCRIPTION_BASE"
+            parent_target="minimal"
+            ;;
+          extended)
+            description="$IMAGE_DESCRIPTION_EXTENDED"
+            parent_target="base"
+            ;;
+          full)
+            description="$IMAGE_DESCRIPTION_FULL"
+            parent_target="extended"
+            ;;
+        esac
+
+        image_name="jovykit"
+        cache_scope="${{ inputs.target }}-${{ inputs.python-version }}"
+
+        {
+          echo "IMAGE_NAME=$image_name"
+          echo "IMAGE_DESCRIPTION=$description"
+          echo "CACHE_SCOPE=$cache_scope"
+        } >> "$GITHUB_ENV"
+
+        {
+          echo "should-build=$should_build"
+          echo "cache-from<<EOF"
+          echo "type=gha,scope=$cache_scope"
+          if [ -n "$parent_target" ]; then
+            echo "type=gha,scope=${parent_target}-${{ inputs.python-version }}"
+          fi
+          echo "EOF"
+          echo "cache-to<<EOF"
+          echo "type=gha,mode=max,scope=$cache_scope"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Set up Docker Buildx
+      if: steps.plan.outputs.should-build == 'true'
+      uses: docker/setup-buildx-action@v4
+
+    - name: Log in to GHCR
+      if: steps.plan.outputs.should-build == 'true'
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract metadata
+      if: steps.plan.outputs.should-build == 'true'
+      id: meta
+      uses: docker/metadata-action@v6
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=${{ inputs.target }}-python-${{ inputs.python-version }}
+          type=raw,value=latest,enable=${{ inputs.target == 'minimal' && inputs.python-version == '3.14' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
+          type=raw,value=${{ inputs.target }}-python-${{ inputs.python-version }}-${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=raw,value=${{ inputs.target }}-nightly-python-${{ inputs.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
+          type=raw,value=${{ inputs.target }}-weekly-python-${{ inputs.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
+          type=raw,value=${{ inputs.target }}-monthly-python-${{ inputs.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
+        labels: |
+          org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
+        annotations: |
+          org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
+      env:
+        DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
+
+    - name: Publish image
+      if: steps.plan.outputs.should-build == 'true'
+      id: build
+      uses: docker/build-push-action@v7
+      with:
+        context: ./image
+        file: ./image/Dockerfile
+        target: ${{ inputs.target }}
+        build-args: |
+          PYTHON_VERSION=${{ inputs.python-version }}
+        push: true
+        tags: |
+          ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        annotations: ${{ steps.meta.outputs.annotations }}
+        provenance: false
+        sbom: false
+        cache-from: ${{ steps.plan.outputs.cache-from }}
+
+    - name: Attest image provenance
+      if: steps.plan.outputs.should-build == 'true'
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.build.outputs.digest }}
+        push-to-registry: false
+        create-storage-record: false
