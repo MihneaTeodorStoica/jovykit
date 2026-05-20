@@ -71,6 +71,7 @@ SH
 
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv venv --clear --python /usr/local/bin/python "${VIRTUAL_ENV}" && \
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" pip==26.1.1 && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-minimal.txt && \
     printf '#!/usr/bin/env sh\nexec "%s" -m pip "$@"\n' "${VIRTUAL_ENV}/bin/python" > "${VIRTUAL_ENV}/bin/pip" && \
     chmod +x "${VIRTUAL_ENV}/bin/pip" && \

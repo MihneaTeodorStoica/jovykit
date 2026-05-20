@@ -154,12 +154,8 @@ def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
     minimal_stage = dockerfile.split("FROM minimal AS base", 1)[0]
     requirements = requirement_names(IMAGE_DIR / "requirements-minimal.txt")
 
-    assert {
-        "pip",
-        "jupyterlab",
-        "ipykernel",
-        "jupyterlab-nitro-ai-judge",
-    } <= requirements
+    assert {"jupyterlab", "ipykernel", "jupyterlab-nitro-ai-judge"} <= requirements
+    assert "pip" not in requirements
     assert "nitro-ai-judge-cli" in requirements
     assert {"notebook", "ipywidgets", "jupyter-server-proxy"} & requirements == set()
     assert "SHELL=/bin/bash" in minimal_stage
@@ -180,6 +176,9 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     assert "exec /opt/jovy/bin/jupyter lab" in dockerfile
     assert "UV_LINK_MODE=hardlink" in dockerfile
     assert 'ENV PATH="${VIRTUAL_ENV}/bin:${HOME}/.local/bin:${PATH}"' in dockerfile
+    assert (
+        'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip==26.1.1' in dockerfile
+    )
     assert 'exec "%s" -m pip "$@"' in dockerfile
     assert 'ln -sf pip "${VIRTUAL_ENV}/bin/pip3"' in dockerfile
     assert 'ln -sf pip "${VIRTUAL_ENV}/bin/pip${PYTHON_VERSION}"' in dockerfile
