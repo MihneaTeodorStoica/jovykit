@@ -32,7 +32,7 @@ Published image names:
 
 ```text
 ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.13
-ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
 ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```

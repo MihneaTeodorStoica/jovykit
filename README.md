@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/actions/workflows/ci-release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MihneaTeodorStoica/jovykit/ci-release.yml?branch=main&label=ci"></a>
-  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.2.0-ff5a00"></a>
+  <a href="pyproject.toml"><img alt="Version" src="https://img.shields.io/badge/version-8.2.1-ff5a00"></a>
   <img alt="CLI Python" src="https://img.shields.io/badge/cli-python%203.9%2B-2f3133">
   <img alt="Image Python" src="https://img.shields.io/badge/images-python%203.9--3.14-0a9e9a">
   <a href="https://github.com/MihneaTeodorStoica/jovykit/pkgs/container/jovykit"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-python--tagged-151617"></a>
@@ -112,7 +112,7 @@ jovy compose ps
 `compose.yaml` is runtime.
 `Dockerfile` is the project overlay.
 `requirements.txt` is project Python packages.
-Python comes from the selected image tag, for example `:base-python-3.13`.
+Python comes from the selected image tag, for example `:base-python-3.12`.
 
 - `jovy` initializes an empty directory, or prints help in an existing project.
 - `jovy init` creates `compose.yaml`, `Dockerfile`, `requirements.txt`, `work/`, and `.jupyter/`.
@@ -124,7 +124,7 @@ Image levels map to published JovyKit images:
 
 ```text
 ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.13
-ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
 ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```

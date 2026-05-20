@@ -6,7 +6,7 @@ JovyKit publishes Python-tagged images to GitHub Container Registry.
 
 ```text
 ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.13
-ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
 ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```
@@ -63,7 +63,7 @@ Build selected targets and versions:
 Output tags look like:
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 ```
 
 ## Project Overlay
@@ -78,7 +78,7 @@ requirements.txt
 The generated Dockerfile starts from the selected image:
 
 ```dockerfile
-ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 FROM ${JOVY_BASE_IMAGE}
 ```
 

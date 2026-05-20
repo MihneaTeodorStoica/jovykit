@@ -82,7 +82,7 @@ work/
 - `.jupyter/` persists local Jupyter config.
 
 Python version comes from the selected image tag, for example
-`ghcr.io/mihneateodorstoica/jovykit:base-python-3.13`.
+`ghcr.io/mihneateodorstoica/jovykit:base-python-3.12`.
 
 ## Commands
 
@@ -119,7 +119,7 @@ Image levels:
 Published tags use Python versions:
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit:base-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 ```
 
 `minimal` and `base` publish Python 3.9 through 3.14 tags.
