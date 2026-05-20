@@ -232,5 +232,5 @@ def _systemd_command(sudo: str, has_systemd: bool) -> tuple[str, ...]:
 
 
 def _run_shell(command: str) -> int:
-    result = subprocess.run(command, shell=True, check=False)
+    result = subprocess.run(["/bin/sh", "-c", command], check=False)
     return result.returncode
