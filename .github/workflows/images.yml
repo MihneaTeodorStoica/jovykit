@@ -23,7 +23,6 @@ permissions:
   contents: read
   id-token: write
   attestations: write
-  artifact-metadata: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.schedule || 'none' }}
@@ -48,7 +47,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      artifact-metadata: write
     strategy:
       fail-fast: false
       matrix:
@@ -193,8 +191,8 @@ jobs:
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
-          provenance: ${{ github.event_name != 'pull_request' }}
-          sbom: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          sbom: false
           cache-from: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-from || '' }}
           cache-to: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-to || '' }}
 
@@ -204,5 +202,5 @@ jobs:
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
+          push-to-registry: false
           create-storage-record: false
