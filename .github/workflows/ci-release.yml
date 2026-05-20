@@ -356,3 +356,72 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+
+  github-release:
+    name: Release / GitHub release
+    needs: [tag, package, publish]
+    if: always() && needs.tag.result == 'success' && needs.package.result == 'success' && needs.publish.result == 'success' && needs.tag.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Extract changelog notes
+        id: notes
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          changelog = Path("CHANGELOG.md").read_text()
+          match = re.search(
+              rf"^##\s+{re.escape(version)}(?:\s+-[^\n]*)?\n(?P<body>.*?)(?=^##\s+|\Z)",
+              changelog,
+              flags=re.M | re.S,
+          )
+          body = match.group("body").strip() if match else ""
+          if body:
+              Path("release-notes.md").write_text(body + "\n")
+              has_notes = "true"
+          else:
+              has_notes = "false"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"has_notes={has_notes}", file=output)
+          PY
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+
+      - name: Create or update GitHub release
+        run: |
+          tag="${{ needs.tag.outputs.tag }}"
+          title="${tag}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
+              gh release edit "$tag" --title "$title" --notes-file release-notes.md
+            else
+              gh release edit "$tag" --title "$title"
+            fi
+          else
+            if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
+              gh release create "$tag" --verify-tag --title "$title" --notes-file release-notes.md
+            else
+              gh release create "$tag" --verify-tag --title "$title" --generate-notes
+            fi
+          fi
+          gh release upload "$tag" dist/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
