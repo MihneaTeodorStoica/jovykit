@@ -28,12 +28,18 @@ from jovykit.paths import (
     SERVICE_NAME,
     compose_path,
     containerfile_path,
+    devcontainer_path,
     ensure_compose_project,
     legacy_config_path,
     project_root,
     requirements_path,
 )
-from jovykit.templates import render_compose, render_containerfile, render_requirements
+from jovykit.templates import (
+    render_compose,
+    render_containerfile,
+    render_devcontainer,
+    render_requirements,
+)
 
 Emitter = Callable[[str], None]
 VALID_GPU = ("none", "all")
@@ -78,16 +84,21 @@ def init_project(
     compose_file = compose_path(resolved)
     containerfile = containerfile_path(resolved)
     requirements_file = requirements_path(resolved)
+    devcontainer_file = devcontainer_path(resolved)
     if not force and (
-        compose_file.exists() or containerfile.exists() or requirements_file.exists()
+        compose_file.exists()
+        or containerfile.exists()
+        or requirements_file.exists()
+        or devcontainer_file.exists()
     ):
         raise JovyKitError(
-            "compose.yaml, Dockerfile, or requirements.txt already exists. Use --force to overwrite."
+            "compose.yaml, Dockerfile, requirements.txt, or .devcontainer/devcontainer.json already exists. Use --force to overwrite."
         )
 
     resolved.mkdir(parents=True, exist_ok=True)
     (resolved / DEFAULT_WORK_DIR).mkdir(exist_ok=True)
     (resolved / DEFAULT_JUPYTER_DIR).mkdir(exist_ok=True)
+    devcontainer_file.parent.mkdir(exist_ok=True)
     compose_file.write_text(
         render_compose(
             project_name=resolved.name,
@@ -104,9 +115,11 @@ def init_project(
         encoding="utf-8",
     )
     requirements_file.write_text(render_requirements(), encoding="utf-8")
+    devcontainer_file.write_text(render_devcontainer(resolved.name), encoding="utf-8")
     emit("Created compose.yaml")
     emit("Created Dockerfile")
     emit("Created requirements.txt")
+    emit("Created .devcontainer/devcontainer.json")
     emit("Created work/")
     emit("Created .jupyter/")
     return resolved

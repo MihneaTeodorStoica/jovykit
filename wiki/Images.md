@@ -73,6 +73,7 @@ ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
 ```text
 Dockerfile
 requirements.txt
+.devcontainer/devcontainer.json
 ```
 
 The generated Dockerfile starts from the selected image:
@@ -83,4 +84,6 @@ FROM ${JOVY_BASE_IMAGE}
 ```
 
 Project packages are installed from `requirements.txt` with uv.
+VS Code Dev Containers use `.devcontainer/devcontainer.json` to attach to the
+generated Compose service.
 No conda environment file is generated.

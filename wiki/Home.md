@@ -71,6 +71,7 @@ JovyKit makes Dockerized Jupyter environments feel lightweight and disposable.
 compose.yaml
 Dockerfile
 requirements.txt
+.devcontainer/devcontainer.json
 work/
 .jupyter/
 ```
@@ -78,6 +79,7 @@ work/
 - `compose.yaml` owns runtime settings.
 - `Dockerfile` builds the project overlay image.
 - `requirements.txt` owns project Python packages.
+- `.devcontainer/devcontainer.json` lets VS Code reopen the Compose project as a Dev Container.
 - `work/` is mounted into the notebook.
 - `.jupyter/` persists local Jupyter config.
 

@@ -9,12 +9,19 @@ from jovykit.config import JovyKitError
 COMPOSE_FILE = "compose.yaml"
 CONTAINERFILE = "Dockerfile"
 REQUIREMENTS_FILE = "requirements.txt"
+DEVCONTAINER_DIR = ".devcontainer"
+DEVCONTAINER_FILE = "devcontainer.json"
 LEGACY_CONFIG_FILE = "jovy.toml"
 SERVICE_NAME = "jovy"
 DEFAULT_WORK_DIR = "work"
 DEFAULT_JUPYTER_DIR = ".jupyter"
 DEFAULT_ENV_DIR = ".jovy"
-PROJECT_MARKERS = (COMPOSE_FILE, CONTAINERFILE, REQUIREMENTS_FILE)
+PROJECT_MARKERS = (
+    COMPOSE_FILE,
+    CONTAINERFILE,
+    REQUIREMENTS_FILE,
+    f"{DEVCONTAINER_DIR}/{DEVCONTAINER_FILE}",
+)
 
 
 def project_root(path: Path | None = None) -> Path:
@@ -35,6 +42,11 @@ def containerfile_path(root: Path | None = None) -> Path:
 def requirements_path(root: Path | None = None) -> Path:
     """Return the project requirements path."""
     return project_root(root) / REQUIREMENTS_FILE
+
+
+def devcontainer_path(root: Path | None = None) -> Path:
+    """Return the project Dev Container config path."""
+    return project_root(root) / DEVCONTAINER_DIR / DEVCONTAINER_FILE
 
 
 def legacy_config_path(root: Path | None = None) -> Path:
