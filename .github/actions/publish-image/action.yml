@@ -8,6 +8,10 @@ inputs:
   python-version:
     required: true
     description: Python version to build.
+  push:
+    required: false
+    default: "false"
+    description: Push the image to the registry.
 
 runs:
   using: composite
@@ -16,14 +20,6 @@ runs:
       id: plan
       shell: bash
       run: |
-        should_build=true
-        if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then
-          case "${{ inputs.target }}" in
-            minimal|base) should_build=true ;;
-            *) should_build=false ;;
-          esac
-        fi
-
         case "${{ inputs.target }}" in
           minimal)
             description="$IMAGE_DESCRIPTION_MINIMAL"
@@ -53,7 +49,6 @@ runs:
         } >> "$GITHUB_ENV"
 
         {
-          echo "should-build=$should_build"
           echo "cache-from<<EOF"
           echo "type=gha,scope=$cache_scope"
           if [ -n "$parent_target" ]; then
@@ -66,11 +61,10 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Set up Docker Buildx
-      if: steps.plan.outputs.should-build == 'true'
       uses: docker/setup-buildx-action@v4
 
     - name: Log in to GHCR
-      if: steps.plan.outputs.should-build == 'true'
+      if: inputs.push == 'true'
       uses: docker/login-action@v4
       with:
         registry: ${{ env.REGISTRY }}
@@ -78,7 +72,7 @@ runs:
         password: ${{ github.token }}
 
     - name: Extract metadata
-      if: steps.plan.outputs.should-build == 'true'
+      if: inputs.push == 'true'
       id: meta
       uses: docker/metadata-action@v6
       with:
@@ -97,8 +91,7 @@ runs:
       env:
         DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
 
-    - name: Publish image
-      if: steps.plan.outputs.should-build == 'true'
+    - name: Build image
       id: build
       uses: docker/build-push-action@v7
       with:
@@ -107,7 +100,7 @@ runs:
         target: ${{ inputs.target }}
         build-args: |
           PYTHON_VERSION=${{ inputs.python-version }}
-        push: true
+        push: ${{ inputs.push }}
         tags: |
           ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -115,9 +108,10 @@ runs:
         provenance: false
         sbom: false
         cache-from: ${{ steps.plan.outputs.cache-from }}
+        cache-to: ${{ inputs.push == 'true' && steps.plan.outputs.cache-to || '' }}
 
     - name: Attest image provenance
-      if: steps.plan.outputs.should-build == 'true'
+      if: inputs.push == 'true'
       uses: actions/attest-build-provenance@v4
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
