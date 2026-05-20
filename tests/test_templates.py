@@ -176,6 +176,10 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     assert "exec /opt/jovy/bin/jupyter lab" in dockerfile
     assert "UV_LINK_MODE=hardlink" in dockerfile
     assert 'ENV PATH="${VIRTUAL_ENV}/bin:${HOME}/.local/bin:${PATH}"' in dockerfile
+    assert 'if [[ "${PYTHON_VERSION}" == 3.9* ]]' in dockerfile
+    assert (
+        'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip==26.0.1' in dockerfile
+    )
     assert (
         'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip==26.1.1' in dockerfile
     )
