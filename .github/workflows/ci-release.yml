@@ -406,7 +406,11 @@ jobs:
         run: |
           tag="${{ needs.tag.outputs.tag }}"
           title="${tag}"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          if immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" --jq ".immutable // false" 2>/dev/null)"; then
+            if [ "$immutable" = "true" ]; then
+              echo "Release ${tag} is immutable; skipping update and asset upload."
+              exit 0
+            fi
             gh release edit "$tag" --title "$title" --notes-file release-notes.md
           else
             gh release create "$tag" --verify-tag --title "$title" --notes-file release-notes.md
