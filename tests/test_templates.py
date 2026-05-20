@@ -6,7 +6,11 @@ import pytest
 import yaml
 
 from jovykit.config import JovyKitError
-from jovykit.images import resolve_image_level
+from jovykit.images import (
+    image_level_from_reference,
+    python_version_from_image,
+    resolve_image_level,
+)
 from jovykit.templates import render_compose, render_containerfile, render_requirements
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -43,8 +47,6 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
     service = compose["services"]["jovy"]
     assert set(service) == {
         "build",
-        "image",
-        "pull_policy",
         "environment",
         "ports",
         "volumes",
@@ -54,8 +56,6 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
         "develop",
     }
     assert "gpus" not in service
-    assert service["image"] == "my-project-jovy:local"
-    assert service["pull_policy"] == "build"
     assert service["environment"] == {"JUPYTER_TOKEN": "jovykit"}
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "./Dockerfile"},
@@ -67,7 +67,7 @@ def test_render_containerfile_uses_requirements_txt_and_uv() -> None:
     text = render_containerfile(level="full", python_version="3.12")
 
     assert (
-        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-full:python-3.12"
+        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:full-python-3.12"
         in text
     )
     assert "FROM ${JOVY_BASE_IMAGE}" in text
@@ -99,6 +99,13 @@ def test_arbitrary_image_source_is_rejected() -> None:
         resolve_image_level("quay.io/jupyter/minimal-notebook")
 
 
+def test_latest_points_to_minimal_python_314() -> None:
+    reference = "ghcr.io/mihneateodorstoica/jovykit:latest"
+
+    assert image_level_from_reference(reference) == "minimal"
+    assert python_version_from_image(reference) == "3.14"
+
+
 def test_python_version_must_be_published_for_image_level() -> None:
     with pytest.raises(
         JovyKitError, match="full images support Python versions: 3.11, 3.12, 3.13"
@@ -107,7 +114,7 @@ def test_python_version_must_be_published_for_image_level() -> None:
 
     assert (
         resolve_image_level("minimal", "3.14")
-        == "ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.14"
+        == "ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14"
     )
 
 

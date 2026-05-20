@@ -31,15 +31,15 @@ full
 Published image names:
 
 ```text
-ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-base:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-extended:python-3.13
-ghcr.io/mihneateodorstoica/jovykit-full:python-3.13
+ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:base-python-3.12
+ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
+ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```
 
-Schedules publish `nightly-python-3.x`, `weekly-python-3.x`, and `monthly-python-3.x`
-for every supported Python version. The default Python version also gets
-`nightly`, `weekly`, and `monthly`.
+Schedules publish level-specific tags such as `base-nightly-python-3.11`,
+`base-weekly-python-3.11`, and `base-monthly-python-3.11`. `latest` points at
+`base-python-3.11`.
 
 Local image builds use:
 
@@ -47,6 +47,8 @@ Local image builds use:
 ./build.sh
 ./build.sh --python-version 3.13 minimal
 ./build.sh --python 3.13 --python 3.14 minimal base
+./build.sh --python 3.11 --latest base
+./build.sh --python 3.11 --channel nightly base
 ```
 
 ## Website

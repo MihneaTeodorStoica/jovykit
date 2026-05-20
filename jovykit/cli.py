@@ -37,6 +37,7 @@ COMPOSE_ALIASES: dict[str, str] = {
 HELP_USAGE = (
     "jovy",
     "jovy init [OPTIONS]",
+    "jovy install-docker [--yes]",
     "jovy COMMAND [ARGS...]",
 )
 HELP_SECTIONS = (
@@ -65,6 +66,7 @@ HELP_SECTIONS = (
             ("run COMMAND [ARGS...]", "Run one command in a fresh service container."),
             ("open", "Open JupyterLab."),
             ("doctor", "Check Docker, compose, GPU, and project files."),
+            ("install-docker [--yes]", "Print or run a Linux Docker install plan."),
         ),
     ),
     (
@@ -78,6 +80,7 @@ HELP_EXAMPLES = (
     "jovy watch",
     "jovy logs -f",
     "jovy shell",
+    "jovy install-docker --dry-run",
 )
 
 
@@ -119,6 +122,9 @@ def _main(args: list[str]) -> int:
         return 0
     if command == "doctor":
         commands.doctor(emit=console.print)
+        return 0
+    if command == "install-docker":
+        _install_docker(args[1:])
         return 0
     if command in COMPOSE_ALIASES:
         handler: Callable[[list[str]], int] = getattr(
@@ -211,6 +217,21 @@ def _remove(args: list[str]) -> None:
     parser.add_argument("packages", nargs="+")
     namespace = parser.parse_args(args)
     commands.remove_packages(namespace.packages, emit=console.print)
+
+
+def _install_docker(args: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="jovy install-docker")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--skip-hello-world", action="store_true")
+    namespace = parser.parse_args(args)
+    if namespace.dry_run and namespace.yes:
+        parser.error("--dry-run cannot be combined with --yes")
+    commands.install_docker(
+        yes=namespace.yes,
+        skip_hello_world=namespace.skip_hello_world,
+        emit=console.print,
+    )
 
 
 if __name__ == "__main__":

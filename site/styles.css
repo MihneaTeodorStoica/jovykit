@@ -144,6 +144,20 @@ pre {
   margin-top: 34px;
 }
 
+.install-pair {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.install-pair code {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.68);
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -222,6 +236,42 @@ pre {
 
 .command-strip code {
   white-space: nowrap;
+}
+
+.requirement-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  max-width: min(var(--content-max), calc(100% - 40px));
+  margin: 18px auto 0;
+  padding: 14px clamp(18px, 3vw, 24px);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.requirement-strip strong {
+  font-weight: 900;
+}
+
+.requirement-strip code {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.demo-section {
+  max-width: min(var(--content-max), calc(100% - 40px));
+  margin: clamp(28px, 5vw, 52px) auto clamp(36px, 6vw, 68px);
+}
+
+.demo-section img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--charcoal);
+  box-shadow: var(--shadow);
 }
 
 .intro-grid,

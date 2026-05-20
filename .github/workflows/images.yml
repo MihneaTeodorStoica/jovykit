@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - "image/**"
+      - "build.sh"
       - ".github/workflows/images.yml"
+      - ".github/actions/publish-image/action.yml"
   pull_request:
     branches: [main]
     paths:
       - "image/**"
+      - "build.sh"
       - ".github/workflows/images.yml"
+      - ".github/actions/publish-image/action.yml"
   schedule:
     - cron: "30 6 * * 1"
     - cron: "30 6 * * *"
@@ -20,7 +24,6 @@ permissions:
   contents: read
   id-token: write
   attestations: write
-  artifact-metadata: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.schedule || 'none' }}
@@ -29,8 +32,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: mihneateodorstoica
-  DEFAULT_PYTHON_VERSION: "3.13"
-  CI_IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
+  DEFAULT_PYTHON_VERSION: "3.12"
   IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with Python, uv, JupyterLab add-ons, and Nitro CLI.
   IMAGE_DESCRIPTION_BASE: JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access.
   IMAGE_DESCRIPTION_EXTENDED: JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work.
@@ -64,7 +66,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   images:
-    name: ${{ matrix.target }} py${{ matrix.python-version }}
+    name: image ${{ matrix.target }} py${{ matrix.python-version }}
     needs: define-images
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -73,134 +75,18 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      artifact-metadata: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.define-images.outputs.matrix) }}
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.define-images.outputs.matrix) }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Plan image build
-        id: plan
-        run: |
-          should_build=true
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then
-            case "${{ matrix.target }}" in
-              minimal|base) should_build=true ;;
-              *) should_build=false ;;
-            esac
-          fi
-
-          case "${{ matrix.target }}" in
-            minimal)
-              description="$IMAGE_DESCRIPTION_MINIMAL"
-              parent_target=""
-              ;;
-            base)
-              description="$IMAGE_DESCRIPTION_BASE"
-              parent_target="minimal"
-              ;;
-            extended)
-              description="$IMAGE_DESCRIPTION_EXTENDED"
-              parent_target="base"
-              ;;
-            full)
-              description="$IMAGE_DESCRIPTION_FULL"
-              parent_target="extended"
-              ;;
-          esac
-
-          image_name="jovykit-${{ matrix.target }}"
-          cache_scope="${{ matrix.target }}-${{ matrix.python-version }}"
-          cache_ref="${REGISTRY}/${IMAGE_NAMESPACE}/jovykit-buildcache:${{ matrix.target }}-python-${{ matrix.python-version }}"
-
-          {
-            echo "IMAGE_NAME=$image_name"
-            echo "IMAGE_DESCRIPTION=$description"
-            echo "CACHE_SCOPE=$cache_scope"
-            echo "REGISTRY_CACHE_REF=$cache_ref"
-          } >> "$GITHUB_ENV"
-
-          {
-            echo "should-build=$should_build"
-            echo "cache-from<<EOF"
-            echo "type=gha,scope=$cache_scope"
-            echo "type=registry,ref=$cache_ref"
-            if [ -n "$parent_target" ]; then
-              echo "type=gha,scope=${parent_target}-${{ matrix.python-version }}"
-              echo "type=registry,ref=${REGISTRY}/${IMAGE_NAMESPACE}/jovykit-buildcache:${parent_target}-python-${{ matrix.python-version }}"
-            fi
-            echo "EOF"
-            echo "cache-to<<EOF"
-            if [ "${{ matrix.target }}" != "full" ]; then
-              echo "type=gha,mode=max,scope=$cache_scope"
-              if [ "${{ github.event_name }}" != "pull_request" ]; then
-                echo "type=registry,ref=$cache_ref,mode=max"
-              fi
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        if: steps.plan.outputs.should-build == 'true'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        if: steps.plan.outputs.should-build == 'true' && github.event_name != 'pull_request'
-        uses: docker/login-action@v4
+      - name: Build image
+        uses: ./.github/actions/publish-image
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        if: steps.plan.outputs.should-build == 'true'
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=python-${{ matrix.python-version }}
-            type=raw,value=latest,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-            type=raw,value=nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=nightly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
-            type=raw,value=weekly,enable=${{ matrix.python-version == env.DEFAULT_PYTHON_VERSION && github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
-            type=raw,value=${{ env.CI_IMAGE_TAG }}-python-${{ matrix.python-version }},enable=${{ github.event_name != 'pull_request' }}
-          labels: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
-          annotations: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-
-      - name: Build and publish image
-        if: steps.plan.outputs.should-build == 'true'
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: ./image
-          file: ./image/Dockerfile
           target: ${{ matrix.target }}
-          build-args: |
-            PYTHON_VERSION=${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
-          provenance: ${{ github.event_name != 'pull_request' }}
-          sbom: ${{ github.event_name != 'pull_request' }}
-          cache-from: ${{ steps.plan.outputs.cache-from }}
-          cache-to: ${{ steps.plan.outputs.cache-to }}
-
-      - name: Attest image provenance
-        if: steps.plan.outputs.should-build == 'true' && github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
-          create-storage-record: false

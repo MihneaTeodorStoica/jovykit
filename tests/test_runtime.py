@@ -33,6 +33,13 @@ def test_compose_passthrough_requires_compose_project(tmp_path: Path) -> None:
         commands.compose_passthrough(["ps"], root=tmp_path)
 
 
+def test_require_docker_error_suggests_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: None)
+
+    with pytest.raises(runtime.DockerError, match="jovy install-docker --dry-run"):
+        runtime.require_docker()
+
+
 def test_up_maps_to_compose_up(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
     monkeypatch.setattr(runtime, "run_command", _recording_runner(calls))

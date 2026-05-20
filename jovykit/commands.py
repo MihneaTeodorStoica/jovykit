@@ -9,10 +9,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlencode
 
 import yaml
 
-from jovykit import runtime
+from jovykit import docker_install, runtime
 from jovykit.config import DEFAULT_JUPYTER_TOKEN, JovyKitError
 from jovykit.images import (
     DEFAULT_PYTHON_VERSION,
@@ -401,13 +402,15 @@ def jupyter_url(root: Path | None = None) -> str:
     resolved = ensure_compose_project(root)
     data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
     service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
+    token = _read_environment_value(service, "JUPYTER_TOKEN") or DEFAULT_JUPYTER_TOKEN
+    query = urlencode({"token": token})
     for port in service.get("ports", []) or []:
         parts = str(port).split(":")
         if len(parts) >= 3 and parts[-1] == "8888":
-            return f"http://127.0.0.1:{parts[-2]}/lab"
+            return f"http://127.0.0.1:{parts[-2]}/lab?{query}"
         if len(parts) == 2 and parts[-1] == "8888":
-            return f"http://127.0.0.1:{parts[0]}/lab"
-    return "http://127.0.0.1:8888/lab"
+            return f"http://127.0.0.1:{parts[0]}/lab?{query}"
+    return f"http://127.0.0.1:8888/lab?{query}"
 
 
 def open_browser(root: Path | None = None) -> str:
@@ -417,15 +420,40 @@ def open_browser(root: Path | None = None) -> str:
     return url
 
 
+def install_docker(
+    *,
+    yes: bool = False,
+    skip_hello_world: bool = False,
+    emit: Emitter = noop_emit,
+) -> None:
+    """Print or run the Docker install plan."""
+    docker_install.install_docker(
+        yes=yes,
+        skip_hello_world=skip_hello_world,
+        emit=emit,
+    )
+
+
 def doctor(root: Path | None = None, *, emit: Emitter = noop_emit) -> None:
     """Print basic host and project diagnostics."""
+    setup_needed = False
     if shutil.which("docker") is None:
         emit("docker: missing")
+        emit("compose: missing")
+        emit("daemon: unavailable")
+        setup_needed = True
     else:
-        _, version = runtime.docker_capture("--version")
-        emit(f"docker: {version}")
+        code, version = runtime.docker_capture("--version")
+        emit(f"docker: {version if code == 0 else 'unavailable'}")
+        setup_needed = setup_needed or code != 0
         code, compose_version = runtime.docker_capture("compose", "version")
         emit(f"compose: {compose_version if code == 0 else 'unavailable'}")
+        setup_needed = setup_needed or code != 0
+        code, _ = runtime.docker_capture("info")
+        emit(f"daemon: {'reachable' if code == 0 else 'unavailable'}")
+        setup_needed = setup_needed or code != 0
+    if setup_needed:
+        emit("setup: run jovy install-docker --dry-run")
 
     emit(f"gpu: {'detected' if detect_gpu_mode() == 'all' else 'not detected'}")
     try:

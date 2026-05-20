@@ -37,7 +37,7 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
     assert service["gpus"] == "all"
     assert service["build"]["dockerfile"] == "Dockerfile"
     assert service["build"]["args"] == {
-        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit-minimal:python-3.11"),
+        "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.11"),
     }
     assert (tmp_path / "requirements.txt").read_text() == ""
 
@@ -57,9 +57,66 @@ def test_init_project_requires_force_for_existing_files(tmp_path: Path) -> None:
 
 
 def test_jupyter_url_reads_compose_port(tmp_path: Path) -> None:
-    commands.init_project(tmp_path, gpu="none", port=9999)
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
 
-    assert commands.jupyter_url(tmp_path) == "http://127.0.0.1:9999/lab"
+    assert commands.jupyter_url(tmp_path) == (
+        "http://127.0.0.1:9999/lab?token=secret-token"
+    )
+
+
+def test_jupyter_url_encodes_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="a/b+c")
+
+    assert commands.jupyter_url(tmp_path) == "http://127.0.0.1:9999/lab?token=a%2Fb%2Bc"
+
+
+def test_install_docker_delegates_to_planner(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: dict[str, object] = {}
+
+    def fake_install_docker(**kwargs: object) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(commands.docker_install, "install_docker", fake_install_docker)
+
+    commands.install_docker(yes=True, skip_hello_world=True, emit=lambda _: None)
+
+    assert called["yes"] is True
+    assert called["skip_hello_world"] is True
+
+
+def test_doctor_reports_missing_docker(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(commands.shutil, "which", lambda name: None)
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "none")
+    lines: list[str] = []
+
+    commands.doctor(emit=lines.append)
+
+    assert "docker: missing" in lines
+    assert "compose: missing" in lines
+    assert "daemon: unavailable" in lines
+    assert "setup: run jovy install-docker --dry-run" in lines
+
+
+def test_doctor_reports_unavailable_compose_and_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(commands.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "none")
+
+    def fake_docker_capture(*args: str) -> tuple[int, str]:
+        if args == ("--version",):
+            return 0, "Docker version 28.0.0"
+        return 1, "failed"
+
+    monkeypatch.setattr(commands.runtime, "docker_capture", fake_docker_capture)
+    lines: list[str] = []
+
+    commands.doctor(emit=lines.append)
+
+    assert "docker: Docker version 28.0.0" in lines
+    assert "compose: unavailable" in lines
+    assert "daemon: unavailable" in lines
+    assert "setup: run jovy install-docker --dry-run" in lines
 
 
 def test_load_project_settings_reads_compose(tmp_path: Path) -> None:
@@ -108,11 +165,11 @@ def test_save_project_settings_updates_generated_files(tmp_path: Path) -> None:
     assert service["environment"] == {"JUPYTER_TOKEN": "new-token"}
     assert service["gpus"] == "all"
     assert service["build"]["args"] == {
-        "JOVY_BASE_IMAGE": "ghcr.io/mihneateodorstoica/jovykit-full:python-3.11",
+        "JOVY_BASE_IMAGE": "ghcr.io/mihneateodorstoica/jovykit:full-python-3.11",
     }
     dockerfile = (tmp_path / "Dockerfile").read_text()
     assert (
-        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit-full:python-3.11"
+        "ARG JOVY_BASE_IMAGE=ghcr.io/mihneateodorstoica/jovykit:full-python-3.11"
         in dockerfile
     )
     assert "ARG PYTHON_VERSION" not in dockerfile

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG PYTHON_VERSION=3.13
+ARG PYTHON_VERSION=3.12
 FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS minimal
 
 LABEL org.opencontainers.image.description="JovyKit minimal Jupyter image with Python, uv, JupyterLab add-ons, and Nitro CLI."
@@ -20,6 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     SHELL=/bin/bash \
     UV_COMPILE_BYTECODE=0 \
+    UV_HTTP_TIMEOUT=120 \
     UV_LINK_MODE=hardlink \
     VIRTUAL_ENV=/opt/jovy
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"

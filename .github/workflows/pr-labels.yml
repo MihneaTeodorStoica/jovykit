@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Label changed files
-        uses: actions/labeler@v6.0.1
+        uses: actions/labeler@v6.1.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml

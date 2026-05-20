@@ -21,7 +21,9 @@ class DockerError(JovyKitError):
 def require_docker() -> None:
     """Fail early when the Docker CLI is unavailable."""
     if shutil.which("docker") is None:
-        raise DockerError("docker not found in PATH.")
+        raise DockerError(
+            "docker not found in PATH. Install Docker and Compose, or run: jovy install-docker --dry-run"
+        )
 
 
 def compose_args(root: Path, args: Sequence[str]) -> list[str]:
