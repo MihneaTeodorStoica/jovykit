@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +79,26 @@ def test_image_workflow_builds_supported_image_versions() -> None:
         "extended": ["3.11", "3.12", "3.13"],
         "full": ["3.11", "3.12", "3.13"],
     }
+
+
+def test_image_workflow_define_step_writes_valid_output(tmp_path: Path) -> None:
+    workflow = yaml.safe_load(
+        Path(".github/workflows/images.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["define-images"]["steps"]
+    define_step = next(step for step in steps if step["name"] == "Define image matrix")
+    github_output = tmp_path / "github-output"
+
+    subprocess.run(
+        ["bash", "-e", "-c", define_step["run"]],
+        check=True,
+        env={**os.environ, "GITHUB_OUTPUT": str(github_output)},
+    )
+
+    lines = github_output.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "matrix<<JSON"
+    assert lines[-1] == "JSON"
+    assert json.loads("\n".join(lines[1:-1]))["include"] == _image_matrix(workflow)
 
 
 def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
