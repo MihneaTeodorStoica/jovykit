@@ -38,6 +38,7 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     build_step = next(
         step for step in steps if step["name"] == "Build and publish image"
     )
+    metadata_step = next(step for step in steps if step["name"] == "Extract metadata")
     attest_step = next(
         step for step in steps if step["name"] == "Attest image provenance"
     )
@@ -57,6 +58,7 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     assert "type=sha" not in text
     assert "CI_IMAGE_TAG" not in text
     assert "artifact-metadata" not in text
+    assert metadata_step["env"]["DOCKER_METADATA_ANNOTATIONS_LEVELS"] == "manifest"
     assert build_step["with"]["provenance"] is False
     assert build_step["with"]["sbom"] is False
     assert attest_step["with"]["push-to-registry"] is False

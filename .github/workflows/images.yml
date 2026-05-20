@@ -174,7 +174,7 @@ jobs:
           annotations: |
             org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
         env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
 
       - name: Build and publish image
         if: steps.plan.outputs.should-build == 'true'
