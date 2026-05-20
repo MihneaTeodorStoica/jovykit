@@ -68,7 +68,7 @@ ENV HOME=/home/${{NB_USER}} \\
     UV_LINK_MODE=hardlink \\
     UV_PYTHON_DOWNLOADS=never \\
     VIRTUAL_ENV=/opt/jovy
-ENV PATH="${{VIRTUAL_ENV}}/bin:${{PATH}}"
+ENV PATH="${{VIRTUAL_ENV}}/bin:${{HOME}}/.local/bin:${{PATH}}"
 
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\
     --mount=type=bind,source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly \\

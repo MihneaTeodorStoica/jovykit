@@ -23,7 +23,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_HTTP_TIMEOUT=120 \
     UV_LINK_MODE=hardlink \
     VIRTUAL_ENV=/opt/jovy
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+ENV PATH="${VIRTUAL_ENV}/bin:${HOME}/.local/bin:${PATH}"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -72,6 +72,13 @@ SH
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv venv --clear --python /usr/local/bin/python "${VIRTUAL_ENV}" && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" -r requirements-minimal.txt && \
+    printf '#!/usr/bin/env sh\nexec "%s" -m pip "$@"\n' "${VIRTUAL_ENV}/bin/python" > "${VIRTUAL_ENV}/bin/pip" && \
+    chmod +x "${VIRTUAL_ENV}/bin/pip" && \
+    ln -sf pip "${VIRTUAL_ENV}/bin/pip3" && \
+    ln -sf pip "${VIRTUAL_ENV}/bin/pip${PYTHON_VERSION}" && \
+    ln -sf "${VIRTUAL_ENV}/bin/pip" /usr/local/bin/pip && \
+    ln -sf "${VIRTUAL_ENV}/bin/pip3" /usr/local/bin/pip3 && \
+    ln -sf "${VIRTUAL_ENV}/bin/pip${PYTHON_VERSION}" "/usr/local/bin/pip${PYTHON_VERSION}" && \
     ln -sf "${VIRTUAL_ENV}/bin/jupyter" /usr/local/bin/jupyter && \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"

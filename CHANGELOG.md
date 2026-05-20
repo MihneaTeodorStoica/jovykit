@@ -7,6 +7,14 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.3.2 - 2026-05-20
+
+### Images
+
+- Keep `pip` current in published images and route `pip` commands through the
+  writable JovyKit environment to avoid user-install and outdated-version
+  warnings.
+
 ## 8.3.1 - 2026-05-20
 
 ### CLI
