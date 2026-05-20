@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/MihneaTeodorStoica/jovykit/discussions/categories/q-a
+    about: Use GitHub Discussions for usage questions and ideas.
+  - name: Report a security vulnerability
+    url: https://github.com/MihneaTeodorStoica/jovykit/security/advisories/new
+    about: Report suspected vulnerabilities privately.
+

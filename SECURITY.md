@@ -11,7 +11,12 @@ rebuilt through the repository automation.
 
 ## Reporting a Vulnerability
 
-Please report suspected security vulnerabilities privately by email:
+Please report suspected security vulnerabilities through GitHub private
+vulnerability reporting:
+
+https://github.com/MihneaTeodorStoica/jovykit/security/advisories/new
+
+You can also report by email:
 
 Mihnea-Teodor Stoica <ms7322@columbia.edu>
 
