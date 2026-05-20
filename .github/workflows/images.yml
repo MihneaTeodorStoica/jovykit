@@ -33,7 +33,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: mihneateodorstoica
   DEFAULT_PYTHON_VERSION: "3.13"
-  CI_IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
   IMAGE_DESCRIPTION_MINIMAL: JovyKit minimal Jupyter image with Python, uv, JupyterLab add-ons, and Nitro CLI.
   IMAGE_DESCRIPTION_BASE: JovyKit base Jupyter image for everyday data science, classical machine learning, statistics, and local data access.
   IMAGE_DESCRIPTION_EXTENDED: JovyKit extended Jupyter image for advanced machine learning, NLP, time series, distributed compute, and API work.
@@ -169,11 +168,9 @@ jobs:
             type=raw,value=${{ matrix.target }}-python-${{ matrix.python-version }}
             type=raw,value=latest,enable=${{ matrix.target == 'base' && matrix.python-version == '3.11' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
             type=raw,value=${{ matrix.target }}-python-${{ matrix.python-version }}-${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,prefix=${{ matrix.target }}-python-${{ matrix.python-version }}-
             type=raw,value=${{ matrix.target }}-nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
             type=raw,value=${{ matrix.target }}-weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}
             type=raw,value=${{ matrix.target }}-monthly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 1 * *' }}
-            type=raw,value=${{ matrix.target }}-${{ env.CI_IMAGE_TAG }}-python-${{ matrix.python-version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
           annotations: |

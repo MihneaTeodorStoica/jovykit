@@ -47,7 +47,6 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
     service = compose["services"]["jovy"]
     assert set(service) == {
         "build",
-        "image",
         "environment",
         "ports",
         "volumes",
@@ -57,7 +56,6 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
         "develop",
     }
     assert "gpus" not in service
-    assert service["image"] == "my-project-jovy:local"
     assert service["environment"] == {"JUPYTER_TOKEN": "jovykit"}
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "./Dockerfile"},

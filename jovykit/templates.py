@@ -73,7 +73,6 @@ def render_compose(
                 "JOVY_BASE_IMAGE": resolve_image_level(level, python_version),
             },
         },
-        "image": f"{slugify_name(project_name)}-jovy:local",
         "environment": {
             "JUPYTER_TOKEN": token,
         },
