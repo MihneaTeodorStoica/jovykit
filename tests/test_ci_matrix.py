@@ -215,15 +215,13 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     assert "value=latest" in text
     assert "inputs.target == 'minimal' && inputs.python-version == '3.14'" in text
     assert (
-        "value=${{ inputs.target }}-nightly-python-${{ inputs.python-version }}"
-        in text
+        "value=${{ inputs.target }}-nightly-python-${{ inputs.python-version }}" in text
     )
     assert (
         "value=${{ inputs.target }}-weekly-python-${{ inputs.python-version }}" in text
     )
     assert (
-        "value=${{ inputs.target }}-monthly-python-${{ inputs.python-version }}"
-        in text
+        "value=${{ inputs.target }}-monthly-python-${{ inputs.python-version }}" in text
     )
 
 
