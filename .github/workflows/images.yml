@@ -38,8 +38,115 @@ env:
   IMAGE_DESCRIPTION_FULL: JovyKit full Jupyter image with heavier AI, graph, geospatial, database, and research tooling.
 
 jobs:
-  images:
-    name: ${{ matrix.target }} py${{ matrix.python-version }}
+  define-images:
+    name: define image order
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Define image matrix
+        id: matrix
+        run: |
+          {
+            echo "matrix<<JSON"
+            cat <<'JSON'
+          {"include":[{"target":"minimal","python-version":"3.9"},{"target":"base","python-version":"3.9"},{"target":"minimal","python-version":"3.10"},{"target":"base","python-version":"3.10"},{"target":"minimal","python-version":"3.11"},{"target":"base","python-version":"3.11"},{"target":"extended","python-version":"3.11"},{"target":"full","python-version":"3.11"},{"target":"minimal","python-version":"3.12"},{"target":"base","python-version":"3.12"},{"target":"extended","python-version":"3.12"},{"target":"full","python-version":"3.12"},{"target":"minimal","python-version":"3.13"},{"target":"base","python-version":"3.13"},{"target":"extended","python-version":"3.13"},{"target":"full","python-version":"3.13"},{"target":"minimal","python-version":"3.14"},{"target":"base","python-version":"3.14"}]}
+          JSON
+          } >> "$GITHUB_OUTPUT"
+
+  build-images:
+    name: build ${{ matrix.target }} py${{ matrix.python-version }}
+    needs: define-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.define-images.outputs.matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Plan image build
+        id: plan
+        run: |
+          should_build=true
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then
+            case "${{ matrix.target }}" in
+              minimal|base) should_build=true ;;
+              *) should_build=false ;;
+            esac
+          fi
+
+          case "${{ matrix.target }}" in
+            minimal)
+              description="$IMAGE_DESCRIPTION_MINIMAL"
+              parent_target=""
+              ;;
+            base)
+              description="$IMAGE_DESCRIPTION_BASE"
+              parent_target="minimal"
+              ;;
+            extended)
+              description="$IMAGE_DESCRIPTION_EXTENDED"
+              parent_target="base"
+              ;;
+            full)
+              description="$IMAGE_DESCRIPTION_FULL"
+              parent_target="extended"
+              ;;
+          esac
+
+          image_name="jovykit"
+          cache_scope="${{ matrix.target }}-${{ matrix.python-version }}"
+
+          {
+            echo "IMAGE_NAME=$image_name"
+            echo "IMAGE_DESCRIPTION=$description"
+            echo "CACHE_SCOPE=$cache_scope"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "should-build=$should_build"
+            echo "cache-from<<EOF"
+            echo "type=gha,scope=$cache_scope"
+            if [ -n "$parent_target" ]; then
+              echo "type=gha,scope=${parent_target}-${{ matrix.python-version }}"
+            fi
+            echo "EOF"
+            echo "cache-to<<EOF"
+            echo "type=gha,mode=max,scope=$cache_scope"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        if: steps.plan.outputs.should-build == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image cache
+        if: steps.plan.outputs.should-build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./image
+          file: ./image/Dockerfile
+          target: ${{ matrix.target }}
+          build-args: |
+            PYTHON_VERSION=${{ matrix.python-version }}
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-from || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-to || '' }}
+
+  publish-images:
+    name: publish ${{ matrix.target }} py${{ matrix.python-version }}
+    needs:
+      - define-images
+      - build-images
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -50,44 +157,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 1
-      matrix:
-        include:
-          - target: minimal
-            python-version: "3.9"
-          - target: minimal
-            python-version: "3.10"
-          - target: minimal
-            python-version: "3.11"
-          - target: minimal
-            python-version: "3.12"
-          - target: minimal
-            python-version: "3.13"
-          - target: minimal
-            python-version: "3.14"
-          - target: base
-            python-version: "3.9"
-          - target: base
-            python-version: "3.10"
-          - target: base
-            python-version: "3.11"
-          - target: base
-            python-version: "3.12"
-          - target: base
-            python-version: "3.13"
-          - target: base
-            python-version: "3.14"
-          - target: extended
-            python-version: "3.11"
-          - target: extended
-            python-version: "3.12"
-          - target: extended
-            python-version: "3.13"
-          - target: full
-            python-version: "3.11"
-          - target: full
-            python-version: "3.12"
-          - target: full
-            python-version: "3.13"
+      matrix: ${{ fromJSON(needs.define-images.outputs.matrix) }}
 
     steps:
       - name: Checkout repository
@@ -150,7 +220,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        if: steps.plan.outputs.should-build == 'true' && github.event_name != 'pull_request'
+        if: steps.plan.outputs.should-build == 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -177,7 +247,7 @@ jobs:
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
 
-      - name: Build and publish image
+      - name: Publish image
         if: steps.plan.outputs.should-build == 'true'
         id: build
         uses: docker/build-push-action@v7
@@ -187,18 +257,17 @@ jobs:
           target: ${{ matrix.target }}
           build-args: |
             PYTHON_VERSION=${{ matrix.python-version }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ github.event_name != 'pull_request' && steps.meta.outputs.annotations || '' }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           provenance: false
           sbom: false
-          cache-from: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-from || '' }}
-          cache-to: ${{ github.event_name != 'pull_request' && steps.plan.outputs.cache-to || '' }}
+          cache-from: ${{ steps.plan.outputs.cache-from }}
 
       - name: Attest image provenance
-        if: steps.plan.outputs.should-build == 'true' && github.event_name != 'pull_request'
+        if: steps.plan.outputs.should-build == 'true'
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
