@@ -154,7 +154,12 @@ def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
     minimal_stage = dockerfile.split("FROM minimal AS base", 1)[0]
     requirements = requirement_names(IMAGE_DIR / "requirements-minimal.txt")
 
-    assert {"pip", "jupyterlab", "ipykernel", "jupyterlab-nitro-ai-judge"} <= requirements
+    assert {
+        "pip",
+        "jupyterlab",
+        "ipykernel",
+        "jupyterlab-nitro-ai-judge",
+    } <= requirements
     assert "nitro-ai-judge-cli" in requirements
     assert {"notebook", "ipywidgets", "jupyter-server-proxy"} & requirements == set()
     assert "SHELL=/bin/bash" in minimal_stage
