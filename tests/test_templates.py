@@ -11,7 +11,12 @@ from jovykit.images import (
     python_version_from_image,
     resolve_image_level,
 )
-from jovykit.templates import render_compose, render_containerfile, render_requirements
+from jovykit.templates import (
+    render_compose,
+    render_containerfile,
+    render_devcontainer,
+    render_requirements,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 IMAGE_DIR = REPO_ROOT / "image"
@@ -92,6 +97,31 @@ def test_render_containerfile_uses_requirements_txt_and_uv() -> None:
 
 def test_render_requirements_is_empty_by_default() -> None:
     assert render_requirements() == ""
+
+
+def test_render_devcontainer_points_to_compose_service() -> None:
+    config = yaml.safe_load(render_devcontainer("My Project"))
+
+    assert config == {
+        "name": "My Project",
+        "dockerComposeFile": "../compose.yaml",
+        "service": "jovy",
+        "workspaceFolder": "/home/jovyan/work",
+        "shutdownAction": "stopCompose",
+        "overrideCommand": False,
+        "customizations": {
+            "vscode": {
+                "extensions": [
+                    "ms-python.python",
+                    "ms-toolsai.jupyter",
+                ],
+                "settings": {
+                    "python.defaultInterpreterPath": "/opt/jovy/bin/python",
+                    "jupyter.jupyterServerType": "local",
+                },
+            }
+        },
+    }
 
 
 def test_arbitrary_image_source_is_rejected() -> None:

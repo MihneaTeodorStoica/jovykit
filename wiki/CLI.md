@@ -77,6 +77,9 @@ Options:
 - `--token`: Jupyter token
 - `--force`: overwrite generated files
 
+`jovy init` writes `compose.yaml`, `Dockerfile`, `requirements.txt`,
+`.devcontainer/devcontainer.json`, `work/`, and `.jupyter/`.
+
 ## add / remove
 
 ```bash

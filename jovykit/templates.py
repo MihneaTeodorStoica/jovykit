@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 from typing import Any
 
 import yaml
@@ -20,6 +21,31 @@ def slugify_name(value: str) -> str:
 def render_requirements() -> str:
     """Render the project requirements file."""
     return ""
+
+
+def render_devcontainer(project_name: str) -> str:
+    """Render the VS Code Dev Container config."""
+    config: dict[str, Any] = {
+        "name": project_name,
+        "dockerComposeFile": "../compose.yaml",
+        "service": SERVICE_NAME,
+        "workspaceFolder": "/home/jovyan/work",
+        "shutdownAction": "stopCompose",
+        "overrideCommand": False,
+        "customizations": {
+            "vscode": {
+                "extensions": [
+                    "ms-python.python",
+                    "ms-toolsai.jupyter",
+                ],
+                "settings": {
+                    "python.defaultInterpreterPath": "/opt/jovy/bin/python",
+                    "jupyter.jupyterServerType": "local",
+                },
+            }
+        },
+    }
+    return f"{json.dumps(config, indent=2)}\n"
 
 
 def render_containerfile(

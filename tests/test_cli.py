@@ -19,9 +19,11 @@ def test_no_args_initializes_empty_project(
     assert (tmp_path / "compose.yaml").exists()
     assert (tmp_path / "Dockerfile").exists()
     assert (tmp_path / "requirements.txt").exists()
+    assert (tmp_path / ".devcontainer" / "devcontainer.json").exists()
     assert "Created compose.yaml" in result.output
     assert "Created Dockerfile" in result.output
     assert "Created requirements.txt" in result.output
+    assert "Created .devcontainer/devcontainer.json" in result.output
     assert "Created work/" in result.output
     assert "Created .jupyter/" in result.output
     assert "gpus:" not in (tmp_path / "compose.yaml").read_text()

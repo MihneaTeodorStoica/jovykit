@@ -7,6 +7,18 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.3.0 - 2026-05-20
+
+### CLI
+
+- Generate `.devcontainer/devcontainer.json` during `jovy init` so VS Code can
+  reopen the Compose-backed JovyKit project as a Dev Container.
+
+### Packaging
+
+- Refresh package, image, documentation, and website version references for
+  8.3.0.
+
 ## 8.2.1 - 2026-05-20
 
 ### Packaging

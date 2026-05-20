@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
     assert (tmp_path / "compose.yaml").exists()
     assert (tmp_path / "Dockerfile").exists()
     assert (tmp_path / "requirements.txt").exists()
+    assert (tmp_path / ".devcontainer" / "devcontainer.json").exists()
     assert (tmp_path / "work").is_dir()
     assert (tmp_path / ".jupyter").is_dir()
     compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
@@ -40,6 +42,29 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
         "JOVY_BASE_IMAGE": ("ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.11"),
     }
     assert (tmp_path / "requirements.txt").read_text() == ""
+    devcontainer = json.loads(
+        (tmp_path / ".devcontainer" / "devcontainer.json").read_text()
+    )
+    assert devcontainer == {
+        "name": tmp_path.name,
+        "dockerComposeFile": "../compose.yaml",
+        "service": "jovy",
+        "workspaceFolder": "/home/jovyan/work",
+        "shutdownAction": "stopCompose",
+        "overrideCommand": False,
+        "customizations": {
+            "vscode": {
+                "extensions": [
+                    "ms-python.python",
+                    "ms-toolsai.jupyter",
+                ],
+                "settings": {
+                    "python.defaultInterpreterPath": "/opt/jovy/bin/python",
+                    "jupyter.jupyterServerType": "local",
+                },
+            }
+        },
+    }
 
 
 def test_init_project_rejects_legacy_manifest(tmp_path: Path) -> None:
@@ -51,6 +76,15 @@ def test_init_project_rejects_legacy_manifest(tmp_path: Path) -> None:
 
 def test_init_project_requires_force_for_existing_files(tmp_path: Path) -> None:
     (tmp_path / "compose.yaml").write_text("old", encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="--force"):
+        commands.init_project(tmp_path)
+
+
+def test_init_project_requires_force_for_existing_devcontainer(tmp_path: Path) -> None:
+    devcontainer = tmp_path / ".devcontainer" / "devcontainer.json"
+    devcontainer.parent.mkdir()
+    devcontainer.write_text("{}", encoding="utf-8")
 
     with pytest.raises(JovyKitError, match="--force"):
         commands.init_project(tmp_path)
