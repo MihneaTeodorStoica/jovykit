@@ -21,7 +21,7 @@ Options:
       --prefix PREFIX           Alias for --image.
       --release VERSION         Also tag :LEVEL-python-VERSION-VERSION.
       --channel CHANNEL         Also tag :LEVEL-CHANNEL-python-VERSION. Repeat for nightly, weekly, monthly.
-      --latest                  Also tag :latest for base Python 3.11.
+      --latest                  Also tag :latest for minimal Python 3.14.
   -h, --help                    Show this help.
 
 Default versions:
@@ -32,7 +32,7 @@ Examples:
   $0 --python-version 3.13 minimal
   $0 --python 3.13 --python 3.14 minimal base
   $0 --python-version 3.11,3.12,3.13 all
-  $0 --python 3.11 --release v8.1.0 --latest base
+  $0 --python 3.14 --release v8.1.0 --latest minimal
   $0 --python 3.11 --channel nightly base
 EOF
 }
@@ -207,7 +207,7 @@ build_python_version() {
     for channel in "${channels[@]}"; do
       tags+=(-t "${prefix}:${image}-${channel}-python-${version}")
     done
-    if [[ "${tag_latest}" == true && "${image}" == "base" && "${version}" == "3.11" ]]; then
+    if [[ "${tag_latest}" == true && "${image}" == "minimal" && "${version}" == "3.14" ]]; then
       tags+=(-t "${prefix}:latest")
     fi
     docker build \

@@ -54,7 +54,7 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     assert "type=sha" not in text
     assert "CI_IMAGE_TAG" not in text
     assert "value=latest" in text
-    assert "matrix.target == 'base' && matrix.python-version == '3.11'" in text
+    assert "matrix.target == 'minimal' && matrix.python-version == '3.14'" in text
     assert (
         "value=${{ matrix.target }}-nightly-python-${{ matrix.python-version }}" in text
     )

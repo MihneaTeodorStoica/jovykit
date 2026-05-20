@@ -82,7 +82,7 @@ ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 
 `minimal` and `base` publish Python 3.9 through 3.14 tags.
 `extended` and `full` publish Python 3.11 through 3.13 tags.
-`latest` points at `base-python-3.11`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11`, `base-weekly-python-3.11`, and `base-monthly-python-3.11`.
+`latest` points at `minimal-python-3.14`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11`, `base-weekly-python-3.11`, and `base-monthly-python-3.11`.
 
 `minimal`, `base`, and `extended` are curated cuts from the full stack.
 `full` is intentionally huge and keeps heavyweight ML, AI, cloud, distributed,
@@ -104,7 +104,7 @@ Build published image targets from the single multi-stage Dockerfile:
 ./build.sh minimal
 ./build.sh --python-version 3.13 base
 ./build.sh --python 3.11 --python 3.12 --python 3.13 all
-./build.sh --python 3.11 --latest base
+./build.sh --python 3.14 --latest minimal
 ./build.sh --python 3.11 --channel nightly base
 ```
 

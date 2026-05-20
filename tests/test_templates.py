@@ -99,11 +99,11 @@ def test_arbitrary_image_source_is_rejected() -> None:
         resolve_image_level("quay.io/jupyter/minimal-notebook")
 
 
-def test_latest_points_to_base_python_311() -> None:
+def test_latest_points_to_minimal_python_314() -> None:
     reference = "ghcr.io/mihneateodorstoica/jovykit:latest"
 
-    assert image_level_from_reference(reference) == "base"
-    assert python_version_from_image(reference) == "3.11"
+    assert image_level_from_reference(reference) == "minimal"
+    assert python_version_from_image(reference) == "3.14"
 
 
 def test_python_version_must_be_published_for_image_level() -> None:

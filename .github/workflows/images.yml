@@ -166,7 +166,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ matrix.target }}-python-${{ matrix.python-version }}
-            type=raw,value=latest,enable=${{ matrix.target == 'base' && matrix.python-version == '3.11' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
+            type=raw,value=latest,enable=${{ matrix.target == 'minimal' && matrix.python-version == '3.14' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
             type=raw,value=${{ matrix.target }}-python-${{ matrix.python-version }}-${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=${{ matrix.target }}-nightly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * *' }}
             type=raw,value=${{ matrix.target }}-weekly-python-${{ matrix.python-version }},enable=${{ github.event_name == 'schedule' && github.event.schedule == '30 6 * * 1' }}

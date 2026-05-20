@@ -24,13 +24,13 @@ def test_build_script_tags_match_published_scheme(tmp_path: Path) -> None:
         [
             str(REPO_ROOT / "build.sh"),
             "--python",
-            "3.11",
+            "3.14",
             "--release",
             "v8.1.0",
             "--channel",
             "nightly",
             "--latest",
-            "base",
+            "minimal",
         ],
         cwd=REPO_ROOT,
         env=env,
@@ -38,10 +38,10 @@ def test_build_script_tags_match_published_scheme(tmp_path: Path) -> None:
     )
 
     assert log.read_text(encoding="utf-8").strip() == (
-        "build --build-arg PYTHON_VERSION=3.11 --target base "
-        "-t ghcr.io/mihneateodorstoica/jovykit:base-python-3.11 "
-        "-t ghcr.io/mihneateodorstoica/jovykit:base-python-3.11-v8.1.0 "
-        "-t ghcr.io/mihneateodorstoica/jovykit:base-nightly-python-3.11 "
+        "build --build-arg PYTHON_VERSION=3.14 --target minimal "
+        "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14 "
+        "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14-v8.1.0 "
+        "-t ghcr.io/mihneateodorstoica/jovykit:minimal-nightly-python-3.14 "
         "-t ghcr.io/mihneateodorstoica/jovykit:latest ./image"
     )
 

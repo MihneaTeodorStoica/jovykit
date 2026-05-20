@@ -7,8 +7,8 @@ import re
 from jovykit.config import JovyKitError
 
 DEFAULT_PYTHON_VERSION = "3.13"
-LATEST_IMAGE_LEVEL = "base"
-LATEST_PYTHON_VERSION = "3.11"
+LATEST_IMAGE_LEVEL = "minimal"
+LATEST_PYTHON_VERSION = "3.14"
 SUPPORTED_PYTHON_VERSIONS_BY_LEVEL = {
     "minimal": ("3.9", "3.10", "3.11", "3.12", "3.13", "3.14"),
     "base": ("3.9", "3.10", "3.11", "3.12", "3.13", "3.14"),
