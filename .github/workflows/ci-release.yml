@@ -279,10 +279,17 @@ jobs:
               echo "Manual run will publish the existing ${{ steps.version.outputs.tag }} tag."
             fi
           else
-            echo "created=false" >> "$GITHUB_OUTPUT"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Tag ${{ steps.version.outputs.tag }} does not exist; skipping release publish."
+            echo "created=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Create and push tag
+        if: steps.tag.outputs.created == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "refs/tags/${{ steps.version.outputs.tag }}"
 
   package:
     name: Release / Build package from tag
