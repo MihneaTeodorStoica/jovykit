@@ -7,7 +7,7 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
-## 8.3.0 - 2026-05-20
+## 8.3.1 - 2026-05-20
 
 ### CLI
 
@@ -17,7 +17,7 @@ tagged diff and group changes by impact.
 ### Packaging
 
 - Refresh package, image, documentation, and website version references for
-  8.3.0.
+  8.3.1.
 
 ## 8.2.1 - 2026-05-20
 
