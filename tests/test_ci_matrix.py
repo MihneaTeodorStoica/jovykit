@@ -18,11 +18,33 @@ def test_image_workflow_builds_supported_image_versions() -> None:
     workflow = yaml.safe_load(
         Path(".github/workflows/images.yml").read_text(encoding="utf-8")
     )
-    matrix = workflow["jobs"]["images"]["strategy"]["matrix"]["include"]
+    strategy = workflow["jobs"]["images"]["strategy"]
+    matrix = strategy["matrix"]["include"]
     targets: dict[str, list[str]] = {}
     for item in matrix:
         targets.setdefault(item["target"], []).append(item["python-version"])
 
+    assert strategy["max-parallel"] == 1
+    assert [(item["target"], item["python-version"]) for item in matrix] == [
+        ("minimal", "3.9"),
+        ("minimal", "3.10"),
+        ("minimal", "3.11"),
+        ("minimal", "3.12"),
+        ("minimal", "3.13"),
+        ("minimal", "3.14"),
+        ("base", "3.9"),
+        ("base", "3.10"),
+        ("base", "3.11"),
+        ("base", "3.12"),
+        ("base", "3.13"),
+        ("base", "3.14"),
+        ("extended", "3.11"),
+        ("extended", "3.12"),
+        ("extended", "3.13"),
+        ("full", "3.11"),
+        ("full", "3.12"),
+        ("full", "3.13"),
+    ]
     assert targets == {
         "minimal": ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"],
         "base": ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"],
