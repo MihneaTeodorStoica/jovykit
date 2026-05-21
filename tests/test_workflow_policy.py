@@ -30,7 +30,9 @@ def test_workflows_do_not_embed_tokens_in_urls() -> None:
 def test_workflows_pin_actions_to_full_shas_with_comments() -> None:
     offenders = []
     for path in WORKFLOW_PATHS:
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
             match = _ACTION_USE.match(line)
             if not match:
                 continue
@@ -49,10 +51,14 @@ def test_workflows_pin_actions_to_full_shas_with_comments() -> None:
                 continue
 
             if not _SHA_REF.fullmatch(ref):
-                offenders.append((str(path), line_number, f"non-sha action ref '{ref}'"))
+                offenders.append(
+                    (str(path), line_number, f"non-sha action ref '{ref}'")
+                )
                 continue
 
             if not comment or not _UPSTREAM_REF.match(comment):
-                offenders.append((str(path), line_number, f"missing/invalid comment '{comment}'"))
+                offenders.append(
+                    (str(path), line_number, f"missing/invalid comment '{comment}'")
+                )
 
     assert offenders == []
