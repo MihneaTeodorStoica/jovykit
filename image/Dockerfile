@@ -39,6 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/lintian/* /usr/share/locale/* && \
     groupadd --gid "${NB_GID}" "${NB_USER}" || true && \
     useradd --uid "${NB_UID}" --gid "${NB_GID}" --create-home --shell /bin/bash "${NB_USER}" || true && \
+    install -d -m 0755 -o "${NB_UID}" -g "${NB_GID}" /home/${NB_USER}/.local /home/${NB_USER}/.local/bin /home/${NB_USER}/.vscode-server && \
     install -d -m 0755 -o "${NB_UID}" -g "${NB_GID}" /home/${NB_USER}/work && \
     install -d -m 0700 -o "${NB_UID}" -g "${NB_GID}" /home/${NB_USER}/.ssh
 

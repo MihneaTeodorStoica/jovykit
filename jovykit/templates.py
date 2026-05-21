@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 import json
+import re
 from typing import Any
 
 import yaml
@@ -23,17 +23,24 @@ def render_requirements() -> str:
     return ""
 
 
+def render_gitignore() -> str:
+    """Render the project gitignore."""
+    return ".jupyter/\nwork/\n"
+
+
 def render_devcontainer(project_name: str) -> str:
     """Render the VS Code Dev Container config."""
+    vscode_server_volume = f"jovykit-{slugify_name(project_name)}-vscode-server"
     config: dict[str, Any] = {
         "name": project_name,
         "dockerComposeFile": "../compose.yaml",
         "service": SERVICE_NAME,
         "workspaceFolder": "/home/jovyan/work",
+        "remoteUser": "jovyan",
         "shutdownAction": "stopCompose",
         "overrideCommand": False,
         "mounts": [
-            "source=jovykit-vscode-server,target=/home/jovyan/.vscode-server,type=volume",
+            f"source={vscode_server_volume},target=/home/jovyan/.vscode-server,type=volume",
         ],
         "portsAttributes": {
             "8888": {
@@ -87,6 +94,11 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\
     if [ -s /tmp/jovy-requirements.txt ]; then \\
         uv pip install --only-binary=:all: --python "${{VIRTUAL_ENV}}/bin/python" -r /tmp/jovy-requirements.txt; \\
     fi
+
+RUN install -d -m 0755 -o "${{NB_UID}}" -g "${{NB_GID}}" \\
+    "${{HOME}}/.local" \\
+    "${{HOME}}/.local/bin" \\
+    "${{HOME}}/.vscode-server"
 
 USER ${{NB_UID}}
 WORKDIR /home/${{NB_USER}}/work

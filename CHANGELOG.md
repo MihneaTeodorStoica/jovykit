@@ -7,6 +7,20 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.6.0 - 2026-05-21
+
+### CLI
+
+- Initialize new projects as Git repositories with `.jupyter/` and `work/`
+  ignored by default.
+- Use project-specific VS Code Server Dev Container volumes and connect as
+  `jovyan` so stale shared volumes cannot block server setup.
+
+### Images
+
+- Create writable `.local/bin` and `.vscode-server` home directories before
+  Dev Container startup to prevent VS Code `Permission denied` failures.
+
 ## 8.5.0 - 2026-05-21
 
 ### CLI

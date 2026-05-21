@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import webbrowser
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from jovykit.templates import (
     render_compose,
     render_containerfile,
     render_devcontainer,
+    render_gitignore,
     render_requirements,
 )
 
@@ -58,6 +60,27 @@ class ProjectSettings:
 
 def noop_emit(_: str) -> None:
     """Default sink for command messages."""
+
+
+def init_git_repository(root: Path) -> bool:
+    """Initialize a git repository if one is not already present."""
+    if (root / ".git").exists():
+        return False
+    git = shutil.which("git")
+    if git is None:
+        raise JovyKitError("git not found in PATH.")
+    result = subprocess.run(
+        [git, "init"],
+        cwd=root,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode != 0:
+        message = result.stdout.strip() or "git init failed."
+        raise JovyKitError(message)
+    return True
 
 
 def init_project(
@@ -85,14 +108,16 @@ def init_project(
     containerfile = containerfile_path(resolved)
     requirements_file = requirements_path(resolved)
     devcontainer_file = devcontainer_path(resolved)
+    gitignore_file = resolved / ".gitignore"
     if not force and (
         compose_file.exists()
         or containerfile.exists()
         or requirements_file.exists()
         or devcontainer_file.exists()
+        or gitignore_file.exists()
     ):
         raise JovyKitError(
-            "compose.yaml, Dockerfile, requirements.txt, or .devcontainer/devcontainer.json already exists. Use --force to overwrite."
+            "compose.yaml, Dockerfile, requirements.txt, .devcontainer/devcontainer.json, or .gitignore already exists. Use --force to overwrite."
         )
 
     resolved.mkdir(parents=True, exist_ok=True)
@@ -116,12 +141,17 @@ def init_project(
     )
     requirements_file.write_text(render_requirements(), encoding="utf-8")
     devcontainer_file.write_text(render_devcontainer(resolved.name), encoding="utf-8")
+    gitignore_file.write_text(render_gitignore(), encoding="utf-8")
+    initialized_git = init_git_repository(resolved)
     emit("Created compose.yaml")
     emit("Created Dockerfile")
     emit("Created requirements.txt")
     emit("Created .devcontainer/devcontainer.json")
+    emit("Created .gitignore")
     emit("Created work/")
     emit("Created .jupyter/")
+    if initialized_git:
+        emit("Initialized git repository")
     return resolved
 
 

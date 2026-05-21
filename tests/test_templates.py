@@ -15,6 +15,7 @@ from jovykit.templates import (
     render_compose,
     render_containerfile,
     render_devcontainer,
+    render_gitignore,
     render_requirements,
 )
 
@@ -87,6 +88,8 @@ def test_render_containerfile_uses_requirements_txt_and_uv() -> None:
     assert "--mount=type=cache,target=/root/.cache/uv,sharing=locked" in text
     assert "source=requirements.txt,target=/tmp/jovy-requirements.txt,readonly" in text
     assert "if [ -s /tmp/jovy-requirements.txt ]; then \\" in text
+    assert '"${HOME}/.local/bin"' in text
+    assert '"${HOME}/.vscode-server"' in text
     assert "chown -R" not in text
     assert "/usr/local/share/jovykit/base-requirements.txt" not in text
     assert "mamba" not in text
@@ -100,6 +103,10 @@ def test_render_requirements_is_empty_by_default() -> None:
     assert render_requirements() == ""
 
 
+def test_render_gitignore_ignores_generated_state() -> None:
+    assert render_gitignore() == ".jupyter/\nwork/\n"
+
+
 def test_render_devcontainer_points_to_compose_service() -> None:
     config = yaml.safe_load(render_devcontainer("My Project"))
 
@@ -108,10 +115,11 @@ def test_render_devcontainer_points_to_compose_service() -> None:
         "dockerComposeFile": "../compose.yaml",
         "service": "jovy",
         "workspaceFolder": "/home/jovyan/work",
+        "remoteUser": "jovyan",
         "shutdownAction": "stopCompose",
         "overrideCommand": False,
         "mounts": [
-            "source=jovykit-vscode-server,target=/home/jovyan/.vscode-server,type=volume",
+            "source=jovykit-my-project-vscode-server,target=/home/jovyan/.vscode-server,type=volume",
         ],
         "portsAttributes": {
             "8888": {
@@ -188,6 +196,7 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     assert "exec /opt/jovy/bin/jupyter lab" in dockerfile
     assert "UV_LINK_MODE=hardlink" in dockerfile
     assert 'ENV PATH="${VIRTUAL_ENV}/bin:${HOME}/.local/bin:${PATH}"' in dockerfile
+    assert "/home/${NB_USER}/.local/bin /home/${NB_USER}/.vscode-server" in dockerfile
     assert 'if [[ "${PYTHON_VERSION}" == 3.9* ]]' in dockerfile
     assert (
         'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip==26.0.1' in dockerfile

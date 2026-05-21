@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,24 @@ from jovykit.config import JovyKitError
 
 def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    run_calls: list[tuple[list[str], Path]] = []
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cwd = kwargs["cwd"]
+        assert isinstance(cwd, Path)
+        run_calls.append((args, cwd))
+        (cwd / ".git").mkdir()
+        return subprocess.CompletedProcess(args, 0, stdout="")
+
+    monkeypatch.setattr(
+        commands.shutil,
+        "which",
+        lambda name: "/usr/bin/git" if name == "git" else None,
+    )
+    monkeypatch.setattr(commands.subprocess, "run", fake_run)
+
     commands.init_project(
         tmp_path,
         level="minimal",
@@ -26,6 +44,9 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
     assert (tmp_path / "Dockerfile").exists()
     assert (tmp_path / "requirements.txt").exists()
     assert (tmp_path / ".devcontainer" / "devcontainer.json").exists()
+    assert (tmp_path / ".gitignore").read_text() == ".jupyter/\nwork/\n"
+    assert (tmp_path / ".git").is_dir()
+    assert run_calls == [(["/usr/bin/git", "init"], tmp_path)]
     assert (tmp_path / "work").is_dir()
     assert (tmp_path / ".jupyter").is_dir()
     compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
@@ -50,10 +71,11 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
         "dockerComposeFile": "../compose.yaml",
         "service": "jovy",
         "workspaceFolder": "/home/jovyan/work",
+        "remoteUser": "jovyan",
         "shutdownAction": "stopCompose",
         "overrideCommand": False,
         "mounts": [
-            "source=jovykit-vscode-server,target=/home/jovyan/.vscode-server,type=volume",
+            f"source=jovykit-{tmp_path.name}-vscode-server,target=/home/jovyan/.vscode-server,type=volume",
         ],
         "portsAttributes": {
             "8888": {
@@ -100,6 +122,23 @@ def test_init_project_requires_force_for_existing_devcontainer(tmp_path: Path) -
 
     with pytest.raises(JovyKitError, match="--force"):
         commands.init_project(tmp_path)
+
+
+def test_init_project_requires_force_for_existing_gitignore(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text("old", encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="--force"):
+        commands.init_project(tmp_path)
+
+
+def test_init_project_fails_when_git_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(commands.shutil, "which", lambda name: None)
+
+    with pytest.raises(JovyKitError, match="git not found"):
+        commands.init_project(tmp_path, gpu="none")
 
 
 def test_jupyter_url_reads_compose_port(tmp_path: Path) -> None:
