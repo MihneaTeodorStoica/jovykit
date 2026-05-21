@@ -88,6 +88,19 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     jovy-prune-image "${VIRTUAL_ENV}" "/home/${NB_USER}" && \
     chown -R "${NB_UID}:${NB_GID}" "${VIRTUAL_ENV}" "/home/${NB_USER}"
 
+RUN cat >> "${HOME}/.bashrc" <<'SH' && \
+    chown "${NB_UID}:${NB_GID}" "${HOME}/.bashrc"
+# >>> vscode python
+# version: 0.1.1
+if [ -z "$VSCODE_PYTHON_AUTOACTIVATE_GUARD" ]; then
+    export VSCODE_PYTHON_AUTOACTIVATE_GUARD=1
+    if [ -n "$VSCODE_PYTHON_BASH_ACTIVATE" ] && [ "$TERM_PROGRAM" = "vscode" ]; then
+        eval "$VSCODE_PYTHON_BASH_ACTIVATE" || true
+    fi
+fi
+# <<< vscode python
+SH
+
 USER ${NB_UID}
 WORKDIR "${HOME}"
 EXPOSE 8888

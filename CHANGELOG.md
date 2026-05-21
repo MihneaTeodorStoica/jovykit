@@ -7,6 +7,13 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.4.0 - 2026-05-21
+
+### Images
+
+- Add the VS Code Python shell auto-activation block to published images so
+  integrated terminals can activate the selected interpreter environment.
+
 ## 8.3.2 - 2026-05-20
 
 ### Images
