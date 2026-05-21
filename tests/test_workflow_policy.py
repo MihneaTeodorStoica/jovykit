@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 WORKFLOW_PATHS = [
     *Path(".github/workflows").glob("*.yml"),
     *Path(".github/workflows").glob("*.yaml"),
