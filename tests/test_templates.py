@@ -110,10 +110,22 @@ def test_render_devcontainer_points_to_compose_service() -> None:
         "workspaceFolder": "/home/jovyan/work",
         "shutdownAction": "stopCompose",
         "overrideCommand": False,
+        "mounts": [
+            "source=jovykit-vscode-server,target=/home/jovyan/.vscode-server,type=volume",
+        ],
+        "portsAttributes": {
+            "8888": {
+                "label": "JupyterLab",
+                "protocol": "http",
+                "onAutoForward": "silent",
+            }
+        },
+        "otherPortsAttributes": {"onAutoForward": "silent"},
         "customizations": {
             "vscode": {
                 "extensions": [
                     "ms-python.python",
+                    "ms-python.vscode-pylance",
                     "ms-toolsai.jupyter",
                 ],
                 "settings": {
