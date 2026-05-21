@@ -107,6 +107,10 @@ jovy down
 jovy compose ps
 ```
 
+Troubleshooting runtime startup issues:
+
+- [Troubleshooting guide](wiki/Troubleshooting.md)
+
 ## How JovyKit Works
 
 `compose.yaml` is runtime.

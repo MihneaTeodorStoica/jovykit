@@ -8,6 +8,8 @@ and the wiki.
 `.github/workflows/ci-release.yml` runs lint, formatting, typing, tests, audits,
 package build, and release publishing.
 
+For the full release runbook and rollback flow, see [Release](Release).
+
 Local equivalent:
 
 ```bash
@@ -37,9 +39,8 @@ ghcr.io/mihneateodorstoica/jovykit:extended-python-3.13
 ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 ```
 
-Schedules publish level-specific tags such as `base-nightly-python-3.11`,
-`base-weekly-python-3.11`, and `base-monthly-python-3.11`. `latest` points at
-`base-python-3.11`.
+Schedules publish level-specific tags such as `base-nightly-python-3.11` and
+`base-weekly-python-3.11`. `latest` points at `minimal-python-3.14`.
 
 Local image builds use:
 

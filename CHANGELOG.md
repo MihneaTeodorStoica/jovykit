@@ -7,6 +7,15 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+### CI
+
+- Pin GitHub Actions and reusable action steps to immutable commit SHAs.
+
+### Docs
+
+- Add release, PyPI, and image publishing runbook at `wiki/Release.md`.
+- Add a troubleshooting guide for common runtime failures.
+
 ## 8.6.1 - 2026-05-21
 
 ### CLI
