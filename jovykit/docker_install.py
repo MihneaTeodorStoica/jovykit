@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -12,7 +13,8 @@ from pathlib import Path
 from jovykit.config import JovyKitError
 
 Emitter = Callable[[str], None]
-Runner = Callable[[str], int]
+Command = tuple[str, ...]
+Runner = Callable[[Command], int]
 
 GUIDES = {
     "linux": "https://docs.docker.com/engine/install/",
@@ -29,7 +31,7 @@ class DockerInstallPlan:
     distro: str | None
     supported: bool
     guide_url: str
-    commands: tuple[str, ...]
+    commands: tuple[Command, ...]
     notes: tuple[str, ...] = ()
 
 
@@ -73,7 +75,9 @@ def build_install_plan(
 
     release = dict(read_os_release() if os_release is None else os_release)
     distro = _linux_distro(release)
-    sudo = "" if (os.geteuid() == 0 if is_root is None else is_root) else "sudo "
+    sudo: Command = (
+        () if (os.geteuid() == 0 if is_root is None else is_root) else ("sudo",)
+    )
     systemd = (
         Path("/run/systemd/system").exists() if has_systemd is None else has_systemd
     )
@@ -81,7 +85,12 @@ def build_install_plan(
         "If docker info reports permission denied, add your user to the docker group and log out/in: sudo usermod -aG docker $USER",
         "The docker group grants root-equivalent access.",
     )
-    commands = _linux_commands(distro, sudo=sudo, has_systemd=systemd)
+    commands = _linux_commands(
+        distro,
+        os_release=release,
+        sudo=sudo,
+        has_systemd=systemd,
+    )
     if commands is None:
         return DockerInstallPlan(
             detected_system,
@@ -91,9 +100,14 @@ def build_install_plan(
             (),
             ("Automatic install supports Ubuntu, Debian, Fedora, RHEL, and CentOS.",),
         )
-    checks = ["docker --version", "docker compose version", "docker info"]
+
+    checks: tuple[Command, ...] = (
+        ("docker", "--version"),
+        ("docker", "compose", "version"),
+        ("docker", "info"),
+    )
     if not skip_hello_world:
-        checks.append("docker run hello-world")
+        checks = (*checks, ("docker", "run", "hello-world"))
     return DockerInstallPlan(
         detected_system,
         distro,
@@ -124,19 +138,20 @@ def install_docker(
         return
 
     for command in plan.commands:
-        emit(f"$ {command}")
+        emit(f"$ {_format_command(command)}")
     for note in plan.notes:
         emit(note)
     if not yes:
         emit("Dry run only. Run with --yes to execute.")
         return
 
-    run = _run_shell if runner is None else runner
+    run = _run_command if runner is None else runner
     for command in plan.commands:
         code = run(command)
         if code != 0:
             raise JovyKitError(
-                f"Docker install command failed with exit code {code}: {command}"
+                f"Docker install command failed with exit code {code}: "
+                f"{_format_command(command)}"
             )
     emit("Docker install complete.")
 
@@ -162,75 +177,223 @@ def _linux_distro(os_release: Mapping[str, str]) -> str | None:
 
 
 def _linux_commands(
-    distro: str | None, *, sudo: str, has_systemd: bool
-) -> tuple[str, ...] | None:
+    distro: str | None,
+    *,
+    os_release: Mapping[str, str],
+    sudo: Command,
+    has_systemd: bool,
+) -> tuple[Command, ...] | None:
     if distro in {"ubuntu", "debian"}:
         old_packages = (
-            "docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc"
+            (
+                "docker.io",
+                "docker-compose",
+                "docker-compose-v2",
+                "docker-doc",
+                "podman-docker",
+                "containerd",
+                "runc",
+            )
             if distro == "ubuntu"
-            else "docker.io docker-compose docker-doc podman-docker containerd runc"
+            else (
+                "docker.io",
+                "docker-compose",
+                "docker-doc",
+                "podman-docker",
+                "containerd",
+                "runc",
+            )
         )
-        suite = (
-            '$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")'
-            if distro == "ubuntu"
-            else '$(. /etc/os-release && echo "$VERSION_CODENAME")'
-        )
+        suite = _linux_suite(os_release, distro)
+        architecture = _docker_architecture()
         return (
-            f"{sudo}apt remove -y $(dpkg --get-selections {old_packages} | cut -f1)",
-            f"{sudo}apt update",
-            f"{sudo}apt install -y ca-certificates curl",
-            f"{sudo}install -m 0755 -d /etc/apt/keyrings",
-            f"{sudo}curl -fsSL https://download.docker.com/linux/{distro}/gpg -o /etc/apt/keyrings/docker.asc",
-            f"{sudo}chmod a+r /etc/apt/keyrings/docker.asc",
-            _apt_source_command(distro, sudo=sudo, suite=suite),
-            f"{sudo}apt update",
-            f"{sudo}apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
+            (*sudo, "apt", "remove", "-y", *old_packages),
+            (*sudo, "apt", "update"),
+            (*sudo, "apt", "install", "-y", "ca-certificates", "curl"),
+            (*sudo, "install", "-m", "0755", "-d", "/etc/apt/keyrings"),
+            (
+                *sudo,
+                "curl",
+                "-fsSL",
+                f"https://download.docker.com/linux/{distro}/gpg",
+                "-o",
+                "/etc/apt/keyrings/docker.asc",
+            ),
+            (*sudo, "chmod", "a+r", "/etc/apt/keyrings/docker.asc"),
+            _apt_source_command(
+                distro, suite=suite, architecture=architecture, sudo=sudo
+            ),
+            (*sudo, "apt", "update"),
+            (
+                *sudo,
+                "apt",
+                "install",
+                "-y",
+                "docker-ce",
+                "docker-ce-cli",
+                "containerd.io",
+                "docker-buildx-plugin",
+                "docker-compose-plugin",
+            ),
             *(_systemd_command(sudo, has_systemd)),
         )
     if distro == "fedora":
         return (
-            f"{sudo}dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-selinux docker-engine-selinux docker-engine",
-            f"{sudo}dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo",
-            f"{sudo}dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
+            (
+                *sudo,
+                "dnf",
+                "remove",
+                "-y",
+                "docker",
+                "docker-client",
+                "docker-client-latest",
+                "docker-common",
+                "docker-latest",
+                "docker-latest-logrotate",
+                "docker-logrotate",
+                "docker-selinux",
+                "docker-engine-selinux",
+                "docker-engine",
+            ),
+            (
+                *sudo,
+                "dnf",
+                "config-manager",
+                "addrepo",
+                "--from-repofile",
+                "https://download.docker.com/linux/fedora/docker-ce.repo",
+            ),
+            (
+                *sudo,
+                "dnf",
+                "install",
+                "-y",
+                "docker-ce",
+                "docker-ce-cli",
+                "containerd.io",
+                "docker-buildx-plugin",
+                "docker-compose-plugin",
+            ),
             *(_systemd_command(sudo, has_systemd)),
         )
     if distro == "rhel":
         return (
-            f"{sudo}dnf -y install dnf-plugins-core",
-            f"{sudo}dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo",
-            f"{sudo}dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
+            (*sudo, "dnf", "-y", "install", "dnf-plugins-core"),
+            (
+                *sudo,
+                "dnf",
+                "config-manager",
+                "--add-repo",
+                "https://download.docker.com/linux/rhel/docker-ce.repo",
+            ),
+            (
+                *sudo,
+                "dnf",
+                "install",
+                "-y",
+                "docker-ce",
+                "docker-ce-cli",
+                "containerd.io",
+                "docker-buildx-plugin",
+                "docker-compose-plugin",
+            ),
             *(_systemd_command(sudo, has_systemd)),
         )
     if distro == "centos":
         return (
-            f"{sudo}dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine",
-            f"{sudo}dnf -y install dnf-plugins-core",
-            f"{sudo}dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo",
-            f"{sudo}dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
+            (
+                *sudo,
+                "dnf",
+                "remove",
+                "-y",
+                "docker",
+                "docker-client",
+                "docker-client-latest",
+                "docker-common",
+                "docker-latest",
+                "docker-latest-logrotate",
+                "docker-logrotate",
+                "docker-engine",
+            ),
+            (*sudo, "dnf", "-y", "install", "dnf-plugins-core"),
+            (
+                *sudo,
+                "dnf",
+                "config-manager",
+                "--add-repo",
+                "https://download.docker.com/linux/centos/docker-ce.repo",
+            ),
+            (
+                *sudo,
+                "dnf",
+                "install",
+                "-y",
+                "docker-ce",
+                "docker-ce-cli",
+                "containerd.io",
+                "docker-buildx-plugin",
+                "docker-compose-plugin",
+            ),
             *(_systemd_command(sudo, has_systemd)),
         )
     return None
 
 
-def _apt_source_command(distro: str, *, sudo: str, suite: str) -> str:
-    return (
-        f"{sudo}tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF\n"
+def _linux_suite(os_release: Mapping[str, str], distro: str) -> str:
+    if distro == "ubuntu":
+        return (
+            os_release.get("UBUNTU_CODENAME")
+            or os_release.get("VERSION_CODENAME")
+            or "stable"
+        )
+    return os_release.get("VERSION_CODENAME") or "stable"
+
+
+def _docker_architecture() -> str:
+    machine = platform.machine().lower()
+    return {
+        "x86_64": "amd64",
+        "aarch64": "arm64",
+        "armv7l": "armhf",
+    }.get(machine, machine)
+
+
+def _apt_source_command(
+    distro: str,
+    *,
+    suite: str,
+    architecture: str,
+    sudo: Command,
+) -> Command:
+    marker = "/etc/apt/sources.list.d/docker.sources"
+    safe_suite = suite.replace("\n", "")
+    safe_arch = architecture.replace("\n", "")
+    content = (
         "Types: deb\n"
         f"URIs: https://download.docker.com/linux/{distro}\n"
-        f"Suites: {suite}\n"
+        f"Suites: {safe_suite}\n"
         "Components: stable\n"
-        "Architectures: $(dpkg --print-architecture)\n"
+        f"Architectures: {safe_arch}\n"
         "Signed-By: /etc/apt/keyrings/docker.asc\n"
-        "EOF"
     )
+    script = (
+        "from pathlib import Path; "
+        f"Path({marker!r}).write_text("
+        f"{content!r}, encoding='utf-8')"
+    )
+    return (*sudo, "python3", "-c", script)
 
 
-def _systemd_command(sudo: str, has_systemd: bool) -> tuple[str, ...]:
+def _systemd_command(sudo: Command, has_systemd: bool) -> tuple[Command, ...]:
     if not has_systemd:
         return ()
-    return (f"{sudo}systemctl enable --now docker",)
+    return ((*sudo, "systemctl", "enable", "--now", "docker"),)
 
 
-def _run_shell(command: str) -> int:
-    result = subprocess.run(["/bin/sh", "-c", command], check=False)
+def _format_command(command: Command) -> str:
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _run_command(command: Command) -> int:
+    result = subprocess.run(command, check=False)
     return result.returncode

@@ -65,7 +65,7 @@ macOS and Windows users should install Docker Desktop manually.
 ## init
 
 ```bash
-jovy init --image-level base --python 3.13 --gpu none --port 8888 --token jovykit
+jovy init --image-level base --python 3.13 --gpu none --port 8888
 ```
 
 Options:
@@ -74,7 +74,7 @@ Options:
 - `--python`: image Python tag, from `3.9` through `3.14`
 - `--gpu`: `none` or `all`
 - `--port`: host Jupyter port
-- `--token`: Jupyter token
+- `--token`: optional Jupyter token override (default random)
 - `--force`: overwrite generated files
 
 `jovy init` writes `compose.yaml`, `Dockerfile`, `requirements.txt`,

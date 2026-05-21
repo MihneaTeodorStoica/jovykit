@@ -190,7 +190,7 @@ def _init(args: list[str]) -> None:
     )
     parser.add_argument("--gpu", choices=tuple(commands.VALID_GPU), default=None)
     parser.add_argument("--port", type=int, default=8888)
-    parser.add_argument("--token", default="jovykit")
+    parser.add_argument("--token", default=None)
     parser.add_argument("--force", action="store_true")
     namespace = parser.parse_args(args)
     commands.init_project(
@@ -207,9 +207,20 @@ def _init(args: list[str]) -> None:
 
 def _add(args: list[str]) -> None:
     parser = argparse.ArgumentParser(prog="jovy add")
-    parser.add_argument("packages", nargs="+")
-    namespace = parser.parse_args(args)
-    commands.add_packages(namespace.packages, emit=console.print)
+    parser.add_argument("--raw", action="store_true")
+    parser.add_argument("--allow-unsafe-requirement", action="store_true")
+    parser.add_argument("packages", nargs="*")
+    namespace, remaining = parser.parse_known_args(args)
+    if namespace.raw:
+        namespace.allow_unsafe_requirement = True
+    packages = [*namespace.packages, *remaining]
+    if not packages:
+        parser.error("the following arguments are required: PACKAGE [PACKAGE...]")
+    commands.add_packages(
+        packages,
+        allow_unsafe_requirement=namespace.allow_unsafe_requirement,
+        emit=console.print,
+    )
 
 
 def _remove(args: list[str]) -> None:

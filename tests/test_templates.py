@@ -46,7 +46,7 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
             python_version="3.13",
             gpu="none",
             port=8888,
-            token="jovykit",
+            token="custom-token",
         )
     )
 
@@ -62,7 +62,7 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
         "develop",
     }
     assert "gpus" not in service
-    assert service["environment"] == {"JUPYTER_TOKEN": "jovykit"}
+    assert service["environment"] == {"JUPYTER_TOKEN": "custom-token"}
     assert service["develop"]["watch"] == [
         {"action": "rebuild", "path": "./Dockerfile"},
         {"action": "rebuild", "path": "./requirements.txt"},
@@ -181,6 +181,8 @@ def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
     assert "SHELL=/bin/bash" in minimal_stage
     assert " git \\" not in minimal_stage
     assert "openssh-client" not in minimal_stage
+    assert 'eval "$VSCODE_PYTHON_BASH_ACTIVATE"' not in minimal_stage
+    assert "VSCODE_PYTHON_AUTOACTIVATE_GUARD" not in minimal_stage
 
 
 def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
