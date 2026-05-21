@@ -21,7 +21,8 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
         cwd = kwargs["cwd"]
         assert isinstance(cwd, Path)
         run_calls.append((args, cwd))
-        (cwd / ".git").mkdir()
+        if args == ["/usr/bin/git", "init"]:
+            (cwd / ".git").mkdir()
         return subprocess.CompletedProcess(args, 0, stdout="")
 
     monkeypatch.setattr(
@@ -46,7 +47,35 @@ def test_init_project_writes_compose_dockerfile_requirements_and_persistent_dirs
     assert (tmp_path / ".devcontainer" / "devcontainer.json").exists()
     assert (tmp_path / ".gitignore").read_text() == ".jupyter/\nwork/\n"
     assert (tmp_path / ".git").is_dir()
-    assert run_calls == [(["/usr/bin/git", "init"], tmp_path)]
+    assert run_calls == [
+        (["/usr/bin/git", "init"], tmp_path),
+        (
+            [
+                "/usr/bin/git",
+                "add",
+                "--",
+                "compose.yaml",
+                "Dockerfile",
+                "requirements.txt",
+                ".devcontainer/devcontainer.json",
+                ".gitignore",
+            ],
+            tmp_path,
+        ),
+        (
+            [
+                "/usr/bin/git",
+                "-c",
+                "user.name=JovyKit",
+                "-c",
+                "user.email=jovykit@users.noreply.github.com",
+                "commit",
+                "-m",
+                "Initialize JovyKit project",
+            ],
+            tmp_path,
+        ),
+    ]
     assert (tmp_path / "work").is_dir()
     assert (tmp_path / ".jupyter").is_dir()
     compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())

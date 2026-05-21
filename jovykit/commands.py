@@ -69,8 +69,17 @@ def init_git_repository(root: Path) -> bool:
     git = shutil.which("git")
     if git is None:
         raise JovyKitError("git not found in PATH.")
+    run_git(root, "init")
+    return True
+
+
+def run_git(root: Path, *args: str) -> str:
+    """Run a git command in the project root."""
+    git = shutil.which("git")
+    if git is None:
+        raise JovyKitError("git not found in PATH.")
     result = subprocess.run(
-        [git, "init"],
+        [git, *args],
         cwd=root,
         check=False,
         stdout=subprocess.PIPE,
@@ -78,9 +87,26 @@ def init_git_repository(root: Path) -> bool:
         text=True,
     )
     if result.returncode != 0:
-        message = result.stdout.strip() or "git init failed."
+        command = " ".join(("git", *args))
+        message = result.stdout.strip() or f"{command} failed."
         raise JovyKitError(message)
-    return True
+    return result.stdout
+
+
+def commit_initial_project(root: Path, files: Sequence[Path]) -> None:
+    """Commit the files created by initialization."""
+    relative_files = [path.relative_to(root).as_posix() for path in files]
+    run_git(root, "add", "--", *relative_files)
+    run_git(
+        root,
+        "-c",
+        "user.name=JovyKit",
+        "-c",
+        "user.email=jovykit@users.noreply.github.com",
+        "commit",
+        "-m",
+        "Initialize JovyKit project",
+    )
 
 
 def init_project(
@@ -143,6 +169,17 @@ def init_project(
     devcontainer_file.write_text(render_devcontainer(resolved.name), encoding="utf-8")
     gitignore_file.write_text(render_gitignore(), encoding="utf-8")
     initialized_git = init_git_repository(resolved)
+    if initialized_git:
+        commit_initial_project(
+            resolved,
+            [
+                compose_file,
+                containerfile,
+                requirements_file,
+                devcontainer_file,
+                gitignore_file,
+            ],
+        )
     emit("Created compose.yaml")
     emit("Created Dockerfile")
     emit("Created requirements.txt")
@@ -152,6 +189,7 @@ def init_project(
     emit("Created .jupyter/")
     if initialized_git:
         emit("Initialized git repository")
+        emit("Committed initial project files")
     return resolved
 
 
