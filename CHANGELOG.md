@@ -7,6 +7,15 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.5.0 - 2026-05-21
+
+### CLI
+
+- Add Pylance and quiet Jupyter port metadata to generated Dev Container
+  config.
+- Persist the VS Code Server directory in a named Dev Container volume for
+  faster reconnects without baking editor-specific server binaries into images.
+
 ## 8.4.0 - 2026-05-21
 
 ### Images
