@@ -30,16 +30,23 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Configure GitHub credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh auth setup-git
+
       - name: Checkout wiki
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo || {
+          git clone "https://github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo || {
             echo "::error::The GitHub Wiki git repository is not available yet. Create the first wiki page once, then rerun this workflow."
             exit 1
           }
 
       - name: Sync wiki pages
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           rsync -av --delete --exclude .git wiki/ wiki-repo/
           cd wiki-repo
