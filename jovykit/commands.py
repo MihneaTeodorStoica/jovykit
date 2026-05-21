@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import webbrowser
@@ -10,12 +11,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import yaml
 
 from jovykit import docker_install, runtime
-from jovykit.config import DEFAULT_JUPYTER_TOKEN, JovyKitError
+from jovykit.config import (
+    JovyKitError,
+    generate_default_jupyter_token,
+)
 from jovykit.images import (
     DEFAULT_PYTHON_VERSION,
     IMAGE_LEVELS,
@@ -45,6 +49,7 @@ from jovykit.templates import (
 
 Emitter = Callable[[str], None]
 VALID_GPU = ("none", "all")
+_REQUIREMENT_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]*(?:[A-Za-z0-9])?")
 
 
 @dataclass(frozen=True)
@@ -116,13 +121,14 @@ def init_project(
     python_version: str = DEFAULT_PYTHON_VERSION,
     gpu: str | None = None,
     port: int = 8888,
-    token: str = DEFAULT_JUPYTER_TOKEN,
+    token: str | None = None,
     force: bool = False,
     emit: Emitter = noop_emit,
 ) -> Path:
     """Create a Compose-first JovyKit project."""
     resolved = project_root(root)
     gpu = detect_gpu_mode() if gpu is None else gpu
+    token = generate_default_jupyter_token() if token is None else token
     if gpu not in VALID_GPU:
         raise JovyKitError("GPU must be one of: none, all.")
     if legacy_config_path(resolved).exists():
@@ -276,6 +282,7 @@ def add_packages(
     packages: Sequence[str],
     *,
     root: Path | None = None,
+    allow_unsafe_requirement: bool = False,
     emit: Emitter = noop_emit,
 ) -> None:
     """Add dependencies to requirements.txt."""
@@ -292,7 +299,9 @@ def add_packages(
         spec = package.strip()
         if not spec:
             continue
-        name = _dependency_name(spec)
+        name = _validate_requirement_spec(
+            spec, allow_unsafe_requirement=allow_unsafe_requirement
+        )
         if name not in existing:
             lines.append(spec)
             existing.add(name)
@@ -347,7 +356,10 @@ def load_project_settings(root: Path | None = None) -> ProjectSettings:
     ) or python_version_from_image(base_image)
     gpu = _read_gpu_mode(service)
     port = _read_port(service)
-    token = _read_environment_value(service, "JUPYTER_TOKEN") or DEFAULT_JUPYTER_TOKEN
+    token = (
+        _read_environment_value(service, "JUPYTER_TOKEN")
+        or generate_default_jupyter_token()
+    )
     return ProjectSettings(
         level=level,
         python_version=python_version,
@@ -421,18 +433,63 @@ def _save_requirements(root: Path | None, lines: list[str]) -> None:
 
 def _requirement_spec(line: str) -> str | None:
     stripped = line.strip()
-    if not stripped or stripped.startswith(("#", "-")):
+    if not stripped or stripped.startswith("#"):
         return None
     return stripped.split(" #", 1)[0].strip()
 
 
 def _dependency_name(spec: str) -> str:
     spec = spec.split(" #", 1)[0].strip()
+    if "@" in spec:
+        spec = spec.split("@", 1)[0].strip()
     for separator in ("==", ">=", "<=", "!=", "~=", "=", ">", "<"):
         if separator in spec:
             spec = spec.split(separator, 1)[0]
             break
     return spec.split("[", 1)[0].strip().lower()
+
+
+def _looks_like_url(spec: str) -> bool:
+    parsed = urlparse(spec)
+    return bool(parsed.scheme and parsed.netloc)
+
+
+def _looks_like_local_path(spec: str) -> bool:
+    return bool(
+        spec.startswith(("/", "./", "../", "~"))
+        or re.search(r"[\\/]", spec)
+        or spec.startswith("-")
+    )
+
+
+def _is_unsafe_requirement(spec: str) -> bool:
+    if spec.startswith("-"):
+        return True
+    if _looks_like_url(spec):
+        return True
+    if "@" in spec:
+        _, _, reference = spec.partition("@")
+        if _looks_like_url(reference.strip()) or _looks_like_local_path(
+            reference.strip()
+        ):
+            return True
+    if _looks_like_local_path(spec):
+        return True
+    return False
+
+
+def _validate_requirement_spec(spec: str, *, allow_unsafe_requirement: bool) -> str:
+    if _is_unsafe_requirement(spec):
+        if not allow_unsafe_requirement:
+            raise JovyKitError(
+                "Unsafe requirements are disabled by default. "
+                "Use --allow-unsafe-requirement or --raw."
+            )
+        return _dependency_name(spec)
+    name = _dependency_name(spec)
+    if not _REQUIREMENT_NAME_RE.fullmatch(name):
+        raise JovyKitError(f"Invalid requirement name: {name!r}")
+    return name
 
 
 def _read_build_arg(args: object, name: str) -> str | None:
@@ -483,7 +540,10 @@ def jupyter_url(root: Path | None = None) -> str:
     resolved = ensure_compose_project(root)
     data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
     service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
-    token = _read_environment_value(service, "JUPYTER_TOKEN") or DEFAULT_JUPYTER_TOKEN
+    token = (
+        _read_environment_value(service, "JUPYTER_TOKEN")
+        or generate_default_jupyter_token()
+    )
     query = urlencode({"token": token})
     for port in service.get("ports", []) or []:
         parts = str(port).split(":")

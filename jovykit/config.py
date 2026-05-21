@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-DEFAULT_JUPYTER_TOKEN = "jovykit"
+import secrets
+
+
+def generate_default_jupyter_token() -> str:
+    """Generate a random default Jupyter token."""
+    return secrets.token_hex(16)
 
 
 class JovyKitError(RuntimeError):

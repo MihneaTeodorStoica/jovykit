@@ -17,24 +17,33 @@ def test_ubuntu_plan_matches_official_repository_flow() -> None:
     assert plan.supported is True
     assert plan.distro == "ubuntu"
     assert (
-        "sudo apt remove -y $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc | cut -f1)"
-        in plan.commands
-    )
+        "sudo",
+        "apt",
+        "remove",
+        "-y",
+        "docker.io",
+        "docker-compose",
+        "docker-compose-v2",
+        "docker-doc",
+        "podman-docker",
+        "containerd",
+        "runc",
+    ) in plan.commands
     assert (
-        "sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc"
-        in plan.commands
-    )
+        "sudo",
+        "curl",
+        "-fsSL",
+        "https://download.docker.com/linux/ubuntu/gpg",
+        "-o",
+        "/etc/apt/keyrings/docker.asc",
+    ) in plan.commands
     assert any(
-        "URIs: https://download.docker.com/linux/ubuntu" in command
+        "URIs: https://download.docker.com/linux/ubuntu" in " ".join(command)
         for command in plan.commands
     )
-    assert any(
-        'Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")'
-        in command
-        for command in plan.commands
-    )
-    assert "sudo systemctl enable --now docker" in plan.commands
-    assert plan.commands[-1] == "docker run hello-world"
+    assert any("Suites: " in " ".join(command) for command in plan.commands)
+    assert ("sudo", "systemctl", "enable", "--now", "docker") in plan.commands
+    assert plan.commands[-1] == ("docker", "run", "hello-world")
 
 
 def test_debian_plan_uses_debian_codename() -> None:
@@ -47,18 +56,22 @@ def test_debian_plan_uses_debian_codename() -> None:
     )
 
     assert (
-        "apt remove -y $(dpkg --get-selections docker.io docker-compose docker-doc podman-docker containerd runc | cut -f1)"
-        in plan.commands
-    )
+        "apt",
+        "remove",
+        "-y",
+        "docker.io",
+        "docker-compose",
+        "docker-doc",
+        "podman-docker",
+        "containerd",
+        "runc",
+    ) in plan.commands
     assert any(
-        "URIs: https://download.docker.com/linux/debian" in command
+        "URIs: https://download.docker.com/linux/debian" in " ".join(command)
         for command in plan.commands
     )
-    assert any(
-        'Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")' in command
-        for command in plan.commands
-    )
-    assert "docker run hello-world" not in plan.commands
+    assert any("Suites: " in " ".join(command) for command in plan.commands)
+    assert ("docker", "run", "hello-world") not in plan.commands
 
 
 def test_fedora_plan_uses_addrepo_command() -> None:
@@ -70,10 +83,14 @@ def test_fedora_plan_uses_addrepo_command() -> None:
     )
 
     assert (
-        "sudo dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo"
-        in plan.commands
-    )
-    assert "sudo systemctl enable --now docker" in plan.commands
+        "sudo",
+        "dnf",
+        "config-manager",
+        "addrepo",
+        "--from-repofile",
+        "https://download.docker.com/linux/fedora/docker-ce.repo",
+    ) in plan.commands
+    assert ("sudo", "systemctl", "enable", "--now", "docker") in plan.commands
 
 
 def test_rhel_and_centos_are_supported() -> None:
@@ -90,8 +107,13 @@ def test_rhel_and_centos_are_supported() -> None:
         has_systemd=True,
     )
 
-    assert any("linux/rhel/docker-ce.repo" in command for command in rhel.commands)
-    assert any("linux/centos/docker-ce.repo" in command for command in centos.commands)
+    assert any(
+        "linux/rhel/docker-ce.repo" in " ".join(command) for command in rhel.commands
+    )
+    assert any(
+        "linux/centos/docker-ce.repo" in " ".join(command)
+        for command in centos.commands
+    )
 
 
 def test_macos_and_windows_are_manual_guides() -> None:
@@ -110,7 +132,7 @@ def test_dry_run_does_not_execute(monkeypatch: pytest.MonkeyPatch) -> None:
         "ubuntu",
         True,
         docker_install.GUIDES["linux"],
-        ("echo install",),
+        (("echo", "install"),),
     )
     monkeypatch.setattr(docker_install, "build_install_plan", lambda **kwargs: plan)
 
@@ -130,18 +152,18 @@ def test_yes_executes_commands(monkeypatch: pytest.MonkeyPatch) -> None:
         "ubuntu",
         True,
         docker_install.GUIDES["linux"],
-        ("echo one", "echo two"),
+        (("echo", "one"), ("echo", "two")),
     )
     monkeypatch.setattr(docker_install, "build_install_plan", lambda **kwargs: plan)
-    calls: list[str] = []
+    calls: list[tuple[str, ...]] = []
 
-    def runner(command: str) -> int:
+    def runner(command: tuple[str, ...]) -> int:
         calls.append(command)
         return 0
 
     docker_install.install_docker(yes=True, runner=runner)
 
-    assert calls == ["echo one", "echo two"]
+    assert calls == [("echo", "one"), ("echo", "two")]
 
 
 def test_yes_rejects_unsupported_os(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,3 +178,19 @@ def test_yes_rejects_unsupported_os(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(JovyKitError, match="not supported"):
         docker_install.install_docker(yes=True)
+
+
+def test_malicious_os_release_values_do_not_inject_shell() -> None:
+    plan = docker_install.build_install_plan(
+        system="Linux",
+        os_release={"ID": "ubuntu", "UBUNTU_CODENAME": "stable$(id -un)"},
+        is_root=True,
+        has_systemd=False,
+        skip_hello_world=True,
+    )
+
+    source_command = next(
+        command for command in plan.commands if "docker.sources" in " ".join(command)
+    )
+    assert "stable$(id -un)" in " ".join(source_command)
+    assert source_command[0] in {"python3", "sudo"}

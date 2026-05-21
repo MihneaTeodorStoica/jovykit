@@ -148,6 +148,43 @@ def test_help_is_compose_first(run_cli) -> None:
     assert "clean" not in result.output
 
 
+def test_add_rejects_unsafe_requirement_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_cli(["init"])
+
+    result = run_cli(["add", "git+https://example.com/repo.git"], expected_code=1)
+
+    assert "Unsafe requirements are disabled by default" in result.output
+    assert (tmp_path / "requirements.txt").read_text() == ""
+
+
+def test_add_accepts_unsafe_requirement_with_raw_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_cli(["init"])
+
+    result = run_cli(["add", "--raw", "git+https://example.com/repo.git"])
+
+    assert "Added git+https://example.com/repo.git" in result.output
+    assert (
+        tmp_path / "requirements.txt"
+    ).read_text() == "git+https://example.com/repo.git\n"
+
+
+def test_add_accepts_unsafe_requirement_with_allow_unsafe_requirement_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_cli(["init"])
+
+    run_cli(["add", "--allow-unsafe-requirement", "./local/path"])
+
+    assert (tmp_path / "requirements.txt").read_text().splitlines() == ["./local/path"]
+
+
 def test_install_docker_command_defaults_to_dry_run(
     monkeypatch: pytest.MonkeyPatch, run_cli
 ) -> None:

@@ -93,12 +93,7 @@ RUN cat >> "${HOME}/.bashrc" <<'SH' && \
     chown "${NB_UID}:${NB_GID}" "${HOME}/.bashrc"
 # >>> vscode python
 # version: 0.1.1
-if [ -z "$VSCODE_PYTHON_AUTOACTIVATE_GUARD" ]; then
-    export VSCODE_PYTHON_AUTOACTIVATE_GUARD=1
-    if [ -n "$VSCODE_PYTHON_BASH_ACTIVATE" ] && [ "$TERM_PROGRAM" = "vscode" ]; then
-        eval "$VSCODE_PYTHON_BASH_ACTIVATE" || true
-    fi
-fi
+# shell auto-activation uses VS Code-managed Python integration.
 # <<< vscode python
 SH
 
@@ -106,7 +101,7 @@ USER ${NB_UID}
 WORKDIR "${HOME}"
 EXPOSE 8888
 ENTRYPOINT ["tini", "-g", "--"]
-CMD ["sh", "-lc", "exec /opt/jovy/bin/jupyter lab --ip=0.0.0.0 --port=${JUPYTER_PORT} --no-browser --ServerApp.token=${JUPYTER_TOKEN:-jovykit} --ServerApp.password=''"]
+CMD ["sh", "-lc", "exec /opt/jovy/bin/jupyter lab --ip=0.0.0.0 --port=${JUPYTER_PORT} --no-browser --ServerApp.token=${JUPYTER_TOKEN} --ServerApp.password=''"]
 
 FROM minimal AS base
 

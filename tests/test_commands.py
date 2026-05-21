@@ -303,7 +303,7 @@ def test_save_project_settings_rejects_invalid_port(tmp_path: Path) -> None:
             python_version="3.13",
             gpu="none",
             port=70000,
-            token="jovykit",
+            token="invalid-port",
         )
 
 
@@ -338,6 +338,53 @@ def test_add_packages_updates_requirements_txt(tmp_path: Path) -> None:
         "Added scikit-learn",
         "Saved requirements.txt",
     ]
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "git+https://example.com/repo.git",
+        "./local/path",
+        "mypkg @ git+https://example.com/repo.git",
+    ],
+)
+def test_add_packages_rejects_unsafe_requirement_spec(
+    tmp_path: Path, spec: str
+) -> None:
+    commands.init_project(tmp_path, gpu="none")
+
+    with pytest.raises(JovyKitError, match="Unsafe requirements are disabled"):
+        commands.add_packages([spec], root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "git+https://example.com/repo.git",
+        "./local/path",
+        "mypkg @ git+https://example.com/repo.git",
+    ],
+)
+def test_add_packages_allows_unsafe_requirement_spec(tmp_path: Path, spec: str) -> None:
+    messages: list[str] = []
+    commands.init_project(tmp_path, gpu="none")
+
+    commands.add_packages(
+        [spec], root=tmp_path, allow_unsafe_requirement=True, emit=messages.append
+    )
+
+    assert (tmp_path / "requirements.txt").read_text().splitlines() == [spec]
+    assert messages == [f"Added {spec}", "Saved requirements.txt"]
+
+
+@pytest.mark.parametrize("spec", ["1invalid", "my pkg"])
+def test_add_packages_rejects_invalid_requirement_name(
+    tmp_path: Path, spec: str
+) -> None:
+    commands.init_project(tmp_path, gpu="none")
+
+    with pytest.raises(JovyKitError, match="Invalid requirement name"):
+        commands.add_packages([spec], root=tmp_path)
 
 
 def test_remove_packages_updates_requirements_txt(tmp_path: Path) -> None:
