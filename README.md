@@ -101,6 +101,8 @@ jovy add pandas scikit-learn
 jovy build
 jovy watch
 jovy logs -f
+jovy token show
+jovy token rotate
 jovy status
 jovy shell
 jovy down
