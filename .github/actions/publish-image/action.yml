@@ -37,6 +37,10 @@ runs:
             description="$IMAGE_DESCRIPTION_FULL"
             parent_target="extended"
             ;;
+          *)
+            echo "Invalid target '${{ inputs.target }}'"
+            exit 2
+            ;;
         esac
 
         image_name="jovykit"
@@ -102,6 +106,7 @@ runs:
         build-args: |
           PYTHON_VERSION=${{ inputs.python-version }}
         push: ${{ inputs.push }}
+        load: ${{ inputs.push != 'true' }}
         tags: |
           ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -110,6 +115,21 @@ runs:
         sbom: false
         cache-from: ${{ steps.plan.outputs.cache-from }}
         cache-to: ${{ inputs.push == 'true' && steps.plan.outputs.cache-to || '' }}
+
+    - name: Scan built image
+      shell: bash
+      run: |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v /tmp/trivy-cache:/root/.cache \
+          --userns=host \
+          aquasec/trivy:latest \
+          image \
+          --exit-code 0 \
+          --ignore-unfixed \
+          --no-progress \
+          --severity HIGH,CRITICAL \
+          "${{ steps.build.outputs.imageid }}"
 
     - name: Attest image provenance
       if: inputs.push == 'true'

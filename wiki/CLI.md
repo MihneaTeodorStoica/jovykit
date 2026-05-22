@@ -30,6 +30,7 @@ jovy
 jovy init [--image-level LEVEL] [--python VERSION] [--gpu MODE] [--port PORT] [--token TOKEN]
 jovy add PACKAGE [PACKAGE...]
 jovy remove PACKAGE [PACKAGE...]
+jovy upgrade [--image-level LEVEL] [--python VERSION] [--gpu MODE] [--port PORT] [--token TOKEN] [--dry-run]
 jovy up [ARGS...]
 jovy down [ARGS...]
 jovy start [ARGS...]

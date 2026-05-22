@@ -68,7 +68,7 @@ jobs:
   images:
     name: image ${{ matrix.target }} py${{ matrix.python-version }}
     needs: define-images
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     permissions:
       contents: read

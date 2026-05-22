@@ -170,6 +170,105 @@ def test_init_project_fails_when_git_is_missing(
         commands.init_project(tmp_path, gpu="none")
 
 
+def test_init_project_auto_port_resolves_conflict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_is_free_port(port: int, host: str = "127.0.0.1") -> bool:
+        del host
+        return port != 8888
+
+    monkeypatch.setattr(commands, "_is_free_port", fake_is_free_port)
+
+    messages: list[str] = []
+
+    commands.init_project(
+        tmp_path,
+        gpu="none",
+        port="auto",
+        emit=messages.append,
+    )
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    selected_port = compose["services"]["jovy"]["ports"][0].split(":")[1]
+    assert selected_port != "8888"
+    assert any(message.startswith("Warning: selected port") for message in messages)
+
+
+def test_init_project_rejects_invalid_port(tmp_path: Path) -> None:
+    with pytest.raises(JovyKitError, match="Port must be one of"):
+        commands.init_project(tmp_path, gpu="none", port="not-a-number")
+
+    with pytest.raises(JovyKitError, match="Port must be between"):
+        commands.init_project(tmp_path, gpu="none", port=70000)
+
+
+def test_status_reports_running_container_state_and_machine_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    commands.init_project(
+        tmp_path, gpu="none", token="explicit-token", python_version="3.11"
+    )
+    compose_ps_payload = json.dumps(
+        [
+            {
+                "Name": f"{tmp_path.name}-jovy-1",
+                "Service": "jovy",
+                "State": "running",
+                "Image": "custom-image",
+            }
+        ]
+    )
+
+    def fake_compose_ps(_: Path) -> str:
+        return compose_ps_payload
+
+    monkeypatch.setattr(commands.runtime, "compose_ps", fake_compose_ps)
+    payload = json.loads(commands.status(root=tmp_path, json_output=True))
+
+    assert payload["container_state"] == "running"
+    assert payload["image"] == "custom-image"
+    assert payload["compose_file"] == str(tmp_path / "compose.yaml")
+    assert payload["token_source"] == "compose"
+    assert payload["token"] == "***"
+
+
+def test_status_reports_stopped_when_no_matching_service(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    commands.init_project(
+        tmp_path, gpu="none", token="explicit-token", python_version="3.11"
+    )
+
+    def fake_empty_compose_ps(_: Path) -> str:
+        return "[]"
+
+    monkeypatch.setattr(commands.runtime, "compose_ps", fake_empty_compose_ps)
+
+    payload = json.loads(commands.status(root=tmp_path, json_output=True))
+
+    assert payload["container_state"] == "stopped"
+    assert payload["error"] is None
+
+
+def test_status_reports_error_when_compose_ps_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    commands.init_project(
+        tmp_path, gpu="none", token="explicit-token", python_version="3.11"
+    )
+
+    def fake_compose_ps(_: Path) -> str:
+        raise commands.JovyKitError("compose failed")
+
+    monkeypatch.setattr(commands.runtime, "compose_ps", fake_compose_ps)
+
+    payload = json.loads(commands.status(root=tmp_path, json_output=True))
+
+    assert payload["container_state"] == "error"
+    assert payload["error"] == "compose failed"
+    assert payload["image"] == "ghcr.io/mihneateodorstoica/jovykit:base-python-3.11"
+
+
 def test_jupyter_url_reads_compose_port(tmp_path: Path) -> None:
     commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
 
@@ -195,6 +294,16 @@ def test_jupyter_url_rejects_missing_host_port(tmp_path: Path) -> None:
     (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
 
     with pytest.raises(JovyKitError, match="Malformed compose.yaml port mapping"):
+        commands.jupyter_url(tmp_path)
+
+
+def test_jupyter_url_rejects_out_of_range_host_port(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["ports"] = ["127.0.0.1:70000:8888"]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="out-of-range host port"):
         commands.jupyter_url(tmp_path)
 
 
@@ -278,33 +387,39 @@ def test_doctor_reports_unavailable_compose_and_daemon(
 
 
 def test_status_returns_error_state_on_invalid_json(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    commands.init_project(tmp_path, gpu="none", python_version="3.11")
     monkeypatch.setattr(
         commands.runtime, "compose_ps", lambda _root: "this is not json"
     )
 
-    result = commands.status()
+    result = commands.status(root=tmp_path, json_output=True)
 
     payload = json.loads(result)
-    assert payload["state"] == "error"
-    assert payload["message"] == "this is not json"
+    assert payload["container_state"] == "error"
+    assert payload["error"] == "compose ps output is not valid JSON"
 
 
 def test_status_returns_error_state_on_docker_daemon_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    commands.init_project(tmp_path, gpu="none", python_version="3.11")
     monkeypatch.setattr(
         commands.runtime,
         "compose_ps",
-        lambda _root: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+        lambda _root: (_ for _ in ()).throw(
+            commands.JovyKitError(
+                "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+            )
+        ),
     )
 
-    result = commands.status()
+    result = commands.status(root=tmp_path, json_output=True)
 
     payload = json.loads(result)
-    assert payload["state"] == "error"
-    assert "Cannot connect to the Docker daemon" in payload["message"]
+    assert payload["container_state"] == "error"
+    assert "Cannot connect to the Docker daemon" in payload["error"]
 
 
 def test_load_project_settings_reads_compose(tmp_path: Path) -> None:
@@ -337,6 +452,13 @@ def test_load_project_settings_rejects_missing_services(tmp_path: Path) -> None:
     (tmp_path / "compose.yaml").write_text("{}", encoding="utf-8")
 
     with pytest.raises(JovyKitError, match="services mapping"):
+        commands.load_project_settings(tmp_path)
+
+
+def test_load_project_settings_rejects_missing_jovy_service(tmp_path: Path) -> None:
+    (tmp_path / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="services\\.jovy mapping"):
         commands.load_project_settings(tmp_path)
 
 
@@ -416,6 +538,84 @@ def test_save_project_settings_rejects_blank_token(tmp_path: Path) -> None:
             port=8888,
             token="",
         )
+
+
+def test_upgrade_project_updates_level_python_gpu_port_and_token_without_recreating_requirements(
+    tmp_path: Path,
+) -> None:
+    messages: list[str] = []
+    commands.init_project(
+        tmp_path,
+        level="base",
+        python_version="3.11",
+        gpu="none",
+        port=7777,
+        token="old-token",
+    )
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("requests==2.31.0\n", encoding="utf-8")
+
+    commands.upgrade_project(
+        tmp_path,
+        level="extended",
+        python_version="3.12",
+        gpu="all",
+        port=9999,
+        token="new-token",
+        emit=messages.append,
+    )
+
+    assert commands.load_project_settings(tmp_path) == commands.ProjectSettings(
+        level="extended",
+        python_version="3.12",
+        gpu="all",
+        port=9999,
+        token="new-token",
+    )
+    assert (
+        "Upgraded to ghcr.io/mihneateodorstoica/jovykit:extended-python-3.12"
+        in messages
+    )
+    assert requirements.read_text() == "requests==2.31.0\n"
+
+
+def test_upgrade_project_rejects_incompatible_level_python_pair(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, level="base", python_version="3.11", gpu="none")
+
+    with pytest.raises(JovyKitError, match="support Python versions"):
+        commands.upgrade_project(tmp_path, level="full", python_version="3.14")
+
+
+def test_upgrade_project_dry_run_preserves_files(tmp_path: Path) -> None:
+    messages: list[str] = []
+    commands.init_project(
+        tmp_path,
+        level="base",
+        python_version="3.11",
+        gpu="none",
+        port=8080,
+        token="old-token",
+    )
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("numpy==1.26.4\n", encoding="utf-8")
+    compose_before = (tmp_path / "compose.yaml").read_text(encoding="utf-8")
+    docker_before = (tmp_path / "Dockerfile").read_text(encoding="utf-8")
+    requirements_before = requirements.read_text(encoding="utf-8")
+
+    commands.upgrade_project(
+        tmp_path,
+        level="minimal",
+        python_version="3.13",
+        port="auto",
+        dry_run=True,
+        emit=messages.append,
+    )
+
+    assert (tmp_path / "compose.yaml").read_text(encoding="utf-8") == compose_before
+    assert (tmp_path / "Dockerfile").read_text(encoding="utf-8") == docker_before
+    assert requirements.read_text(encoding="utf-8") == requirements_before
+    assert any("Dry-run: image" in message for message in messages)
+    assert any("no files were changed" in message.lower() for message in messages)
 
 
 def test_add_packages_updates_requirements_txt(tmp_path: Path) -> None:

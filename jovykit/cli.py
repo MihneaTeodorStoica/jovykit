@@ -61,7 +61,8 @@ HELP_SECTIONS = (
             ("init [OPTIONS]", "Write compose.yaml, Dockerfile, requirements.txt."),
             ("add PACKAGE [PACKAGE...]", "Add Python packages to requirements.txt."),
             ("remove PACKAGE [PACKAGE...]", "Remove Python packages."),
-            ("status", "Show short compose status."),
+            ("upgrade [OPTIONS]", "Upgrade image level, Python, and project options."),
+            ("status [OPTIONS]", "Show project status."),
             ("shell [COMMAND...]", "Exec in the service."),
             ("run COMMAND [ARGS...]", "Run one command in a fresh service container."),
             ("open", "Open JupyterLab."),
@@ -117,6 +118,9 @@ def _main(args: list[str]) -> int:
     if command == "remove":
         _remove(args[1:])
         return 0
+    if command == "upgrade":
+        _upgrade(args[1:])
+        return 0
     if command == "open":
         console.print(commands.open_browser())
         return 0
@@ -132,7 +136,7 @@ def _main(args: list[str]) -> int:
         )
         return handler(args[1:])
     if command == "status":
-        console.print(commands.status())
+        _status(args[1:])
         return 0
     if command == "shell":
         return commands.shell(args[1:])
@@ -189,7 +193,7 @@ def _init(args: list[str]) -> None:
         default=DEFAULT_PYTHON_VERSION,
     )
     parser.add_argument("--gpu", choices=tuple(commands.VALID_GPU), default=None)
-    parser.add_argument("--port", type=int, default=8888)
+    parser.add_argument("--port", default="8888")
     parser.add_argument("--token", default=None)
     parser.add_argument("--force", action="store_true")
     namespace = parser.parse_args(args)
@@ -230,6 +234,32 @@ def _remove(args: list[str]) -> None:
     commands.remove_packages(namespace.packages, emit=console.print)
 
 
+def _upgrade(args: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="jovy upgrade")
+    parser.add_argument(
+        "--image-level", "--level", dest="image_level", choices=tuple(IMAGE_LEVELS)
+    )
+    parser.add_argument(
+        "--python",
+        "--python-version",
+        dest="python_version",
+    )
+    parser.add_argument("--gpu", choices=tuple(commands.VALID_GPU))
+    parser.add_argument("--port")
+    parser.add_argument("--token")
+    parser.add_argument("--dry-run", action="store_true")
+    namespace = parser.parse_args(args)
+    commands.upgrade_project(
+        level=namespace.image_level,
+        python_version=namespace.python_version,
+        gpu=namespace.gpu,
+        port=namespace.port,
+        token=namespace.token,
+        dry_run=namespace.dry_run,
+        emit=console.print,
+    )
+
+
 def _install_docker(args: list[str]) -> None:
     parser = argparse.ArgumentParser(prog="jovy install-docker")
     parser.add_argument("--dry-run", action="store_true")
@@ -243,6 +273,13 @@ def _install_docker(args: list[str]) -> None:
         skip_hello_world=namespace.skip_hello_world,
         emit=console.print,
     )
+
+
+def _status(args: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="jovy status")
+    parser.add_argument("--json", action="store_true")
+    namespace = parser.parse_args(args)
+    console.print(commands.status(json_output=namespace.json))
 
 
 if __name__ == "__main__":

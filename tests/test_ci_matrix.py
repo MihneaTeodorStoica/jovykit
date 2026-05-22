@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -65,6 +66,31 @@ def test_python_ci_runs_supported_host_versions() -> None:
     assert versions == ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
 
+def test_python_ci_audits_all_dependency_manifests() -> None:
+    workflow = yaml.safe_load(
+        Path(".github/workflows/ci-release.yml").read_text(encoding="utf-8")
+    )
+    python_job = workflow["jobs"]["python"]
+    steps = python_job["steps"]
+
+    package_step = next(
+        step for step in steps if step["name"] == "Audit package dependency manifest"
+    )
+    manifest_step = next(
+        step for step in steps if step["name"] == "Audit Python dependency manifests"
+    )
+
+    assert package_step["run"].strip() == "pip-audit ."
+    assert "requirements.txt" in manifest_step["run"]
+    assert "requirements-dev.txt" in manifest_step["run"]
+    assert "image/requirements.txt" in manifest_step["run"]
+    assert "image/requirements-base.txt" in manifest_step["run"]
+    assert "image/requirements-minimal.txt" in manifest_step["run"]
+    assert "image/requirements-extended.txt" in manifest_step["run"]
+    assert "image/requirements-full.txt" in manifest_step["run"]
+    assert "--ignore-vuln CVE-2025-69872" in manifest_step["run"]
+
+
 def test_image_workflow_builds_supported_image_versions(tmp_path: Path) -> None:
     workflow = yaml.safe_load(
         Path(".github/workflows/images.yml").read_text(encoding="utf-8")
@@ -76,6 +102,7 @@ def test_image_workflow_builds_supported_image_versions(tmp_path: Path) -> None:
     for item in matrix:
         targets.setdefault(item["target"], []).append(item["python-version"])
 
+    assert workflow["jobs"]["images"]["runs-on"] == "self-hosted"
     assert image_strategy["max-parallel"] == 6
     assert publish_jobs == {}
     assert (
@@ -169,6 +196,7 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
         == "${{ github.event_name != 'pull_request' }}"
     )
     assert action_build_step["with"]["push"] == "${{ inputs.push }}"
+    assert action_build_step["with"]["load"] == "${{ inputs.push != 'true' }}"
     assert (
         action_build_step["with"]["cache-from"]
         == "${{ steps.plan.outputs.cache-from }}"
@@ -201,6 +229,23 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     )
     assert "monthly-python" not in text
     assert 'if [ "${{ inputs.target }}" != "full" ]; then' in text
+
+
+def test_image_publish_action_fails_fast_on_invalid_target() -> None:
+    action_text = Path(".github/actions/publish-image/action.yml").read_text(
+        encoding="utf-8"
+    )
+    action = yaml.safe_load(action_text)
+    plan_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Plan image build"
+    )
+    run_text = plan_step["run"]
+
+    assert re.search(r"\n\s*\*\)\s*$", run_text, flags=re.M) is not None
+    assert "echo \"Invalid target '${{ inputs.target }}'" in run_text
+    assert re.search(r"\n\s*exit 2\s*$", run_text, flags=re.M) is not None
 
 
 def test_image_workflow_skips_heavy_nightly_targets(tmp_path: Path) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,24 @@ def test_init_auto_enables_detected_gpu(
     assert compose["services"]["jovy"]["gpus"] == "all"
 
 
+def test_init_auto_port_selects_free_port(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "none")
+
+    def fake_is_free_port(port: int, host: str = "127.0.0.1") -> bool:
+        del host
+        return port != 8888
+
+    monkeypatch.setattr(commands, "_is_free_port", fake_is_free_port)
+    result = run_cli(["init", str(tmp_path), "--port", "auto"])
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    selected_port = compose["services"]["jovy"]["ports"][0].split(":")[1]
+    assert selected_port != "8888"
+    assert "Warning: selected port" in result.output
+
+
 def test_help_is_compose_first(run_cli) -> None:
     result = run_cli(["--help"])
 
@@ -144,6 +163,7 @@ def test_help_is_compose_first(run_cli) -> None:
     assert "jovy config" in result.output
     assert "jovy compose COMMAND" in result.output
     assert "jovy add PACKAGE" in result.output
+    assert "jovy upgrade" in result.output
     assert "destroy" not in result.output
     assert "clean" not in result.output
 
@@ -241,3 +261,75 @@ def test_install_docker_command_can_execute(
 
     assert called["yes"] is True
     assert called["skip_hello_world"] is False
+
+
+def test_status_json_outputs_machine_readable_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    compose_ps_payload = json.dumps(
+        [
+            {
+                "Name": "project-jovy-1",
+                "Service": "jovy",
+                "State": "running",
+                "Image": "ghcr.io/mihneateodorstoica/jovykit:base-python-3.11",
+            }
+        ]
+    )
+    monkeypatch.setattr(commands.runtime, "compose_ps", lambda _: compose_ps_payload)
+    commands.init_project(
+        tmp_path,
+        python_version="3.11",
+        gpu="none",
+        token="explicit-token",
+    )
+    result = run_cli(["status", "--json"], expected_code=0)
+
+    payload = json.loads(result.output)
+    assert payload["container_state"] == "running"
+    assert payload["url"] == "http://127.0.0.1:8888/lab?token=%2A%2A%2A"
+    assert payload["image"] == "ghcr.io/mihneateodorstoica/jovykit:base-python-3.11"
+    assert payload["python_version"] == "3.11"
+    assert payload["level"] == "base"
+    assert payload["gpu"] == "none"
+    assert payload["port"] == 8888
+    assert payload["token_source"] == "compose"
+    assert payload["compose_file"] == str(tmp_path / "compose.yaml")
+    assert payload["token"] == "***"
+
+
+def test_upgrade_command_dispatches_options(
+    monkeypatch: pytest.MonkeyPatch,
+    run_cli,
+) -> None:
+    called: dict[str, object] = {}
+
+    def fake_upgrade_project(**kwargs: object) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(commands, "upgrade_project", fake_upgrade_project)
+
+    run_cli(
+        [
+            "upgrade",
+            "--image-level",
+            "extended",
+            "--python",
+            "3.12",
+            "--gpu",
+            "all",
+            "--port",
+            "9999",
+            "--token",
+            "x",
+            "--dry-run",
+        ]
+    )
+
+    assert called["level"] == "extended"
+    assert called["python_version"] == "3.12"
+    assert called["gpu"] == "all"
+    assert called["port"] == "9999"
+    assert called["token"] == "x"
+    assert called["dry_run"] is True

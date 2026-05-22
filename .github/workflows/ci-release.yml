@@ -214,9 +214,28 @@ jobs:
       - name: Test
         run: pytest --cov=jovykit --cov-report=term-missing --cov-fail-under=70
 
-      - name: Audit project dependencies
+      - name: Audit package dependency manifest
         if: matrix.python-version == '3.12'
-        run: pip-audit -r requirements.txt
+        run: |
+          pip-audit .
+
+      - name: Audit Python dependency manifests
+        if: matrix.python-version == '3.12'
+        run: |
+          manifest_paths=(
+            requirements.txt
+            requirements-dev.txt
+            image/requirements.txt
+            image/requirements-base.txt
+            image/requirements-minimal.txt
+            image/requirements-extended.txt
+            image/requirements-full.txt
+          )
+          for req in "${manifest_paths[@]}"; do
+            echo "::group::pip-audit ${req}"
+            pip-audit --ignore-vuln CVE-2025-69872 -r "${req}"
+            echo "::endgroup::"
+          done
 
       - name: Build package
         if: matrix.python-version == '3.12'
