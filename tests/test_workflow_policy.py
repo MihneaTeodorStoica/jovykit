@@ -62,3 +62,22 @@ def test_workflows_pin_actions_to_full_shas_with_comments() -> None:
                 )
 
     assert offenders == []
+
+
+def test_ci_release_uses_pinned_release_requirements() -> None:
+    workflow_text = Path(".github/workflows/ci-release.yml").read_text(encoding="utf-8")
+    assert "python -m pip install -r requirements-release.txt" in workflow_text
+    assert "python -m pip install build twine" not in workflow_text
+
+    release_requirements = (
+        Path("requirements-release.txt").read_text(encoding="utf-8").splitlines()
+    )
+    tool_versions = {
+        line.split("==", 1)[0].strip(): line.strip()
+        for line in release_requirements
+        if line.strip() and not line.startswith("#")
+    }
+    assert "build" in tool_versions
+    assert "twine" in tool_versions
+    assert tool_versions["build"] == "build==1.5.0"
+    assert tool_versions["twine"] == "twine==6.2.0"
