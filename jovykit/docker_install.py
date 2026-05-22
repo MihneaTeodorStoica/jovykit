@@ -185,29 +185,25 @@ def _linux_commands(
 ) -> tuple[Command, ...] | None:
     if distro in {"ubuntu", "debian"}:
         old_packages = (
-            (
-                "docker.io",
-                "docker-compose",
-                "docker-compose-v2",
-                "docker-doc",
-                "podman-docker",
-                "containerd",
-                "runc",
-            )
-            if distro == "ubuntu"
-            else (
-                "docker.io",
-                "docker-compose",
-                "docker-doc",
-                "podman-docker",
-                "containerd",
-                "runc",
-            )
-        )
+            "docker.io",
+            "docker-compose",
+            "docker-doc",
+            "podman-docker",
+            "containerd",
+            "runc",
+        ) + (("docker-compose-v2",) if distro == "ubuntu" else ())
         suite = _linux_suite(os_release, distro)
         architecture = _docker_architecture()
+        old_package_selection = " ".join(shlex.quote(pkg) for pkg in old_packages)
         return (
-            (*sudo, "apt", "remove", "-y", *old_packages),
+            (
+                *sudo,
+                "sh",
+                "-c",
+                "dpkg --get-selections "
+                + old_package_selection
+                + " | awk '$2==\"install\"{print $1}' | xargs -r apt remove -y",
+            ),
             (*sudo, "apt", "update"),
             (*sudo, "apt", "install", "-y", "ca-certificates", "curl"),
             (*sudo, "install", "-m", "0755", "-d", "/etc/apt/keyrings"),

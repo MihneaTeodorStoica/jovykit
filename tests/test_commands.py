@@ -178,6 +178,50 @@ def test_jupyter_url_reads_compose_port(tmp_path: Path) -> None:
     )
 
 
+def test_jupyter_url_rejects_invalid_host_port(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["ports"] = ["127.0.0.1:not-a-port:8888"]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="Malformed compose.yaml port mapping"):
+        commands.jupyter_url(tmp_path)
+
+
+def test_jupyter_url_rejects_missing_host_port(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["ports"] = ["127.0.0.1::8888"]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="Malformed compose.yaml port mapping"):
+        commands.jupyter_url(tmp_path)
+
+
+def test_jupyter_url_uses_default_when_container_port_is_not_jupyter(
+    tmp_path: Path,
+) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["ports"] = ["127.0.0.1:9999:9999"]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+
+    assert (
+        commands.jupyter_url(tmp_path) == "http://127.0.0.1:8888/lab?token=secret-token"
+    )
+
+
+def test_jupyter_url_accepts_ipv6_host_port_mapping(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["ports"] = ["[::1]:7777:8888"]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+
+    assert (
+        commands.jupyter_url(tmp_path) == "http://127.0.0.1:7777/lab?token=secret-token"
+    )
+
+
 def test_jupyter_url_encodes_token(tmp_path: Path) -> None:
     commands.init_project(tmp_path, gpu="none", port=9999, token="a/b+c")
 
@@ -233,6 +277,36 @@ def test_doctor_reports_unavailable_compose_and_daemon(
     assert "setup: run jovy install-docker --dry-run" in lines
 
 
+def test_status_returns_error_state_on_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        commands.runtime, "compose_ps", lambda _root: "this is not json"
+    )
+
+    result = commands.status()
+
+    payload = json.loads(result)
+    assert payload["state"] == "error"
+    assert payload["message"] == "this is not json"
+
+
+def test_status_returns_error_state_on_docker_daemon_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        commands.runtime,
+        "compose_ps",
+        lambda _root: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+    )
+
+    result = commands.status()
+
+    payload = json.loads(result)
+    assert payload["state"] == "error"
+    assert "Cannot connect to the Docker daemon" in payload["message"]
+
+
 def test_load_project_settings_reads_compose(tmp_path: Path) -> None:
     commands.init_project(
         tmp_path,
@@ -250,6 +324,29 @@ def test_load_project_settings_reads_compose(tmp_path: Path) -> None:
         port=9999,
         token="secret-token",
     )
+
+
+def test_load_project_settings_rejects_non_mapping_compose_root(tmp_path: Path) -> None:
+    (tmp_path / "compose.yaml").write_text("- item\n", encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="top-level mapping"):
+        commands.load_project_settings(tmp_path)
+
+
+def test_load_project_settings_rejects_missing_services(tmp_path: Path) -> None:
+    (tmp_path / "compose.yaml").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(JovyKitError, match="services mapping"):
+        commands.load_project_settings(tmp_path)
+
+
+def test_load_project_settings_rejects_scalar_jovy_service(tmp_path: Path) -> None:
+    (tmp_path / "compose.yaml").write_text(
+        "services:\n  jovy: false\n", encoding="utf-8"
+    )
+
+    with pytest.raises(JovyKitError, match="services\\.jovy mapping"):
+        commands.load_project_settings(tmp_path)
 
 
 def test_save_project_settings_updates_generated_files(tmp_path: Path) -> None:
@@ -326,16 +423,16 @@ def test_add_packages_updates_requirements_txt(tmp_path: Path) -> None:
     commands.init_project(tmp_path, gpu="none")
 
     commands.add_packages(
-        ["pandas", "scikit-learn"], root=tmp_path, emit=messages.append
+        ["requests>=2.31.0", "scikit-learn==1.4.2"], root=tmp_path, emit=messages.append
     )
 
     assert (tmp_path / "requirements.txt").read_text().splitlines() == [
-        "pandas",
-        "scikit-learn",
+        "requests>=2.31.0",
+        "scikit-learn==1.4.2",
     ]
     assert messages == [
-        "Added pandas",
-        "Added scikit-learn",
+        "Added requests>=2.31.0",
+        "Added scikit-learn==1.4.2",
         "Saved requirements.txt",
     ]
 
@@ -346,6 +443,9 @@ def test_add_packages_updates_requirements_txt(tmp_path: Path) -> None:
         "git+https://example.com/repo.git",
         "./local/path",
         "mypkg @ git+https://example.com/repo.git",
+        "https://example.com/repo.whl",
+        "--extra-index-url https://example.com/simple",
+        "-e",
     ],
 )
 def test_add_packages_rejects_unsafe_requirement_spec(
@@ -385,6 +485,13 @@ def test_add_packages_rejects_invalid_requirement_name(
 
     with pytest.raises(JovyKitError, match="Invalid requirement name"):
         commands.add_packages([spec], root=tmp_path)
+
+
+def test_add_packages_rejects_option_like_unsafe_spec(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none")
+
+    with pytest.raises(JovyKitError, match="Unsafe requirements are disabled"):
+        commands.add_packages(["-r"], root=tmp_path)
 
 
 def test_remove_packages_updates_requirements_txt(tmp_path: Path) -> None:

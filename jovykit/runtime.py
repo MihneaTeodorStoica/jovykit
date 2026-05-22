@@ -41,14 +41,27 @@ def run_command(
 ) -> int:
     """Run a host command with optional line streaming."""
     require_docker()
+    command = list(args)
+    if not attached:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if check and result.returncode != 0:
+            raise DockerError(f"Command failed with exit code {result.returncode}.")
+        return result.returncode
+
     if log is None:
-        result = subprocess.run(list(args), cwd=cwd, check=False)
+        result = subprocess.run(command, cwd=cwd, check=False)
         if check and result.returncode != 0:
             raise DockerError(f"Command failed with exit code {result.returncode}.")
         return result.returncode
 
     process = subprocess.Popen(
-        list(args),
+        command,
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
