@@ -190,9 +190,7 @@ def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
     dockerfile = (IMAGE_DIR / "Dockerfile").read_text()
     full_stage = dockerfile.split("FROM extended AS full", 1)[1]
 
-    assert (
-        "FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim" in dockerfile
-    )
+    assert "FROM ${UV_BASE_IMAGE} AS minimal" in dockerfile
     assert "uv python install" not in dockerfile
     assert "--python /usr/local/bin/python" in dockerfile
     assert 'ln -sf "${VIRTUAL_ENV}/bin/jupyter" /usr/local/bin/jupyter' in dockerfile
