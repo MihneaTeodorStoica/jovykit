@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -278,6 +279,54 @@ def test_jupyter_url_reads_compose_port(tmp_path: Path) -> None:
     )
 
 
+def test_init_project_generates_urlsafe_random_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none")
+
+    token = commands.load_project_settings(tmp_path).token
+
+    assert len(token) >= 32
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", token)
+
+
+def test_rotate_token_updates_compose_and_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="old-token")
+    monkeypatch.setattr(commands, "generate_default_jupyter_token", lambda: "new-token")
+    messages: list[str] = []
+
+    url = commands.rotate_token(tmp_path, emit=messages.append)
+
+    assert commands.load_project_settings(tmp_path).token == "new-token"
+    assert url == "http://127.0.0.1:9999/lab?token=new-token"
+    assert messages == [
+        "Rotated Jupyter token.",
+        "Restart with: jovy down && jovy up -d",
+    ]
+
+
+def test_rotate_token_accepts_explicit_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", token="old-token")
+
+    commands.rotate_token(tmp_path, token="explicit-token")
+
+    assert commands.load_project_settings(tmp_path).token == "explicit-token"
+
+
+def test_show_token_prints_warning_url_and_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    lines: list[str] = []
+
+    url = commands.show_token(tmp_path, emit=lines.append)
+
+    assert url == "http://127.0.0.1:9999/lab?token=secret-token"
+    assert lines == [
+        "Warning: local Jupyter tokens grant access to this server.",
+        "url: http://127.0.0.1:9999/lab?token=secret-token",
+        "token: secret-token",
+    ]
+
+
 def test_jupyter_url_rejects_invalid_host_port(tmp_path: Path) -> None:
     commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
     compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
@@ -330,6 +379,71 @@ def test_jupyter_url_accepts_ipv6_host_port_mapping(tmp_path: Path) -> None:
     assert (
         commands.jupyter_url(tmp_path) == "http://127.0.0.1:7777/lab?token=secret-token"
     )
+
+
+def test_parse_compose_port_mapping_parses_ipv6_host() -> None:
+    host, host_port, container_port = commands._parse_compose_port_mapping(
+        "[::1]:7777:8888"
+    )
+    assert host == "::1"
+    assert host_port == 7777
+    assert container_port == 8888
+
+
+def test_doctor_security_reports_missing_token_and_loopback_bindings(
+    tmp_path: Path,
+) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["environment"] = {}
+    compose["services"]["jovy"]["ports"] = [
+        "127.0.0.1:7777:8888",
+        "[::1]:7778:8888",
+    ]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+    lines: list[str] = []
+
+    commands.doctor(root=tmp_path, security=True, emit=lines.append)
+
+    assert "security.token: missing" in lines
+    assert "security.bind: loopback-only" in lines
+    assert "security.docker: docker group grants root-equivalent host access" in lines
+    assert "security.jupyter: review before sharing" in lines
+
+
+def test_doctor_security_reports_exposed_bindings(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["ports"] = ["0.0.0.0:7777:8888"]
+    (tmp_path / "compose.yaml").write_text(yaml.safe_dump(compose), encoding="utf-8")
+    lines: list[str] = []
+
+    commands.doctor(root=tmp_path, security=True, emit=lines.append)
+
+    assert "security.token: present (rotate before sharing)" in lines
+    assert "security.bind: exposed (0.0.0.0:7777)" in lines
+
+
+def test_doctor_security_reports_weak_default_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="jupyter")
+    lines: list[str] = []
+
+    commands.doctor(root=tmp_path, security=True, emit=lines.append)
+
+    assert "security.token: weak/default (rotate with jovy token rotate)" in lines
+
+
+def test_doctor_security_reports_jupyter_secret_files(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret-token")
+    secret_file = tmp_path / ".jupyter" / "jupyter_server_config.py"
+    secret_file.write_text("c.ServerApp.password = 'sha1:abc'\n", encoding="utf-8")
+    lines: list[str] = []
+
+    commands.doctor(root=tmp_path, security=True, emit=lines.append)
+
+    assert (
+        "security.jupyter: potential secrets " "(.jupyter/jupyter_server_config.py)"
+    ) in lines
 
 
 def test_jupyter_url_encodes_token(tmp_path: Path) -> None:
@@ -458,6 +572,106 @@ def test_doctor_reports_unavailable_compose_and_daemon(
     assert "compose: unavailable" in lines
     assert "daemon: unavailable" in lines
     assert "setup: run jovy install-docker --dry-run" in lines
+
+
+def test_doctor_plans_repairs_when_fix_is_requested_without_yes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        commands.shutil,
+        "which",
+        lambda name: "/usr/bin/git" if name == "git" else None,
+    )
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "none")
+    commands.init_project(tmp_path, gpu="none")
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["build"]["args"][
+        "JOVY_BASE_IMAGE"
+    ] = "ghcr.io/mihneateodorstoica/jovykit:extended-python-3.11"
+    (tmp_path / "compose.yaml").write_text(
+        yaml.safe_dump(compose, sort_keys=False), encoding="utf-8"
+    )
+    dockerfile_text = (tmp_path / "Dockerfile").read_text(encoding="utf-8")
+    dockerfile_image = commands._read_dockerfile_base_image(tmp_path / "Dockerfile")
+    (tmp_path / "work").rmdir()
+    (tmp_path / ".jupyter").rmdir()
+    (tmp_path / ".devcontainer" / "devcontainer.json").unlink()
+    lines: list[str] = []
+
+    commands.doctor(
+        root=tmp_path,
+        fix=True,
+        yes=False,
+        emit=lines.append,
+    )
+
+    assert "project.work: missing (planned)" in lines
+    assert "project.jupyter: missing (planned)" in lines
+    assert "project.devcontainer: missing (planned)" in lines
+    mismatch_prefix = (
+        "project.base_image: mismatch between compose.yaml and Dockerfile (planned:"
+    )
+    assert any(mismatch_prefix in line for line in lines)
+    assert not (tmp_path / "work").exists()
+    assert not (tmp_path / ".jupyter").exists()
+    assert not (tmp_path / ".devcontainer" / "devcontainer.json").exists()
+    assert (
+        yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+        == compose
+    )
+    assert (
+        commands._read_dockerfile_base_image(tmp_path / "Dockerfile")
+        == dockerfile_image
+    )
+    assert dockerfile_text == (tmp_path / "Dockerfile").read_text(encoding="utf-8")
+
+
+def test_doctor_applies_repairs_when_fix_and_yes_are_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        commands.shutil,
+        "which",
+        lambda name: "/usr/bin/git" if name == "git" else None,
+    )
+    monkeypatch.setattr(commands, "detect_gpu_mode", lambda: "none")
+    commands.init_project(tmp_path, gpu="none")
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text(encoding="utf-8"))
+    compose["services"]["jovy"]["build"]["args"][
+        "JOVY_BASE_IMAGE"
+    ] = "ghcr.io/mihneateodorstoica/jovykit:extended-python-3.11"
+    (tmp_path / "compose.yaml").write_text(
+        yaml.safe_dump(compose, sort_keys=False), encoding="utf-8"
+    )
+    (tmp_path / "work").rmdir()
+    (tmp_path / ".jupyter").rmdir()
+    (tmp_path / ".devcontainer" / "devcontainer.json").unlink()
+    lines: list[str] = []
+
+    commands.doctor(
+        root=tmp_path,
+        fix=True,
+        yes=True,
+        emit=lines.append,
+    )
+
+    assert "project.work: created" in lines
+    assert "project.jupyter: created" in lines
+    assert "project.devcontainer: created" in lines
+    assert "project.base_image: dockerfile aligned to compose" in lines
+    assert (tmp_path / "work").is_dir()
+    assert (tmp_path / ".jupyter").is_dir()
+    assert (tmp_path / ".devcontainer" / "devcontainer.json").exists()
+    assert commands._read_compose_base_image(tmp_path) == (
+        "ghcr.io/mihneateodorstoica/jovykit:extended-python-3.11"
+    )
+    assert commands._read_dockerfile_base_image(tmp_path / "Dockerfile") == (
+        "ghcr.io/mihneateodorstoica/jovykit:extended-python-3.11"
+    )
 
 
 def test_status_returns_error_state_on_invalid_json(

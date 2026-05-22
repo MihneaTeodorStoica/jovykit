@@ -38,6 +38,8 @@ HELP_USAGE = (
     "jovy",
     "jovy init [OPTIONS]",
     "jovy install-docker [--yes]",
+    "jovy doctor [--fix] [--yes] [--security]",
+    "jovy token rotate|show [OPTIONS]",
     "jovy COMMAND [ARGS...]",
 )
 HELP_SECTIONS = (
@@ -63,11 +65,12 @@ HELP_SECTIONS = (
             ("remove PACKAGE [PACKAGE...]", "Remove Python packages."),
             ("upgrade [OPTIONS]", "Upgrade image level, Python, and project options."),
             ("status [OPTIONS]", "Show project status."),
+            ("token rotate|show [OPTIONS]", "Rotate or show the local token."),
             ("shell [COMMAND...]", "Exec in the service."),
             ("run COMMAND [ARGS...]", "Run one command in a fresh service container."),
             ("open", "Open JupyterLab."),
             ("token [show|rotate]", "Show or rotate Jupyter token."),
-            ("doctor", "Check Docker, compose, GPU, and project files."),
+            ("doctor [OPTIONS]", "Check Docker, compose, GPU, and project files."),
             ("install-docker [--yes]", "Print or run a Linux Docker install plan."),
         ),
     ),
@@ -126,7 +129,10 @@ def _main(args: list[str]) -> int:
         console.print(commands.open_browser())
         return 0
     if command == "doctor":
-        commands.doctor(emit=console.print)
+        _doctor(args[1:])
+        return 0
+    if command == "token":
+        _token(args[1:])
         return 0
     if command == "install-docker":
         _install_docker(args[1:])
@@ -143,9 +149,6 @@ def _main(args: list[str]) -> int:
         return commands.shell(args[1:])
     if command == "run":
         return commands.run(args[1:])
-    if command == "token":
-        _token(args[1:])
-        return 0
     if command == "compose":
         return commands.compose_passthrough(args[1:])
     console.print(f"[red]error:[/red] unknown command: {command}")
@@ -286,17 +289,36 @@ def _status(args: list[str]) -> None:
     console.print(commands.status(json_output=namespace.json))
 
 
-def _token(args: list[str]) -> None:
-    parser = argparse.ArgumentParser(prog="jovy token")
-    subparsers = parser.add_subparsers(dest="action", required=True)
-    subparsers.add_parser("show")
-    subparsers.add_parser("rotate")
+def _doctor(args: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="jovy doctor")
+    parser.add_argument("--fix", action="store_true")
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--security", action="store_true")
     namespace = parser.parse_args(args)
+    commands.doctor(
+        fix=namespace.fix,
+        yes=namespace.yes,
+        security=namespace.security,
+        emit=console.print,
+    )
 
-    if namespace.action == "show":
-        console.print(commands.token_show())
-    elif namespace.action == "rotate":
-        console.print(commands.token_rotate(emit=console.print))
+
+def _token(args: list[str]) -> None:
+    if not args:
+        raise JovyKitError("token requires a subcommand: rotate or show")
+    subcommand = args[0]
+    if subcommand == "rotate":
+        parser = argparse.ArgumentParser(prog="jovy token rotate")
+        parser.add_argument("--token", default=None)
+        namespace = parser.parse_args(args[1:])
+        commands.rotate_token(token=namespace.token, emit=console.print)
+        return
+    if subcommand == "show":
+        parser = argparse.ArgumentParser(prog="jovy token show")
+        parser.parse_args(args[1:])
+        commands.show_token(emit=console.print)
+        return
+    raise JovyKitError(f"unknown token subcommand: {subcommand}")
 
 
 if __name__ == "__main__":

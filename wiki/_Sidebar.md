@@ -1,8 +1,13 @@
 # JovyKit
 
 - [Home](Home)
-- [CLI](CLI)
-- [Troubleshooting](Troubleshooting)
-- [Images](Images)
-- [Release](Release)
-- [Automation](Automation)
+- [Tutorial](Tutorial)
+- [How-To](How-To)
+  - [Troubleshooting](Troubleshooting)
+  - [Automation](Automation)
+- [Reference](Reference)
+  - [CLI](CLI)
+  - [Images](Images)
+- [Explanation](Explanation)
+  - [Security](Security)
+  - [Release](Release)
