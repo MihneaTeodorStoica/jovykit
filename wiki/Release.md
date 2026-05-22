@@ -30,8 +30,9 @@ pytest --cov=jovykit --cov-report=term-missing
 2. version read from `pyproject.toml`
 3. tag creation as `vX.Y.Z` if missing
 4. package build
-5. PyPI publish with trusted publishing
-6. GitHub release notes from `CHANGELOG.md`
+5. trusted publish package tooling install (`requirements-release.txt`)
+6. PyPI publish with trusted publishing
+7. GitHub release notes from `CHANGELOG.md`
 
 `ci-release` reads the `## X.Y.Z` heading from `CHANGELOG.md`.
 If the section is missing or empty, release notes extraction fails and publish stops.
