@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 ARG PYTHON_VERSION=3.12
-FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS minimal
+ARG UV_BASE_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+FROM ${UV_BASE_IMAGE} AS minimal
 
 LABEL org.opencontainers.image.description="JovyKit minimal Jupyter image with Python, uv, JupyterLab add-ons, and Nitro CLI."
 

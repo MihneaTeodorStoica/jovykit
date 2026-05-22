@@ -38,7 +38,11 @@ def test_build_script_tags_match_published_scheme(tmp_path: Path) -> None:
     )
 
     assert log.read_text(encoding="utf-8").strip() == (
-        "build --build-arg PYTHON_VERSION=3.14 --target minimal "
+        "build --build-arg PYTHON_VERSION=3.14 "
+        "--build-arg UV_BASE_IMAGE=ghcr.io/astral-sh/uv:"
+        "python3.14-bookworm-slim@sha256:"
+        "7cf77f594be8042dab6daa9fe326f90962252268b4f120a7f5dccce4d947e6c1 "
+        "--target minimal "
         "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14 "
         "-t ghcr.io/mihneateodorstoica/jovykit:minimal-python-3.14-v8.5.0 "
         "-t ghcr.io/mihneateodorstoica/jovykit:minimal-nightly-python-3.14 "
