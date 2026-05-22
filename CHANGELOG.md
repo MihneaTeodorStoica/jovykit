@@ -7,6 +7,13 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.8.0 - 2026-05-22
+
+### CLI
+
+- Add host IPC to generated Compose services so notebook workloads can use
+  shared memory reliably.
+
 ## 8.7.0 - 2026-05-22
 
 ### CLI

@@ -127,6 +127,7 @@ def render_compose(
             "JUPYTER_TOKEN": token,
         },
         "ports": [f"127.0.0.1:{port}:8888"],
+        "ipc": "host",
         "volumes": [
             "./work:/home/jovyan/work",
             "./.jupyter:/home/jovyan/.jupyter",

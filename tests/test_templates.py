@@ -55,12 +55,14 @@ def test_render_compose_is_small_and_watch_enabled() -> None:
         "build",
         "environment",
         "ports",
+        "ipc",
         "volumes",
         "working_dir",
         "stdin_open",
         "tty",
         "develop",
     }
+    assert service["ipc"] == "host"
     assert "gpus" not in service
     assert service["environment"] == {"JUPYTER_TOKEN": "custom-token"}
     assert service["develop"]["watch"] == [
