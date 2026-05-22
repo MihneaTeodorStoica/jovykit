@@ -7,12 +7,33 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+## 8.7.0 - 2026-05-22
+
+### CLI
+
+- Add safe `jovy doctor --fix --yes` repairs for missing workspace
+  directories, Dev Container config, and local image drift.
+- Add `jovy doctor --security` checks for token, bind, Docker group, and
+  `.jupyter/` secret exposure risks.
+- Add Jupyter token rotation and display commands.
+- Harden Docker, Compose, and generated project configuration handling.
+
 ### CI
 
 - Pin GitHub Actions and reusable action steps to immutable commit SHAs.
+- Pin release packaging tools and image base inputs for reproducible
+  publishing.
+- Add workflow policy checks and safer PR automation behavior.
+
+### Images
+
+- Publish pinned Python image variants and include VS Code shell startup
+  support.
 
 ### Docs
 
+- Document the JovyKit local security model.
+- Split the wiki into tutorial, how-to, reference, and explanation pages.
 - Add release, PyPI, and image publishing runbook at `wiki/Release.md`.
 - Add a troubleshooting guide for common runtime failures.
 
