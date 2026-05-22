@@ -145,9 +145,19 @@ runs:
     - name: Scan built image
       shell: bash
       run: |
+        scan_ref="${{ steps.build.outputs.imageid }}"
+        docker_args=()
+        if [ "${{ inputs.push }}" = "true" ]; then
+          scan_ref="${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          if [ -f "$HOME/.docker/config.json" ]; then
+            docker_args=(-v "$HOME/.docker/config.json:/root/.docker/config.json:ro")
+          fi
+        fi
+
         docker run --rm \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v /tmp/trivy-cache:/root/.cache \
+          "${docker_args[@]}" \
           --userns=host \
           aquasec/trivy:latest \
           image \
@@ -155,7 +165,7 @@ runs:
           --ignore-unfixed \
           --no-progress \
           --severity HIGH,CRITICAL \
-          "${{ steps.build.outputs.imageid }}"
+          "$scan_ref"
 
     - name: Attest image provenance
       if: inputs.push == 'true'
