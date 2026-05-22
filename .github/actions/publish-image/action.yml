@@ -111,8 +111,8 @@ runs:
           ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         annotations: ${{ steps.meta.outputs.annotations }}
-        provenance: false
-        sbom: false
+        provenance: ${{ inputs.push == 'true' }}
+        sbom: ${{ inputs.push == 'true' }}
         cache-from: ${{ steps.plan.outputs.cache-from }}
         cache-to: ${{ inputs.push == 'true' && steps.plan.outputs.cache-to || '' }}
 
@@ -137,5 +137,5 @@ runs:
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}
         subject-digest: ${{ steps.build.outputs.digest }}
-        push-to-registry: false
+        push-to-registry: true
         create-storage-record: false
