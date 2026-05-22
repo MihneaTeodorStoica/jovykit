@@ -70,8 +70,8 @@ def test_python_ci_audits_all_dependency_manifests() -> None:
     workflow = yaml.safe_load(
         Path(".github/workflows/ci-release.yml").read_text(encoding="utf-8")
     )
-    python_job = workflow["jobs"]["python"]
-    steps = python_job["steps"]
+    audit_job = workflow["jobs"]["dependency-audit"]
+    steps = audit_job["steps"]
 
     package_step = next(
         step for step in steps if step["name"] == "Audit package dependency manifest"
