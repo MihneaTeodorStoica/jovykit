@@ -242,8 +242,7 @@ def test_token_show_reads_token(tmp_path: Path) -> None:
     commands.init_project(tmp_path, gpu="none", port=9999, token="secret/token")
 
     assert commands.token_show(tmp_path) == (
-        "URL: http://127.0.0.1:9999/lab?token=secret%2Ftoken\n"
-        "Token: secret/token"
+        "URL: http://127.0.0.1:9999/lab?token=secret%2Ftoken\n" "Token: secret/token"
     )
 
 
