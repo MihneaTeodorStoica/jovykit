@@ -126,6 +126,20 @@ def test_init_accepts_python_level_gpu_and_port(tmp_path: Path, run_cli) -> None
     assert "ARG PYTHON_VERSION" not in dockerfile
 
 
+def test_token_commands_dispatch(monkeypatch: pytest.MonkeyPatch, run_cli) -> None:
+    monkeypatch.setattr(
+        commands, "token_show", lambda: "URL: http://example\nToken: tok"
+    )
+    monkeypatch.setattr(commands, "token_rotate", lambda *, emit: "new-token")
+
+    show = run_cli(["token", "show"])
+    rotate = run_cli(["token", "rotate"])
+
+    assert "URL: http://example" in show.output
+    assert "Token: tok" in show.output
+    assert "new-token" in rotate.output
+
+
 def test_init_auto_enables_detected_gpu(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
 ) -> None:

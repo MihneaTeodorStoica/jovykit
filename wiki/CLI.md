@@ -44,6 +44,8 @@ jovy run COMMAND [ARGS...]
 jovy build [ARGS...]
 jovy watch [ARGS...]
 jovy open
+jovy token show
+jovy token rotate
 jovy doctor
 jovy install-docker [--dry-run] [--yes] [--skip-hello-world]
 jovy compose COMMAND [ARGS...]
@@ -113,8 +115,20 @@ jovy open
 jovy shell
 jovy shell python --version
 jovy run python script.py
+jovy token show
+jovy token rotate
 jovy doctor
 jovy install-docker --dry-run
 ```
 
 Use `jovy compose ...` for raw Docker Compose access.
+
+## token
+
+```bash
+jovy token show
+jovy token rotate
+```
+
+`jovy token show` prints the current local Jupyter URL and token.
+`jovy token rotate` writes a new random token into `compose.yaml`.

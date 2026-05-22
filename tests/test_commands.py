@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from jovykit import commands
+from jovykit.config import generate_default_jupyter_token
 from jovykit.config import JovyKitError
 
 
@@ -335,6 +336,79 @@ def test_jupyter_url_encodes_token(tmp_path: Path) -> None:
     commands.init_project(tmp_path, gpu="none", port=9999, token="a/b+c")
 
     assert commands.jupyter_url(tmp_path) == "http://127.0.0.1:9999/lab?token=a%2Fb%2Bc"
+
+
+def test_generated_default_tokens_are_random_urlsafe() -> None:
+    first = generate_default_jupyter_token()
+    second = generate_default_jupyter_token()
+
+    assert first != second
+    assert len(first) >= 22
+    assert all(character.isalnum() or character in "-_" for character in first)
+
+
+def test_token_show_reads_token(tmp_path: Path) -> None:
+    commands.init_project(tmp_path, gpu="none", port=9999, token="secret/token")
+
+    assert commands.token_show(tmp_path) == (
+        "URL: http://127.0.0.1:9999/lab?token=secret%2Ftoken\n" "Token: secret/token"
+    )
+
+
+def test_token_show_generates_warning_when_token_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compose = tmp_path / "compose.yaml"
+    commands.init_project(tmp_path, gpu="none")
+    data = yaml.safe_load(compose.read_text(encoding="utf-8"))
+    del data["services"]["jovy"]["environment"]["JUPYTER_TOKEN"]
+    compose.write_text(yaml.safe_dump(data), encoding="utf-8")
+    monkeypatch.setattr(
+        commands,
+        "generate_default_jupyter_token",
+        lambda: "ephemeral-token",
+    )
+
+    assert commands.token_show(tmp_path) == (
+        "URL: http://127.0.0.1:8888/lab?token=ephemeral-token\n"
+        "Token: ephemeral-token\n"
+        "Warning: JUPYTER_TOKEN is missing from compose.yaml. "
+        "Run `jovy token rotate` to persist a real token."
+    )
+
+
+def test_token_rotate_stores_token_in_dict_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages: list[str] = []
+    commands.init_project(tmp_path, gpu="none")
+    monkeypatch.setattr(
+        commands,
+        "generate_default_jupyter_token",
+        lambda: "new-token",
+    )
+
+    assert commands.token_rotate(tmp_path, emit=messages.append) == "new-token"
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    assert compose["services"]["jovy"]["environment"] == {"JUPYTER_TOKEN": "new-token"}
+    assert messages == ["Rotated token in compose.yaml"]
+
+
+def test_token_rotate_preserves_list_environment(tmp_path: Path) -> None:
+    compose = tmp_path / "compose.yaml"
+    commands.init_project(tmp_path, gpu="none")
+    data = yaml.safe_load(compose.read_text(encoding="utf-8"))
+    data["services"]["jovy"]["environment"] = ["FOO=bar", "JUPYTER_TOKEN=old"]
+    compose.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    token = commands.token_rotate(tmp_path)
+
+    data = yaml.safe_load(compose.read_text(encoding="utf-8"))
+    env = data["services"]["jovy"]["environment"]
+    assert env == ["FOO=bar", f"JUPYTER_TOKEN={token}"]
 
 
 def test_install_docker_delegates_to_planner(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -66,6 +66,7 @@ HELP_SECTIONS = (
             ("shell [COMMAND...]", "Exec in the service."),
             ("run COMMAND [ARGS...]", "Run one command in a fresh service container."),
             ("open", "Open JupyterLab."),
+            ("token [show|rotate]", "Show or rotate Jupyter token."),
             ("doctor", "Check Docker, compose, GPU, and project files."),
             ("install-docker [--yes]", "Print or run a Linux Docker install plan."),
         ),
@@ -142,6 +143,9 @@ def _main(args: list[str]) -> int:
         return commands.shell(args[1:])
     if command == "run":
         return commands.run(args[1:])
+    if command == "token":
+        _token(args[1:])
+        return 0
     if command == "compose":
         return commands.compose_passthrough(args[1:])
     console.print(f"[red]error:[/red] unknown command: {command}")
@@ -280,6 +284,19 @@ def _status(args: list[str]) -> None:
     parser.add_argument("--json", action="store_true")
     namespace = parser.parse_args(args)
     console.print(commands.status(json_output=namespace.json))
+
+
+def _token(args: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="jovy token")
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    subparsers.add_parser("show")
+    subparsers.add_parser("rotate")
+    namespace = parser.parse_args(args)
+
+    if namespace.action == "show":
+        console.print(commands.token_show())
+    elif namespace.action == "rotate":
+        console.print(commands.token_rotate(emit=console.print))
 
 
 if __name__ == "__main__":

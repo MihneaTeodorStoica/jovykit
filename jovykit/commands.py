@@ -418,10 +418,7 @@ def load_project_settings(root: Path | None = None) -> ProjectSettings:
     ) or python_version_from_image(base_image)
     gpu = _read_gpu_mode(service)
     port = _read_port(service)
-    token = (
-        _read_environment_value(service, "JUPYTER_TOKEN")
-        or generate_default_jupyter_token()
-    )
+    token, _ = _read_jupyter_token(service)
     return ProjectSettings(
         level=level,
         python_version=python_version,
@@ -726,15 +723,30 @@ def _read_environment_value(service: dict[str, Any], name: str) -> str | None:
     return None
 
 
-def jupyter_url(root: Path | None = None) -> str:
-    """Return the local Lab URL from compose.yaml."""
+def _read_jupyter_token(service: dict[str, Any]) -> tuple[str, bool]:
+    token = _read_environment_value(service, "JUPYTER_TOKEN")
+    if token is not None:
+        token = token.strip()
+    if token:
+        return token, False
+    return generate_default_jupyter_token(), True
+
+
+def _read_jupyter_service(
+    root: Path | None,
+) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     resolved = ensure_compose_project(root)
     data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
-    service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
-    token = (
-        _read_environment_value(service, "JUPYTER_TOKEN")
-        or generate_default_jupyter_token()
-    )
+    services = data.get("services")
+    if not isinstance(services, dict):
+        raise JovyKitError("compose.yaml is invalid: missing services.")
+    service = services.get(SERVICE_NAME)
+    if not isinstance(service, dict):
+        raise JovyKitError(f"compose.yaml is invalid: missing {SERVICE_NAME} service.")
+    return resolved, data, service
+
+
+def _build_jupyter_url(service: dict[str, Any], token: str) -> str:
     query = urlencode({"token": token})
     port = _read_port(service)
     return f"http://127.0.0.1:{port}/lab?{query}"
@@ -793,6 +805,56 @@ def _read_port_value(text: str, name: str, mapping: str | int | float | object) 
             f"Malformed compose.yaml port mapping: {mapping!r} has out-of-range {name} port {value}."
         )
     return value
+
+
+def token_show(root: Path | None = None) -> str:
+    """Return local lab URL and token with a warning if ephemeral."""
+    _, data, service = _read_jupyter_service(root)
+    token, generated = _read_jupyter_token(service)
+    _ = data
+    url = _build_jupyter_url(service, token)
+    message = f"URL: {url}\nToken: {token}"
+    if generated:
+        message += (
+            "\nWarning: JUPYTER_TOKEN is missing from compose.yaml. "
+            "Run `jovy token rotate` to persist a real token."
+        )
+    return message
+
+
+def token_rotate(root: Path | None = None, *, emit: Emitter = noop_emit) -> str:
+    """Rotate the Jupyter token in compose.yaml and return the new value."""
+    resolved, data, service = _read_jupyter_service(root)
+    token = generate_default_jupyter_token()
+    environment = service.get("environment")
+    if isinstance(environment, dict):
+        environment["JUPYTER_TOKEN"] = token
+    elif isinstance(environment, list):
+        replaced = False
+        for index, item in enumerate(environment):
+            text = str(item)
+            if text.startswith("JUPYTER_TOKEN="):
+                environment[index] = f"JUPYTER_TOKEN={token}"
+                replaced = True
+                break
+        if not replaced:
+            environment.append(f"JUPYTER_TOKEN={token}")
+        service["environment"] = environment
+    else:
+        service["environment"] = {"JUPYTER_TOKEN": token}
+    compose_path(resolved).write_text(
+        yaml.safe_dump(data, sort_keys=False),
+        encoding="utf-8",
+    )
+    emit("Rotated token in compose.yaml")
+    return token
+
+
+def jupyter_url(root: Path | None = None) -> str:
+    """Return the local Lab URL from compose.yaml."""
+    _, _, service = _read_jupyter_service(root)
+    token, _ = _read_jupyter_token(service)
+    return _build_jupyter_url(service, token)
 
 
 def open_browser(root: Path | None = None) -> str:
