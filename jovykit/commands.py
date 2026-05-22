@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
+import socket
 import re
 import shutil
 import subprocess
 import webbrowser
+from contextlib import closing
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import yaml
 
@@ -49,7 +51,10 @@ from jovykit.templates import (
 
 Emitter = Callable[[str], None]
 VALID_GPU = ("none", "all")
+_DEFAULT_PORT = 8888
+_MAX_PORT = 65535
 _REQUIREMENT_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]*(?:[A-Za-z0-9])?")
+_DOCKERFILE_BASE_IMAGE_RE = re.compile(r"^\s*ARG\s+JOVY_BASE_IMAGE=(.+?)\s*$")
 
 
 @dataclass(frozen=True)
@@ -120,7 +125,7 @@ def init_project(
     level: str = "base",
     python_version: str = DEFAULT_PYTHON_VERSION,
     gpu: str | None = None,
-    port: int = 8888,
+    port: int | str = _DEFAULT_PORT,
     token: str | None = None,
     force: bool = False,
     emit: Emitter = noop_emit,
@@ -152,6 +157,16 @@ def init_project(
             "compose.yaml, Dockerfile, requirements.txt, .devcontainer/devcontainer.json, or .gitignore already exists. Use --force to overwrite."
         )
 
+    resolved_port = _resolve_port(port)
+    if (
+        resolved_port != _DEFAULT_PORT
+        and isinstance(port, str)
+        and port.strip().lower() == "auto"
+    ):
+        emit(
+            f"Warning: selected port {resolved_port} instead of default {_DEFAULT_PORT}."
+        )
+
     resolved.mkdir(parents=True, exist_ok=True)
     (resolved / DEFAULT_WORK_DIR).mkdir(exist_ok=True)
     (resolved / DEFAULT_JUPYTER_DIR).mkdir(exist_ok=True)
@@ -162,7 +177,7 @@ def init_project(
             level=level,
             python_version=python_version,
             gpu=gpu,
-            port=port,
+            port=resolved_port,
             token=token,
         ),
         encoding="utf-8",
@@ -197,6 +212,44 @@ def init_project(
         emit("Initialized git repository")
         emit("Committed initial project files")
     return resolved
+
+
+def _is_free_port(port: int, host: str = "127.0.0.1") -> bool:
+    """Return True when a TCP port is available on localhost."""
+    if port <= 0 or port > _MAX_PORT:
+        return False
+    try:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+            sock.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def _resolve_auto_port() -> int:
+    """Find the first free host port in the default search range."""
+    for port in range(_DEFAULT_PORT, _MAX_PORT + 1):
+        if _is_free_port(port):
+            return port
+    raise JovyKitError("No free port available in the 8888-65535 range.")
+
+
+def _normalize_port(value: int | str) -> int:
+    """Validate and coerce a value to a concrete port."""
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise JovyKitError("Port must be one of: auto or 1-65535.") from None
+    if port < 1 or port > _MAX_PORT:
+        raise JovyKitError("Port must be between 1 and 65535.")
+    return port
+
+
+def _resolve_port(value: int | str) -> int:
+    """Resolve requested port input to a concrete TCP port."""
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        return _resolve_auto_port()
+    return _normalize_port(value)
 
 
 def compose_passthrough(
@@ -421,6 +474,50 @@ def save_project_settings(
         emit("Created requirements.txt")
 
 
+def upgrade_project(
+    root: Path | None = None,
+    *,
+    level: str | None = None,
+    python_version: str | None = None,
+    gpu: str | None = None,
+    port: int | str | None = None,
+    token: str | None = None,
+    dry_run: bool = False,
+    emit: Emitter = noop_emit,
+) -> None:
+    """Upgrade editable project settings in compose.yaml and Dockerfile."""
+    current = load_project_settings(root)
+    target_level = level or current.level
+    target_python_version = python_version or current.python_version
+    target_gpu = gpu or current.gpu
+    target_port = _resolve_port(port) if port is not None else current.port
+    target_token = token if token is not None else current.token
+
+    resolve_image_level(target_level, target_python_version)
+
+    if dry_run:
+        emit(
+            f"Dry-run: image {current.level}:{current.python_version} -> "
+            f"{target_level}:{target_python_version}"
+        )
+        emit(f"Dry-run: gpu {current.gpu} -> {target_gpu}")
+        emit(f"Dry-run: port {current.port} -> {target_port}")
+        emit(f"Dry-run: token {current.token} -> {target_token}")
+        emit("Dry-run: no files were changed.")
+        return
+
+    save_project_settings(
+        root,
+        level=target_level,
+        python_version=target_python_version,
+        gpu=target_gpu,
+        port=target_port,
+        token=target_token,
+        emit=emit,
+    )
+    emit(f"Upgraded to {resolve_image_level(target_level, target_python_version)}")
+
+
 def _load_requirements(root: Path | None = None) -> list[str]:
     resolved = ensure_compose_project(root)
     path = requirements_path(resolved)
@@ -509,6 +606,86 @@ def _read_build_arg(args: object, name: str) -> str | None:
             if text.startswith(prefix):
                 return text[len(prefix) :]
     return None
+
+
+def _read_dockerfile_base_image(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = _DOCKERFILE_BASE_IMAGE_RE.match(line)
+        if match is not None:
+            value = match.group(1).strip()
+            return None if not value else value
+    return None
+
+
+def _read_compose_base_image(resolved: Path) -> str | None:
+    try:
+        compose_data = (
+            yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
+        )
+    except yaml.YAMLError as exc:
+        raise JovyKitError(f"compose.yaml is invalid: {exc}")
+    if not isinstance(compose_data, dict):
+        raise JovyKitError("compose.yaml must be a mapping.")
+    service = compose_data.get("services", {}).get(SERVICE_NAME)
+    if not isinstance(service, dict):
+        return None
+    build = service.get("build") or {}
+    if not isinstance(build, dict):
+        return None
+    return _read_build_arg(build.get("args"), "JOVY_BASE_IMAGE")
+
+
+def _set_dockerfile_base_image(resolved: Path, base_image: str) -> None:
+    level = image_level_from_reference(base_image) or "base"
+    python_version = python_version_from_image(base_image) or DEFAULT_PYTHON_VERSION
+    containerfile_path(resolved).write_text(
+        render_containerfile(level=level, python_version=python_version),
+        encoding="utf-8",
+    )
+
+
+def _set_compose_base_image(resolved: Path, base_image: str) -> None:
+    compose_file = compose_path(resolved)
+    try:
+        compose_data = yaml.safe_load(compose_file.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise JovyKitError(f"compose.yaml is invalid: {exc}")
+    if not isinstance(compose_data, dict):
+        raise JovyKitError("compose.yaml must be a mapping.")
+    services = compose_data.get("services")
+    if not isinstance(services, dict):
+        services = {}
+    service = services.get(SERVICE_NAME)
+    if not isinstance(service, dict):
+        service = {}
+    build = service.get("build")
+    if not isinstance(build, dict):
+        build = {}
+    args = build.get("args")
+    if isinstance(args, list):
+        filtered_args = [
+            item for item in args if not str(item).startswith("JOVY_BASE_IMAGE=")
+        ]
+        filtered_args.append(f"JOVY_BASE_IMAGE={base_image}")
+        args = filtered_args
+    else:
+        args = {}
+        if isinstance(service.get("build"), dict):
+            args = (
+                dict(args)
+                if isinstance(service.get("build", {}).get("args"), dict)
+                else {}
+            )
+        args["JOVY_BASE_IMAGE"] = base_image
+    build["args"] = args
+    service["build"] = build
+    services[SERVICE_NAME] = service
+    compose_data["services"] = services
+    compose_file.write_text(
+        yaml.safe_dump(compose_data, sort_keys=False), encoding="utf-8"
+    )
 
 
 def _read_gpu_mode(service: dict[str, Any]) -> str:
@@ -701,7 +878,13 @@ def install_docker(
     )
 
 
-def doctor(root: Path | None = None, *, emit: Emitter = noop_emit) -> None:
+def doctor(
+    root: Path | None = None,
+    *,
+    fix: bool = False,
+    yes: bool = False,
+    emit: Emitter = noop_emit,
+) -> None:
     """Print basic host and project diagnostics."""
     setup_needed = False
     if shutil.which("docker") is None:
@@ -727,57 +910,213 @@ def doctor(root: Path | None = None, *, emit: Emitter = noop_emit) -> None:
         resolved = ensure_compose_project(root)
     except JovyKitError as exc:
         emit(f"project: {exc}")
+        return
+
+    emit(f"project: {compose_path(resolved)}")
+
+    if not fix:
+        return
+
+    work_dir = resolved / DEFAULT_WORK_DIR
+    jupyter_dir = resolved / DEFAULT_JUPYTER_DIR
+    devcontainer_file = devcontainer_path(resolved)
+
+    if work_dir.exists():
+        pass
+    elif yes:
+        work_dir.mkdir(parents=True, exist_ok=True)
+        emit("project.work: created")
     else:
-        emit(f"project: {compose_path(resolved)}")
+        emit("project.work: missing")
 
+    if jupyter_dir.exists():
+        pass
+    elif yes:
+        jupyter_dir.mkdir(parents=True, exist_ok=True)
+        emit("project.jupyter: created")
+    else:
+        emit("project.jupyter: missing")
 
-def status(root: Path | None = None) -> str:
-    """Return a short Compose status string."""
-    raw = runtime.compose_ps(root).strip()
-    if not raw:
-        return "stopped"
+    if devcontainer_file.exists():
+        pass
+    elif yes:
+        devcontainer_file.parent.mkdir(parents=True, exist_ok=True)
+        devcontainer_file.write_text(
+            render_devcontainer(resolved.name), encoding="utf-8"
+        )
+        emit("project.devcontainer: created")
+    else:
+        emit("project.devcontainer: missing")
 
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        try:
-            parsed_lines = [
-                json.loads(line) for line in raw.splitlines() if line.strip()
-            ]
-        except json.JSONDecodeError:
-            return json.dumps(
-                {
-                    "state": "error",
-                    "message": raw,
-                }
-            )
-        parsed = parsed_lines
+        compose_base = _read_compose_base_image(resolved)
+    except JovyKitError as exc:
+        emit(f"project.base_image: {exc}")
+        return
+    dockerfile_base = _read_dockerfile_base_image(containerfile_path(resolved))
 
-    if not isinstance(parsed, list):
-        if isinstance(parsed, dict):
-            items = [parsed]
+    if compose_base is None:
+        if dockerfile_base is not None:
+            if yes:
+                _set_compose_base_image(resolved, dockerfile_base)
+                emit("project.base_image: compose base image restored from Dockerfile")
+                compose_base = dockerfile_base
+            else:
+                emit("project.base_image: compose value missing")
         else:
-            return json.dumps(
-                {
-                    "state": "error",
-                    "message": f"Unsupported docker compose output shape: {type(parsed)!r}",
-                }
-            )
-    else:
-        items = parsed
+            emit("project.base_image: compose value missing")
+            return
+    if compose_base is None:
+        return
 
-    if not all(isinstance(item, dict) for item in items):
-        return json.dumps(
-            {
-                "state": "error",
-                "message": "Unsupported docker compose output shape: not all entries are mappings.",
-            }
+    if dockerfile_base is None:
+        if yes:
+            _set_dockerfile_base_image(resolved, compose_base)
+            emit("project.base_image: dockerfile base image restored from compose.yaml")
+        else:
+            emit("project.base_image: dockerfile value missing")
+        return
+
+    if compose_base == dockerfile_base:
+        return
+
+    if yes:
+        _set_dockerfile_base_image(resolved, compose_base)
+        emit("project.base_image: dockerfile aligned to compose")
+    else:
+        emit(
+            "project.base_image: mismatch between compose.yaml and Dockerfile"
+            f" (compose={compose_base}, dockerfile={dockerfile_base})"
         )
 
-    states = [
-        str(item.get("State") or item.get("Status") or "unknown") for item in items
-    ]
-    return ", ".join(states) if states else "stopped"
+
+def status(root: Path | None = None, *, json_output: bool = False) -> str:
+    """Return Compose status as machine-readable JSON or verbose text."""
+    payload = _load_status_payload(root)
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return _format_status_payload(payload)
+
+
+def _load_status_payload(root: Path | None = None) -> dict[str, str | int | None]:
+    """Collect a stable status payload for CLI output and automation."""
+    payload: dict[str, str | int | None] = {
+        "container_state": "error",
+        "url": None,
+        "image": None,
+        "python_version": None,
+        "level": None,
+        "gpu": None,
+        "port": None,
+        "token": "***",
+        "token_source": None,
+        "compose_file": None,
+        "error": None,
+    }
+    resolved = ensure_compose_project(root)
+    compose_file = str(compose_path(resolved))
+    payload["compose_file"] = compose_file
+
+    compose_data = (
+        yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
+    )
+    service: dict[str, Any] = compose_data.get("services", {}).get(SERVICE_NAME, {})
+    token = _read_environment_value(service, "JUPYTER_TOKEN")
+    payload["token_source"] = "compose" if token is not None else "generated"
+
+    settings = load_project_settings(resolved)
+    payload["python_version"] = settings.python_version
+    payload["level"] = settings.level
+    payload["gpu"] = settings.gpu
+    payload["port"] = settings.port
+
+    payload["url"] = _redact_jupyter_token(jupyter_url(resolved))
+    build_args = service.get("build", {}).get("args") or {}
+    payload["image"] = _read_build_arg(build_args, "JOVY_BASE_IMAGE") or "unknown"
+
+    state, image, error = _compose_service_state(resolved)
+    payload["container_state"] = state
+    if image is not None:
+        payload["image"] = image
+    if error is not None:
+        payload["error"] = error
+    return payload
+
+
+def _compose_service_state(
+    resolved: Path,
+) -> tuple[str, str | None, str | None]:
+    """Return container state, image, and optional error from compose ps."""
+    try:
+        raw = runtime.compose_ps(resolved)
+    except JovyKitError as exc:
+        return "error", None, str(exc)
+    raw = raw.strip()
+    if not raw:
+        return "stopped", None, None
+    try:
+        raw_items = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            raw_items = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        except json.JSONDecodeError:
+            return "error", None, "compose ps output is not valid JSON"
+    if isinstance(raw_items, dict):
+        items = [raw_items]
+    elif isinstance(raw_items, list):
+        if not all(isinstance(item, dict) for item in raw_items):
+            return "error", None, "compose ps output has unexpected format"
+        items = raw_items
+    else:
+        return "error", None, "compose ps output has unexpected format"
+
+    if not items:
+        return "stopped", None, None
+
+    item = _find_jovy_service(items)
+    state = str(item.get("State") or item.get("Status") or "stopped").strip().lower()
+    image = item.get("Image")
+    return state, None if image is None else str(image), None
+
+
+def _find_jovy_service(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Select the Jovy service record from compose ps output."""
+    if not items:
+        return {}
+    for item in items:
+        name = str(item.get("Name", "")).lower()
+        service = str(item.get("Service", "")).lower()
+        if SERVICE_NAME in name or SERVICE_NAME in service:
+            return item
+    return items[0]
+
+
+def _format_status_payload(payload: dict[str, str | int | None]) -> str:
+    """Render a verbose status block for human use."""
+    fields = (
+        "compose_file",
+        "container_state",
+        "url",
+        "image",
+        "python_version",
+        "level",
+        "gpu",
+        "port",
+        "token_source",
+        "token",
+    )
+    return "\n".join(f"{field}: {payload.get(field)}" for field in fields)
+
+
+def _redact_jupyter_token(url: str) -> str:
+    """Hide sensitive token query values in URLs."""
+    parsed = urlparse(url)
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    if not query:
+        return url
+    cleaned = [(name, "***" if name == "token" else value) for name, value in query]
+    redacted = parsed._replace(query=urlencode(cleaned))
+    return urlunparse(redacted)
 
 
 def detect_gpu_mode() -> str:

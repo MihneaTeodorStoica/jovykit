@@ -1,12 +1,13 @@
 name: Automation / PR Labels
 
+# Security note: this workflow intentionally runs under `pull_request_target` to label
+# safely from base-repo context. Never checkout or execute PR head code here.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
-  issues: write
   pull-requests: write
 
 concurrency:
