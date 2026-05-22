@@ -107,6 +107,43 @@ def test_rhel_and_centos_are_supported() -> None:
     )
 
 
+def test_unknown_linux_distro_is_unsupported() -> None:
+    plan = docker_install.build_install_plan(
+        system="Linux",
+        os_release={"ID": "alpine"},
+        is_root=True,
+        has_systemd=False,
+    )
+
+    assert plan.supported is False
+    assert plan.distro == "alpine"
+    assert plan.commands == ()
+    assert (
+        "Automatic install supports Ubuntu, Debian, Fedora, RHEL, and CentOS."
+        in plan.notes
+    )
+
+
+def test_root_and_non_root_generate_expected_sudo_prefixes() -> None:
+    root_plan = docker_install.build_install_plan(
+        system="Linux",
+        os_release={"ID": "ubuntu"},
+        is_root=True,
+        has_systemd=False,
+        skip_hello_world=True,
+    )
+    user_plan = docker_install.build_install_plan(
+        system="Linux",
+        os_release={"ID": "ubuntu"},
+        is_root=False,
+        has_systemd=False,
+        skip_hello_world=True,
+    )
+
+    assert root_plan.commands[0][0] != "sudo"
+    assert user_plan.commands[0][0] == "sudo"
+
+
 def test_macos_and_windows_are_manual_guides() -> None:
     macos = docker_install.build_install_plan(system="Darwin")
     windows = docker_install.build_install_plan(system="Windows")
@@ -135,6 +172,43 @@ def test_dry_run_does_not_execute(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert "$ echo install" in lines
     assert "Dry run only. Run with --yes to execute." in lines
+
+
+def test_dry_run_includes_permission_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = docker_install.build_install_plan(
+        system="Linux",
+        os_release={"ID": "ubuntu"},
+        is_root=True,
+        has_systemd=False,
+        skip_hello_world=True,
+    )
+    monkeypatch.setattr(docker_install, "build_install_plan", lambda **kwargs: plan)
+    lines: list[str] = []
+
+    docker_install.install_docker(emit=lines.append, runner=lambda _: 0)
+
+    assert any("usermod -aG docker" in line for line in lines)
+    assert any("docker group grants root-equivalent access." in line for line in lines)
+
+
+def test_apt_cleanup_uses_idempotent_remove_command() -> None:
+    plan = docker_install.build_install_plan(
+        system="Linux",
+        os_release={"ID": "ubuntu"},
+        is_root=True,
+        has_systemd=False,
+        skip_hello_world=True,
+    )
+
+    cleanup = plan.commands[0]
+    expected = (
+        "sh",
+        "-c",
+        "dpkg --get-selections "
+        "docker.io docker-compose docker-doc podman-docker containerd runc docker-compose-v2 "
+        "| awk '$2==\"install\"{print $1}' | xargs -r apt remove -y",
+    )
+    assert cleanup == expected
 
 
 def test_yes_executes_commands(monkeypatch: pytest.MonkeyPatch) -> None:
