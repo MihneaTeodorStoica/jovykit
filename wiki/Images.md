@@ -13,7 +13,7 @@ ghcr.io/mihneateodorstoica/jovykit:full-python-3.13
 
 `minimal` and `base` publish Python 3.9 through 3.14 tags.
 `extended` and `full` publish Python 3.11 through 3.13 tags.
-`latest` points at `base-python-3.11`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11`, `base-weekly-python-3.11`, and `base-monthly-python-3.11`.
+`latest` points at `minimal-python-3.14`. Scheduled images also get level-specific tags such as `base-nightly-python-3.11` and `base-weekly-python-3.11`.
 
 ## Levels
 
