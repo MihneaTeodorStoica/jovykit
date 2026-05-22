@@ -148,13 +148,25 @@ def test_help_is_compose_first(run_cli) -> None:
     assert "clean" not in result.output
 
 
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "git+https://example.com/repo.git",
+        "https://example.com/repo.whl",
+        "--find-links",
+        "-r",
+    ],
+)
 def test_add_rejects_unsafe_requirement_by_default(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    run_cli,
+    spec: str,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     run_cli(["init"])
 
-    result = run_cli(["add", "git+https://example.com/repo.git"], expected_code=1)
+    result = run_cli(["add", spec], expected_code=1)
 
     assert "Unsafe requirements are disabled by default" in result.output
     assert (tmp_path / "requirements.txt").read_text() == ""
@@ -183,6 +195,20 @@ def test_add_accepts_unsafe_requirement_with_allow_unsafe_requirement_flag(
     run_cli(["add", "--allow-unsafe-requirement", "./local/path"])
 
     assert (tmp_path / "requirements.txt").read_text().splitlines() == ["./local/path"]
+
+
+def test_add_accepts_standard_version_specifiers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_cli(["init"])
+
+    run_cli(["add", "requests>=2.31.0", "numpy==1.26.4"])
+
+    assert (tmp_path / "requirements.txt").read_text().splitlines() == [
+        "requests>=2.31.0",
+        "numpy==1.26.4",
+    ]
 
 
 def test_install_docker_command_defaults_to_dry_run(

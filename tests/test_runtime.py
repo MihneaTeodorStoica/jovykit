@@ -119,3 +119,52 @@ def test_run_command_streams_output(
 
     assert code == 0
     assert lines == ["one", "two"]
+
+
+def test_run_command_detached_does_not_stream(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runtime, "require_docker", lambda: None)
+    run_calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        run_calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("Popen must not be used when detached")
+        ),
+    )
+
+    code = runtime.run_command(
+        ["docker", "compose", "ps"], cwd=tmp_path, attached=False
+    )
+
+    assert code == 0
+    assert run_calls
+    run_args, run_kwargs = run_calls[0]
+    assert run_args == ["docker", "compose", "ps"]
+    assert run_kwargs["stdout"] is subprocess.DEVNULL
+    assert run_kwargs["stderr"] is subprocess.DEVNULL
+    assert run_kwargs["cwd"] is tmp_path
+
+
+def test_run_command_detached_checks_exit_code(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runtime, "require_docker", lambda: None)
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 5),
+    )
+
+    with pytest.raises(runtime.DockerError, match="Command failed with exit code 5\\."):
+        runtime.run_command(
+            ["docker", "compose", "ps"], cwd=tmp_path, attached=False, check=True
+        )

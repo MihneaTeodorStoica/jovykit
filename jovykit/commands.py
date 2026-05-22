@@ -346,7 +346,16 @@ def load_project_settings(root: Path | None = None) -> ProjectSettings:
     """Load editable settings from compose.yaml."""
     resolved = ensure_compose_project(root)
     data = yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
-    service: dict[str, Any] = data.get("services", {}).get(SERVICE_NAME, {})
+    if not isinstance(data, dict):
+        raise JovyKitError("Invalid compose.yaml shape: expected top-level mapping.")
+    services = data.get("services")
+    if not isinstance(services, dict):
+        raise JovyKitError("Invalid compose.yaml shape: expected services mapping.")
+    service = services.get(SERVICE_NAME)
+    if not isinstance(service, dict):
+        raise JovyKitError(
+            "Invalid compose.yaml shape: expected services.jovy mapping."
+        )
     build: dict[str, Any] = service.get("build") or {}
     args = build.get("args") or {}
     base_image = _read_build_arg(args, "JOVY_BASE_IMAGE") or resolve_image_level("base")
@@ -512,12 +521,17 @@ def _read_gpu_mode(service: dict[str, Any]) -> str:
 
 
 def _read_port(service: dict[str, Any]) -> int:
-    for port in service.get("ports", []) or []:
-        parts = str(port).split(":")
-        if len(parts) >= 3 and parts[-1] == "8888":
-            return int(parts[-2])
-        if len(parts) == 2 and parts[-1] == "8888":
-            return int(parts[0])
+    ports = service.get("ports", [])
+    if ports is None:
+        return 8888
+    if not isinstance(ports, list):
+        raise JovyKitError(
+            f"Malformed compose.yaml: {ports!r} for service.{SERVICE_NAME}.ports."
+        )
+    for port in ports or []:
+        host_port, container_port = _parse_compose_port_mapping(port)
+        if container_port == 8888:
+            return host_port
     return 8888
 
 
@@ -545,13 +559,63 @@ def jupyter_url(root: Path | None = None) -> str:
         or generate_default_jupyter_token()
     )
     query = urlencode({"token": token})
-    for port in service.get("ports", []) or []:
-        parts = str(port).split(":")
-        if len(parts) >= 3 and parts[-1] == "8888":
-            return f"http://127.0.0.1:{parts[-2]}/lab?{query}"
-        if len(parts) == 2 and parts[-1] == "8888":
-            return f"http://127.0.0.1:{parts[0]}/lab?{query}"
-    return f"http://127.0.0.1:8888/lab?{query}"
+    port = _read_port(service)
+    return f"http://127.0.0.1:{port}/lab?{query}"
+
+
+def _parse_compose_port_mapping(port: object) -> tuple[int, int]:
+    """Parse a compose port mapping into host/container integers."""
+
+    mapping = str(port)
+    if not mapping:
+        raise JovyKitError("Malformed compose.yaml port mapping: value is empty.")
+    if not isinstance(port, (str, int)):
+        raise JovyKitError(f"Malformed compose.yaml port mapping: {mapping!r}.")
+
+    if isinstance(port, int):
+        value = _read_port_value(mapping, "host", port)
+        return value, value
+
+    mapping = mapping.split("/", 1)[0]
+    if ":" not in mapping:
+        return _read_port_value(mapping, "host", mapping), _read_port_value(
+            mapping, "container", mapping
+        )
+
+    if mapping.startswith("["):
+        _, _, remaining = mapping.partition("]:")
+        if not remaining:
+            raise JovyKitError(
+                f"Malformed compose.yaml port mapping: {mapping!r} (missing host and container ports)."
+            )
+        parts = remaining.split(":")
+    else:
+        parts = mapping.split(":")
+
+    if len(parts) == 2:
+        host_port_text, container_port_text = parts
+        host_port = _read_port_value(host_port_text, "host", mapping)
+        container_port = _read_port_value(container_port_text, "container", mapping)
+        return host_port, container_port
+    if len(parts) == 3:
+        host_port = _read_port_value(parts[1], "host", mapping)
+        container_port = _read_port_value(parts[2], "container", mapping)
+        return host_port, container_port
+    raise JovyKitError(f"Malformed compose.yaml port mapping: {mapping!r}.")
+
+
+def _read_port_value(text: str, name: str, mapping: str | int | float | object) -> int:
+    try:
+        value = int(text)
+    except (TypeError, ValueError) as exc:
+        raise JovyKitError(
+            f"Malformed compose.yaml port mapping: {mapping!r} has invalid {name} port {text!r}."
+        ) from exc
+    if value < 1 or value > 65535:
+        raise JovyKitError(
+            f"Malformed compose.yaml port mapping: {mapping!r} has out-of-range {name} port {value}."
+        )
+    return value
 
 
 def open_browser(root: Path | None = None) -> str:
@@ -607,13 +671,47 @@ def doctor(root: Path | None = None, *, emit: Emitter = noop_emit) -> None:
 
 def status(root: Path | None = None) -> str:
     """Return a short Compose status string."""
-    raw = runtime.compose_ps(root)
-    try:
-        items = json.loads(raw)
-    except json.JSONDecodeError:
+    raw = runtime.compose_ps(root).strip()
+    if not raw:
         return "stopped"
-    if isinstance(items, dict):
-        items = [items]
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            parsed_lines = [
+                json.loads(line) for line in raw.splitlines() if line.strip()
+            ]
+        except json.JSONDecodeError:
+            return json.dumps(
+                {
+                    "state": "error",
+                    "message": raw,
+                }
+            )
+        parsed = parsed_lines
+
+    if not isinstance(parsed, list):
+        if isinstance(parsed, dict):
+            items = [parsed]
+        else:
+            return json.dumps(
+                {
+                    "state": "error",
+                    "message": f"Unsupported docker compose output shape: {type(parsed)!r}",
+                }
+            )
+    else:
+        items = parsed
+
+    if not all(isinstance(item, dict) for item in items):
+        return json.dumps(
+            {
+                "state": "error",
+                "message": "Unsupported docker compose output shape: not all entries are mappings.",
+            }
+        )
+
     states = [
         str(item.get("State") or item.get("Status") or "unknown") for item in items
     ]

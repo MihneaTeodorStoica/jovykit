@@ -18,16 +18,11 @@ def test_ubuntu_plan_matches_official_repository_flow() -> None:
     assert plan.distro == "ubuntu"
     assert (
         "sudo",
-        "apt",
-        "remove",
-        "-y",
-        "docker.io",
-        "docker-compose",
-        "docker-compose-v2",
-        "docker-doc",
-        "podman-docker",
-        "containerd",
-        "runc",
+        "sh",
+        "-c",
+        "dpkg --get-selections "
+        "docker.io docker-compose docker-doc podman-docker containerd runc docker-compose-v2 "
+        "| awk '$2==\"install\"{print $1}' | xargs -r apt remove -y",
     ) in plan.commands
     assert (
         "sudo",
@@ -56,15 +51,11 @@ def test_debian_plan_uses_debian_codename() -> None:
     )
 
     assert (
-        "apt",
-        "remove",
-        "-y",
-        "docker.io",
-        "docker-compose",
-        "docker-doc",
-        "podman-docker",
-        "containerd",
-        "runc",
+        "sh",
+        "-c",
+        "dpkg --get-selections "
+        "docker.io docker-compose docker-doc podman-docker containerd runc "
+        "| awk '$2==\"install\"{print $1}' | xargs -r apt remove -y",
     ) in plan.commands
     assert any(
         "URIs: https://download.docker.com/linux/debian" in " ".join(command)
