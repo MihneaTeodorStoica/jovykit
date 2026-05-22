@@ -115,8 +115,8 @@ jovy open
 
 If the token in the URL no longer works:
 
-- Read `JUPYTER_TOKEN` in `compose.yaml`.
-- Replace it with a new token string.
+- Run `jovy token rotate`.
+- Restart the Jupyter container.
 - Restart the service:
 
 ```bash
