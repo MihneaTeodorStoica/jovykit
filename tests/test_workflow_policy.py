@@ -22,6 +22,11 @@ _PR_HEAD_CONTEXTS = (
     "github.event.pull_request.head",
     "github.head_ref",
 )
+_UV_BASE_IMAGE_REF = re.compile(
+    r"ghcr\.io/astral-sh/uv:python(?P<version>3\.\d+)-bookworm-slim"
+    r"@sha256:[0-9a-f]{64}"
+)
+_SUPPORTED_IMAGE_PYTHON_VERSIONS = {"3.9", "3.10", "3.11", "3.12", "3.13", "3.14"}
 
 
 def _load_yaml(path: Path) -> dict[Any, Any]:
@@ -144,3 +149,22 @@ def test_image_publish_pushes_sbom_and_provenance_attestations() -> None:
     assert build_step["with"]["sbom"] == "${{ inputs.push == 'true' }}"
     assert attest_step["if"] == "inputs.push == 'true'"
     assert attest_step["with"]["push-to-registry"] is True
+
+
+def test_release_image_bases_are_digest_pinned() -> None:
+    dockerfile_text = Path("image/Dockerfile").read_text(encoding="utf-8")
+    build_script_text = Path("build.sh").read_text(encoding="utf-8")
+    publish_action_text = Path(".github/actions/publish-image/action.yml").read_text(
+        encoding="utf-8"
+    )
+    policy_text = "\n".join([dockerfile_text, build_script_text, publish_action_text])
+
+    assert "FROM ghcr.io/astral-sh/uv:" not in dockerfile_text
+    assert "FROM ${UV_BASE_IMAGE} AS minimal" in dockerfile_text
+    assert (
+        "UV_BASE_IMAGE=${{ steps.plan.outputs.uv-base-image }}" in publish_action_text
+    )
+    assert '--build-arg "UV_BASE_IMAGE=${base_image}"' in build_script_text
+    assert (
+        set(_UV_BASE_IMAGE_REF.findall(policy_text)) == _SUPPORTED_IMAGE_PYTHON_VERSIONS
+    )

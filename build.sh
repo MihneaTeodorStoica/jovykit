@@ -190,11 +190,40 @@ image_supports_python() {
   esac
 }
 
+uv_base_image() {
+  case "$1" in
+    3.9)
+      printf '%s\n' 'ghcr.io/astral-sh/uv:python3.9-bookworm-slim@sha256:6821835eb4e0eb94d6a720d14a18ebcc3823ed323e61d346557a705cacf4757d'
+      ;;
+    3.10)
+      printf '%s\n' 'ghcr.io/astral-sh/uv:python3.10-bookworm-slim@sha256:a041b350d5d9483b538d5af07e9553ee8cbc7fc7fa90c2f7d20d93f18ce9bbd1'
+      ;;
+    3.11)
+      printf '%s\n' 'ghcr.io/astral-sh/uv:python3.11-bookworm-slim@sha256:4f5d923c9dcea037f57bda425dd209f3ec643da2f0b74227f68d09dab0b3bb36'
+      ;;
+    3.12)
+      printf '%s\n' 'ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58'
+      ;;
+    3.13)
+      printf '%s\n' 'ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca'
+      ;;
+    3.14)
+      printf '%s\n' 'ghcr.io/astral-sh/uv:python3.14-bookworm-slim@sha256:7cf77f594be8042dab6daa9fe326f90962252268b4f120a7f5dccce4d947e6c1'
+      ;;
+    *)
+      printf 'unknown Python version for uv base image: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+}
+
 build_python_version() {
   local version="$1"
+  local base_image
   local image
   local tags
 
+  base_image="$(uv_base_image "${version}")"
   for image in "${selected[@]}"; do
     if ! image_supports_python "${image}" "${version}"; then
       printf 'skip %s Python %s (unsupported)\n' "${image}" "${version}" >&2
@@ -212,6 +241,7 @@ build_python_version() {
     fi
     docker build \
       --build-arg "PYTHON_VERSION=${version}" \
+      --build-arg "UV_BASE_IMAGE=${base_image}" \
       --target "${image}" \
       "${tags[@]}" \
       ./image

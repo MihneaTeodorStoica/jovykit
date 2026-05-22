@@ -205,6 +205,9 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
         action_build_step["with"]["cache-to"]
         == "${{ inputs.push == 'true' && steps.plan.outputs.cache-to || '' }}"
     )
+    assert "UV_BASE_IMAGE=${{ steps.plan.outputs.uv-base-image }}" in (
+        action_build_step["with"]["build-args"]
+    )
     assert "jovykit-buildcache" not in text
     assert "type=registry" not in text
     assert 'image_name="jovykit"' in text
@@ -229,6 +232,7 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     )
     assert "monthly-python" not in text
     assert 'if [ "${{ inputs.target }}" != "full" ]; then' in text
+    assert "uv-base-image=$uv_base_image" in text
 
 
 def test_image_publish_action_fails_fast_on_invalid_target() -> None:
@@ -245,6 +249,22 @@ def test_image_publish_action_fails_fast_on_invalid_target() -> None:
 
     assert re.search(r"\n\s*\*\)\s*$", run_text, flags=re.M) is not None
     assert "echo \"Invalid target '${{ inputs.target }}'" in run_text
+    assert re.search(r"\n\s*exit 2\s*$", run_text, flags=re.M) is not None
+
+
+def test_image_publish_action_fails_fast_on_invalid_python_version() -> None:
+    action_text = Path(".github/actions/publish-image/action.yml").read_text(
+        encoding="utf-8"
+    )
+    action = yaml.safe_load(action_text)
+    plan_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Plan image build"
+    )
+    run_text = plan_step["run"]
+
+    assert "echo \"Invalid Python version '${{ inputs.python-version }}'" in run_text
     assert re.search(r"\n\s*exit 2\s*$", run_text, flags=re.M) is not None
 
 
