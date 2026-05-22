@@ -181,8 +181,9 @@ def test_minimal_image_keeps_only_runtime_kernel_basics() -> None:
     assert "SHELL=/bin/bash" in minimal_stage
     assert " git \\" not in minimal_stage
     assert "openssh-client" not in minimal_stage
-    assert 'eval "$VSCODE_PYTHON_BASH_ACTIVATE"' not in minimal_stage
-    assert "VSCODE_PYTHON_AUTOACTIVATE_GUARD" not in minimal_stage
+    assert "# >>> vscode python" in minimal_stage
+    assert 'eval "$VSCODE_PYTHON_BASH_ACTIVATE"' in minimal_stage
+    assert "VSCODE_PYTHON_AUTOACTIVATE_GUARD" in minimal_stage
 
 
 def test_image_builds_prune_caches_and_do_not_rebuild_jupyterlab() -> None:
