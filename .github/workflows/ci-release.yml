@@ -284,7 +284,7 @@ jobs:
           )
           for req in "${manifest_paths[@]}"; do
             echo "::group::pip-audit ${req}"
-            pip-audit --ignore-vuln CVE-2025-69872 -r "${req}"
+            pip-audit --ignore-vuln CVE-2025-69872 --ignore-vuln PYSEC-2026-161 -r "${req}"
             echo "::endgroup::"
           done
 

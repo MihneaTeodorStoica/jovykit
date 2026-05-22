@@ -89,6 +89,7 @@ def test_python_ci_audits_all_dependency_manifests() -> None:
     assert "image/requirements-extended.txt" in manifest_step["run"]
     assert "image/requirements-full.txt" in manifest_step["run"]
     assert "--ignore-vuln CVE-2025-69872" in manifest_step["run"]
+    assert "--ignore-vuln PYSEC-2026-161" in manifest_step["run"]
 
 
 def test_image_workflow_builds_supported_image_versions(tmp_path: Path) -> None:
