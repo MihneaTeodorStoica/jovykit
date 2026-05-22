@@ -93,7 +93,12 @@ RUN cat >> "${HOME}/.bashrc" <<'SH' && \
     chown "${NB_UID}:${NB_GID}" "${HOME}/.bashrc"
 # >>> vscode python
 # version: 0.1.1
-# shell auto-activation uses VS Code-managed Python integration.
+if [ -z "$VSCODE_PYTHON_AUTOACTIVATE_GUARD" ]; then
+    export VSCODE_PYTHON_AUTOACTIVATE_GUARD=1
+    if [ -n "$VSCODE_PYTHON_BASH_ACTIVATE" ] && [ "$TERM_PROGRAM" = "vscode" ]; then
+        eval "$VSCODE_PYTHON_BASH_ACTIVATE" || true
+    fi
+fi
 # <<< vscode python
 SH
 
