@@ -109,9 +109,16 @@ jovy down
 jovy compose ps
 ```
 
+## Documentation
+
+- [Tutorial](wiki/Tutorial.md)
+- [How-To](wiki/How-To.md)
+- [Reference](wiki/Reference.md)
+- [Explanation](wiki/Explanation.md)
+
 Troubleshooting runtime startup issues:
 
-- [Troubleshooting guide](wiki/Troubleshooting.md)
+- [Troubleshooting guide](wiki/How-To.md#troubleshooting)
 
 ## How JovyKit Works
 
@@ -191,6 +198,35 @@ Generated projects mount only the durable user paths:
 
 Project notebooks and Jupyter settings survive rebuilds and container removal.
 Other container state is disposable.
+
+## Security Model
+
+JovyKit is intended for local development first.
+
+- Default exposed surface:
+  - `compose.yaml` maps a single Jupyter port by default:
+    `127.0.0.1:<host-port>:8888` (default `8888`).
+  - This keeps Jupyter on loopback by default; it is not reachable from other hosts
+    unless you change `ports` to a non-loopback bind.
+- `JUPYTER_TOKEN` is written into `compose.yaml` and required by Jupyter.
+  Rotate it with `jovy token rotate`, or set one with
+  `jovy token rotate --token NEW_TOKEN`, then `jovy down && jovy up -d`.
+  (Restarting is required so the container picks up the new token.)
+- Files that commonly hold sensitive state:
+  - `compose.yaml` (`JUPYTER_TOKEN` and generated runtime config)
+  - `./.jupyter` (credentials, server config, extension state)
+  - any project token values in `Dockerfile`, `requirements.txt`, or `.devcontainer/devcontainer.json`
+- Docker access is host-level privilege: adding your user to the docker group grants
+  root-equivalent host access through `/var/run/docker.sock`.
+  Treat that boundary as part of your local security model.
+
+If you expose Jupyter publicly, do this only intentionally:
+- bind only on trusted hosts/networks,
+- put `compose.yaml` under review first,
+- rotate tokens before sharing access,
+- add host-level controls (firewall, VPN, reverse proxy auth).
+
+See the full security guide: [Security model](wiki/Explanation.md#security-model).
 
 ## GPU
 

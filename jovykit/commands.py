@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import socket
 import re
 import shutil
+import socket
 import subprocess
 import webbrowser
-from contextlib import closing
 from collections.abc import Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -55,6 +55,16 @@ _DEFAULT_PORT = 8888
 _MAX_PORT = 65535
 _REQUIREMENT_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9._-]*(?:[A-Za-z0-9])?")
 _DOCKERFILE_BASE_IMAGE_RE = re.compile(r"^\s*ARG\s+JOVY_BASE_IMAGE=(.+?)\s*$")
+_SECURE_BINDING_HOSTS = frozenset(("127.0.0.1", "::1", "localhost"))
+_WEAK_JUPYTER_TOKENS = frozenset(
+    ("changeme", "change-me", "jovykit", "jupyter", "password", "token")
+)
+_SECRET_FILE_NAME_RE = re.compile(
+    r"(api[_-]?key|credential|password|secret|token)", re.IGNORECASE
+)
+_SECRET_TEXT_RE = re.compile(
+    r"\b(api[_-]?key|password|secret|token)\s*[:=]", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -702,10 +712,8 @@ def _read_port(service: dict[str, Any]) -> int:
         raise JovyKitError(
             f"Malformed compose.yaml: {ports!r} for service.{SERVICE_NAME}.ports."
         )
-    for port in ports or []:
-        host_port, container_port = _parse_compose_port_mapping(port)
-        if container_port == 8888:
-            return host_port
+    for _, host_port in _read_jupyter_port_bindings(service):
+        return host_port
     return 8888
 
 
@@ -752,8 +760,45 @@ def _build_jupyter_url(service: dict[str, Any], token: str) -> str:
     return f"http://127.0.0.1:{port}/lab?{query}"
 
 
-def _parse_compose_port_mapping(port: object) -> tuple[int, int]:
-    """Parse a compose port mapping into host/container integers."""
+def rotate_token(
+    root: Path | None = None,
+    *,
+    token: str | None = None,
+    emit: Emitter = noop_emit,
+) -> str:
+    """Generate or set a new local Jupyter token."""
+    resolved = ensure_compose_project(root)
+    settings = load_project_settings(resolved)
+    next_token = generate_default_jupyter_token() if token is None else token
+    save_project_settings(
+        resolved,
+        level=settings.level,
+        python_version=settings.python_version,
+        gpu=settings.gpu,
+        port=settings.port,
+        token=next_token,
+    )
+    url = jupyter_url(resolved)
+    emit("Rotated Jupyter token.")
+    emit("Restart with: jovy down && jovy up -d")
+    return url
+
+
+def show_token(root: Path | None = None, *, emit: Emitter = noop_emit) -> str:
+    """Print the local Jupyter token and Lab URL."""
+    resolved = ensure_compose_project(root)
+    settings = load_project_settings(resolved)
+    url = jupyter_url(resolved)
+    emit("Warning: local Jupyter tokens grant access to this server.")
+    emit(f"url: {url}")
+    emit(f"token: {settings.token}")
+    return url
+
+
+def _parse_compose_port_mapping(
+    port: object,
+) -> tuple[str | None, int, int]:
+    """Parse a compose port mapping into host, host port, and container port."""
 
     mapping = str(port)
     if not mapping:
@@ -763,34 +808,110 @@ def _parse_compose_port_mapping(port: object) -> tuple[int, int]:
 
     if isinstance(port, int):
         value = _read_port_value(mapping, "host", port)
-        return value, value
+        return None, value, value
 
     mapping = mapping.split("/", 1)[0]
     if ":" not in mapping:
-        return _read_port_value(mapping, "host", mapping), _read_port_value(
-            mapping, "container", mapping
-        )
+        value = _read_port_value(mapping, "host", mapping)
+        return None, value, value
 
+    host_address: str | None
     if mapping.startswith("["):
-        _, _, remaining = mapping.partition("]:")
+        host, _, remaining = mapping[1:].partition("]:")
         if not remaining:
             raise JovyKitError(
                 f"Malformed compose.yaml port mapping: {mapping!r} (missing host and container ports)."
             )
         parts = remaining.split(":")
+        host_address = host
     else:
         parts = mapping.split(":")
+        host_address = parts[0] if len(parts) == 3 else None
 
     if len(parts) == 2:
         host_port_text, container_port_text = parts
         host_port = _read_port_value(host_port_text, "host", mapping)
         container_port = _read_port_value(container_port_text, "container", mapping)
-        return host_port, container_port
+        return host_address, host_port, container_port
     if len(parts) == 3:
         host_port = _read_port_value(parts[1], "host", mapping)
         container_port = _read_port_value(parts[2], "container", mapping)
-        return host_port, container_port
+        return host_address, host_port, container_port
     raise JovyKitError(f"Malformed compose.yaml port mapping: {mapping!r}.")
+
+
+def _read_jupyter_port_bindings(
+    service: dict[str, Any],
+) -> list[tuple[str | None, int]]:
+    ports = service.get("ports", [])
+    if ports is None:
+        return []
+    if not isinstance(ports, list):
+        raise JovyKitError(
+            f"Malformed compose.yaml: {ports!r} for service.{SERVICE_NAME}.ports."
+        )
+    bindings: list[tuple[str | None, int]] = []
+    for port in ports or []:
+        host, host_port, container_port = _parse_compose_port_mapping(port)
+        if container_port == 8888:
+            bindings.append((host, host_port))
+    return bindings
+
+
+def _is_localhost_host(host: str | None) -> bool:
+    return host is not None and host.lower() in _SECURE_BINDING_HOSTS
+
+
+def _format_token_security(token: str | None) -> str:
+    if not token:
+        return "security.token: missing"
+    if token.strip().lower() in _WEAK_JUPYTER_TOKENS:
+        return "security.token: weak/default (rotate with jovy token rotate)"
+    return "security.token: present (rotate before sharing)"
+
+
+def _jupyter_secret_paths(root: Path) -> list[str]:
+    jupyter_dir = root / DEFAULT_JUPYTER_DIR
+    if not jupyter_dir.exists():
+        return []
+    matches: list[str] = []
+    for path in sorted(jupyter_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if _SECRET_FILE_NAME_RE.search(path.name):
+            matches.append(relative)
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")[:8192]
+        except OSError:
+            continue
+        if _SECRET_TEXT_RE.search(content):
+            matches.append(relative)
+    return matches
+
+
+def _emit_security_checks(root: Path, service: dict[str, Any], emit: Emitter) -> None:
+    emit(_format_token_security(_read_environment_value(service, "JUPYTER_TOKEN")))
+    bindings = _read_jupyter_port_bindings(service)
+    if not bindings:
+        emit("security.bind: not published")
+    else:
+        insecure: list[str] = []
+        for host, host_port in bindings:
+            normalized_host = "0.0.0.0" if not host else host.lower()
+            if not _is_localhost_host(host):
+                insecure.append(f"{normalized_host}:{host_port}")
+        if insecure:
+            emit(f"security.bind: exposed ({', '.join(insecure)})")
+        else:
+            emit("security.bind: loopback-only")
+    emit("security.docker: docker group grants root-equivalent host access")
+    secret_paths = _jupyter_secret_paths(root)
+    if secret_paths:
+        emit(f"security.jupyter: potential secrets ({', '.join(secret_paths)})")
+    else:
+        emit("security.jupyter: review before sharing")
 
 
 def _read_port_value(text: str, name: str, mapping: str | int | float | object) -> int:
@@ -883,6 +1004,7 @@ def doctor(
     *,
     fix: bool = False,
     yes: bool = False,
+    security: bool = False,
     emit: Emitter = noop_emit,
 ) -> None:
     """Print basic host and project diagnostics."""
@@ -913,8 +1035,26 @@ def doctor(
         return
 
     emit(f"project: {compose_path(resolved)}")
+    compose_data = (
+        yaml.safe_load(compose_path(resolved).read_text(encoding="utf-8")) or {}
+    )
+    service = (
+        compose_data.get("services", {}).get(SERVICE_NAME, {})
+        if isinstance(compose_data.get("services"), dict)
+        else {}
+    )
 
-    if not fix:
+    if security:
+        try:
+            _emit_security_checks(resolved, service, emit)
+        except JovyKitError as exc:
+            emit(f"security: {exc}")
+
+    if not (fix or security):
+        return
+
+    if not isinstance(service, dict):
+        emit("project: service 'jovy' missing or invalid")
         return
 
     work_dir = resolved / DEFAULT_WORK_DIR
@@ -927,7 +1067,7 @@ def doctor(
         work_dir.mkdir(parents=True, exist_ok=True)
         emit("project.work: created")
     else:
-        emit("project.work: missing")
+        emit("project.work: missing (planned)")
 
     if jupyter_dir.exists():
         pass
@@ -935,7 +1075,7 @@ def doctor(
         jupyter_dir.mkdir(parents=True, exist_ok=True)
         emit("project.jupyter: created")
     else:
-        emit("project.jupyter: missing")
+        emit("project.jupyter: missing (planned)")
 
     if devcontainer_file.exists():
         pass
@@ -946,7 +1086,7 @@ def doctor(
         )
         emit("project.devcontainer: created")
     else:
-        emit("project.devcontainer: missing")
+        emit("project.devcontainer: missing (planned)")
 
     try:
         compose_base = _read_compose_base_image(resolved)
@@ -962,7 +1102,9 @@ def doctor(
                 emit("project.base_image: compose base image restored from Dockerfile")
                 compose_base = dockerfile_base
             else:
-                emit("project.base_image: compose value missing")
+                emit(
+                    "project.base_image: compose value missing (planned from dockerfile)"
+                )
         else:
             emit("project.base_image: compose value missing")
             return
@@ -974,7 +1116,7 @@ def doctor(
             _set_dockerfile_base_image(resolved, compose_base)
             emit("project.base_image: dockerfile base image restored from compose.yaml")
         else:
-            emit("project.base_image: dockerfile value missing")
+            emit("project.base_image: dockerfile value missing (planned from compose)")
         return
 
     if compose_base == dockerfile_base:
@@ -985,8 +1127,8 @@ def doctor(
         emit("project.base_image: dockerfile aligned to compose")
     else:
         emit(
-            "project.base_image: mismatch between compose.yaml and Dockerfile"
-            f" (compose={compose_base}, dockerfile={dockerfile_base})"
+            "project.base_image: mismatch between compose.yaml and Dockerfile (planned:"
+            f" update Dockerfile to {compose_base})"
         )
 
 

@@ -46,7 +46,7 @@ jovy watch [ARGS...]
 jovy open
 jovy token show
 jovy token rotate
-jovy doctor
+jovy doctor [--fix] [--yes] [--security]
 jovy install-docker [--dry-run] [--yes] [--skip-hello-world]
 jovy compose COMMAND [ARGS...]
 ```
@@ -117,7 +117,7 @@ jovy shell python --version
 jovy run python script.py
 jovy token show
 jovy token rotate
-jovy doctor
+jovy doctor [OPTIONS]
 jovy install-docker --dry-run
 ```
 

@@ -107,19 +107,16 @@ For local edits, keep `compose.yaml` valid YAML and restart with `jovy up -d`.
 
 ## Lost Jupyter token
 
-`jovy open` prints a URL containing the active token from compose.
+`jovy token show` prints the active token and local URL.
 
 ```bash
-jovy open
+jovy token show
 ```
 
-If the token in the URL no longer works:
-
-- Run `jovy token rotate`.
-- Restart the Jupyter container.
-- Restart the service:
+If the token no longer works, rotate it and restart:
 
 ```bash
+jovy token rotate
 jovy down
 jovy up -d
 ```

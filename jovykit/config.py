@@ -7,7 +7,7 @@ import secrets
 
 def generate_default_jupyter_token() -> str:
     """Generate a random default Jupyter token."""
-    return secrets.token_urlsafe(16)
+    return secrets.token_urlsafe(32)
 
 
 class JovyKitError(RuntimeError):

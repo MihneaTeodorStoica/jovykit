@@ -127,10 +127,15 @@ def test_init_accepts_python_level_gpu_and_port(tmp_path: Path, run_cli) -> None
 
 
 def test_token_commands_dispatch(monkeypatch: pytest.MonkeyPatch, run_cli) -> None:
-    monkeypatch.setattr(
-        commands, "token_show", lambda: "URL: http://example\nToken: tok"
-    )
-    monkeypatch.setattr(commands, "token_rotate", lambda *, emit: "new-token")
+    def fake_show_token(*, emit):
+        emit("URL: http://example")
+        emit("Token: tok")
+
+    def fake_rotate_token(*, token=None, emit):
+        emit(f"new-token:{token}")
+
+    monkeypatch.setattr(commands, "show_token", fake_show_token)
+    monkeypatch.setattr(commands, "rotate_token", fake_rotate_token)
 
     show = run_cli(["token", "show"])
     rotate = run_cli(["token", "rotate"])
@@ -176,10 +181,42 @@ def test_help_is_compose_first(run_cli) -> None:
     assert "jovy start" in result.output
     assert "jovy config" in result.output
     assert "jovy compose COMMAND" in result.output
+    assert "jovy token rotate|show" in result.output
     assert "jovy add PACKAGE" in result.output
     assert "jovy upgrade" in result.output
     assert "destroy" not in result.output
     assert "clean" not in result.output
+
+
+def test_token_rotate_and_show(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(commands, "generate_default_jupyter_token", lambda: "new-token")
+    run_cli(["init", "--token", "old-token"])
+
+    rotate_result = run_cli(["token", "rotate"])
+    show_result = run_cli(["token", "show"])
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    assert compose["services"]["jovy"]["environment"] == {"JUPYTER_TOKEN": "new-token"}
+    assert "Rotated Jupyter token." in rotate_result.output
+    assert "url: http://127.0.0.1:8888/lab?token=new-token" in show_result.output
+    assert "token: new-token" in show_result.output
+
+
+def test_token_rotate_accepts_explicit_token(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_cli
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_cli(["init", "--token", "old-token"])
+
+    run_cli(["token", "rotate", "--token", "explicit-token"])
+
+    compose = yaml.safe_load((tmp_path / "compose.yaml").read_text())
+    assert compose["services"]["jovy"]["environment"] == {
+        "JUPYTER_TOKEN": "explicit-token"
+    }
 
 
 @pytest.mark.parametrize(
@@ -275,6 +312,73 @@ def test_install_docker_command_can_execute(
 
     assert called["yes"] is True
     assert called["skip_hello_world"] is False
+
+
+def test_doctor_command_dispatches_defaults(
+    monkeypatch: pytest.MonkeyPatch, run_cli
+) -> None:
+    called: dict[str, object] = {}
+
+    def fake_doctor(**kwargs: object) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(commands, "doctor", fake_doctor)
+
+    run_cli(["doctor"])
+
+    assert called["fix"] is False
+    assert called["yes"] is False
+
+
+def test_doctor_command_dispatches_fix(
+    monkeypatch: pytest.MonkeyPatch, run_cli
+) -> None:
+    called: dict[str, object] = {}
+
+    def fake_doctor(**kwargs: object) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(commands, "doctor", fake_doctor)
+
+    run_cli(["doctor", "--fix"])
+
+    assert called["fix"] is True
+    assert called["yes"] is False
+
+
+def test_doctor_command_dispatches_fix_and_yes(
+    monkeypatch: pytest.MonkeyPatch,
+    run_cli,
+) -> None:
+    called: dict[str, object] = {}
+
+    def fake_doctor(**kwargs: object) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(commands, "doctor", fake_doctor)
+
+    run_cli(["doctor", "--fix", "--yes"])
+
+    assert called["fix"] is True
+    assert called["yes"] is True
+
+
+def test_doctor_command_dispatches_security(
+    monkeypatch: pytest.MonkeyPatch,
+    run_cli,
+) -> None:
+    called: dict[str, object] = {}
+
+    def fake_doctor(**kwargs: object) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(commands, "doctor", fake_doctor)
+
+    run_cli(["doctor", "--security"])
+
+    assert called["security"] is True
+    assert called["fix"] is False
+    assert called["yes"] is False
 
 
 def test_status_json_outputs_machine_readable_payload(
