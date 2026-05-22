@@ -214,10 +214,10 @@ def test_image_workflow_uses_gha_cache_and_single_image_repository() -> None:
     assert "artifact-metadata" not in text
     assert metadata_step["if"] == "inputs.push == 'true'"
     assert metadata_step["env"]["DOCKER_METADATA_ANNOTATIONS_LEVELS"] == "manifest"
-    assert action_build_step["with"]["provenance"] is False
-    assert action_build_step["with"]["sbom"] is False
+    assert action_build_step["with"]["provenance"] == "${{ inputs.push == 'true' }}"
+    assert action_build_step["with"]["sbom"] == "${{ inputs.push == 'true' }}"
     assert attest_step["if"] == "inputs.push == 'true'"
-    assert attest_step["with"]["push-to-registry"] is False
+    assert attest_step["with"]["push-to-registry"] is True
     assert attest_step["with"]["create-storage-record"] is False
     assert "value=latest" in text
     assert "inputs.target == 'minimal' && inputs.python-version == '3.14'" in text
