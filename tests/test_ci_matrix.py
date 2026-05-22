@@ -102,7 +102,7 @@ def test_image_workflow_builds_supported_image_versions(tmp_path: Path) -> None:
     for item in matrix:
         targets.setdefault(item["target"], []).append(item["python-version"])
 
-    assert workflow["jobs"]["images"]["runs-on"] == "self-hosted"
+    assert workflow["jobs"]["images"]["runs-on"] == "ubuntu-latest"
     assert image_strategy["max-parallel"] == 6
     assert publish_jobs == {}
     assert (
