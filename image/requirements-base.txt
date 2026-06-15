@@ -20,7 +20,7 @@ scikit-learn==1.5.2; python_version == "3.9"
 scikit-learn==1.7.2; python_version >= "3.10"
 
 # Developer ergonomics
-tqdm==4.67.3
+tqdm==4.68.1
 rich==15.0.0
 python-dotenv==1.2.1; python_version < "3.10"
 python-dotenv==1.2.2; python_version >= "3.10"
@@ -36,7 +36,7 @@ polars==1.36.1; python_version < "3.10"
 polars==1.40.1; python_version >= "3.10"
 duckdb==1.4.4; python_version < "3.10"
 duckdb==1.5.2; python_version >= "3.10"
-sqlalchemy==2.0.49
+sqlalchemy==2.0.50
 
 # Configuration and utilities
 joblib==1.5.3
