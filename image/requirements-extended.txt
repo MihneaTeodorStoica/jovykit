@@ -81,7 +81,7 @@ accelerate==1.13.0
 sentence-transformers==5.4.1; python_version >= "3.11" and python_version < "3.14"
 sktime==0.40.1
 arch==8.0.0
-torch==2.11.0; python_version >= "3.11" and python_version < "3.14"
+torch==2.12.1; python_version >= "3.11" and python_version < "3.14"
 torchvision==0.26.0; python_version >= "3.11" and python_version < "3.14"
 torchaudio==2.11.0; python_version >= "3.11" and python_version < "3.14"
 torchmetrics==1.9.0; python_version >= "3.11" and python_version < "3.14"
