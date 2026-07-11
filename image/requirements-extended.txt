@@ -149,7 +149,7 @@ interpret==0.7.8
 flaml==2.6.0
 prophet==1.3.0
 tsfresh==0.21.1
-onnx==1.21.0
+onnx==1.22.0
 onnxruntime==1.26.0; python_version >= "3.11" and python_version < "3.14"
 
 # MLOps, audio, speech, and automated visualization
