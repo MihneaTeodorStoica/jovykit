@@ -89,7 +89,7 @@ lightning==2.6.1; python_version >= "3.11" and python_version < "3.14"
 einops==0.8.2; python_version >= "3.11" and python_version < "3.14"
 scikit-image==0.26.0
 imageio==2.37.3
-pillow==12.2.0
+pillow==12.3.0
 opencv-python-headless==4.13.0.92; python_version >= "3.11" and python_version < "3.14"
 albumentations==2.0.8; python_version >= "3.11" and python_version < "3.14"
 dask==2026.3.0
