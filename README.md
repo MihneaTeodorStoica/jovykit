@@ -1,3 +1,8 @@
+> **Obsolete — superseded by [nitro-ai-judge-cli](https://github.com/MihneaTeodorStoica/nitro-ai-judge-cli).**
+> JovyKit (formerly labkit) is archived and is no longer maintained. Use
+> nitro-ai-judge-cli for new work; the documentation below is retained for
+> historical reference.
+
 <p align="center">
   <img src="site/assets/jovykit-logo-transparent.png" alt="JovyKit logo" width="140">
 </p>

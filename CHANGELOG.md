@@ -7,6 +7,12 @@ tagged diff and group changes by impact.
 
 ## Unreleased
 
+### Project status
+
+- Mark JovyKit (formerly labkit) obsolete and archive the repository;
+  [nitro-ai-judge-cli](https://github.com/MihneaTeodorStoica/nitro-ai-judge-cli)
+  supersedes it. Existing documentation is retained for historical reference.
+
 ## 8.8.0 - 2026-05-22
 
 ### CLI
